@@ -80,7 +80,7 @@ investigation. It is not a sales-forecasting system.
 In scope:
 
 - one manually initiated run at a time;
-- 8–50 categories per run;
+- at least 8 categories per run;
 - category taxonomy validation;
 - bounded, paginated Coveo discovery;
 - deterministic stratified GraphQL enrichment sampling;
@@ -199,15 +199,18 @@ by sampling.
 1. Load category input, configuration, Coveo credential, and Unity CSRF credential.
 2. Validate configuration and the cached category taxonomy before network requests.
 3. Create `run_id`, `run_started_at_utc`, policy versions, and a configuration hash.
-4. Run the identity preflight described in §4.4 before bulk enrichment.
-5. Discover each category with the same endpoint, filter, sort order, page size,
+4. Discover each category with the same endpoint, filter, sort order, page size,
    and pagination rules.
-6. Persist each raw discovery observation, including unresolved and conflicting
+5. Persist each raw discovery observation, including unresolved and conflicting
    identity records.
-7. Deduplicate canonical identities within each category for metric purposes while
+6. Deduplicate canonical identities within each category for metric purposes while
    retaining every raw API observation for audit.
-8. Build ordinal strata and select a deterministic enrichment sample per category.
-9. Enrich the union of sampled canonical identities once each.
+7. Build ordinal strata and select a deterministic enrichment sample per category.
+8. Select the deterministic identity-preflight set from the sampled identities and
+   run the preflight described in §4.4. Cache successful preflight responses as
+   enrichment observations.
+9. Enrich the union of sampled canonical identities once each, excluding identities
+   already completed by the preflight.
 10. Capture `scoring_cutoff_utc` immediately before metric computation.
 11. Compute sample-aware raw metrics and their coverage values.
 12. Construct a leave-one-out reference for every category.
@@ -217,8 +220,9 @@ by sampling.
 
 ### 3.3 Purity boundary
 
-**LREQ-ARCH-010**: `metrics` and `scoring` SHALL accept plain typed data and SHALL
-not import or call `collector`, `database`, `report`, or `cli` code.
+**LREQ-ARCH-010**: `metrics` and `scoring` SHALL accept plain typed input structures
+and return typed result structures. They SHALL not import or call `collector`,
+`database`, `report`, or `cli` code, and SHALL perform no network or file I/O.
 
 **LREQ-ARCH-020**: Pure metric and scoring functions SHALL NOT read the system
 clock. All timestamps SHALL be supplied by the orchestration layer.
@@ -297,10 +301,12 @@ Reversed operation order SHALL be handled through that correlation key. Missing,
 duplicated, unknown, or ambiguous associations SHALL be recorded as malformed
 operation results; the implementation SHALL never guess from response position.
 
-**LREQ-GQL-040**: Each operation SHALL have an independent status. HTTP 200 with an
-operation-level `errors` member, null required data, wrong data shape, wrong scalar
-type, negative page views, non-finite page views, or missing identity SHALL be
-recorded as an operation error.
+**LREQ-GQL-040**: Each operation SHALL have an independent status. HTTP failures,
+top-level GraphQL `errors`, HTTP 200 responses with an operation-level `errors`
+member, null required data, wrong data shape, wrong scalar type, boolean/negative/
+non-finite page views, invalid state values, or missing identity SHALL be recorded
+as an operation error. A top-level error SHALL not be treated as a successful
+operation merely because another operation in the same response succeeded.
 
 **LREQ-GQL-050**: A valid operation's fields MAY be retained when the other operation
 fails. Failed fields SHALL remain null or unavailable; they SHALL NOT be filled with
@@ -336,10 +342,14 @@ error messages. The `.env` pattern SHALL be ignored by version control.
 The formal reusable identity-validation study in the parent SRS is replaced by a
 per-run deterministic preflight.
 
-**LREQ-ID-010**: Before bulk enrichment, select at least two canonical assets from
-each of at least five categories when five categories are available. If fewer than
-five categories are in the run, use every category and record the reduced preflight
-coverage.
+**LREQ-ID-010**: After deterministic sampling and before bulk enrichment, select at
+least two sampled canonical assets from each of at least five categories when five
+categories with two sampled assets are available. If fewer than five eligible
+categories are available, use every category with at least two sampled assets and
+record the reduced preflight coverage and asset shortfall. The preflight selection
+SHALL use the same stable sampling order and SHALL be persisted. A category with
+fewer than two sampled assets SHALL not be represented as satisfying the two-asset
+per-category minimum.
 
 **LREQ-ID-020**: The preflight SHALL perform the normal GraphQL request and verify:
 the request identifier is accepted by both operations; returned product identifiers
@@ -359,7 +369,9 @@ IDENTITY_PREFLIGHT_MIN_SUCCESS_RATE = 0.90
 **LREQ-ID-040**: A preflight below the minimum success rate or above the maximum
 conflict rate SHALL stop bulk enrichment and mark the run failed. The failure SHALL
 include sampled counts, mismatch counts, endpoint signature, mapping-rule version,
-and a redacted diagnostic summary.
+and a redacted diagnostic summary. Successful preflight responses SHALL be reused
+as the corresponding enrichment observations and SHALL count toward the one-
+enrichment-per-unique-identity limit.
 
 ---
 
@@ -401,9 +413,17 @@ fully enriched. Its `sample_is_census` flag SHALL be true.
 be divided into four contiguous ordinal strata of approximately equal population
 size. The implementation SHALL select 25 assets from each stratum.
 
-**LREQ-SMP-060**: Selection within each stratum SHALL be deterministic using a
-stable hash of `sampling_rule_version + category + asset_identity_key`. The
-implementation SHALL NOT use an unseeded random generator.
+For a large category with canonical population size `N`, stratum `h` (zero-based)
+SHALL contain ordinals `floor(h*N/SAMPLE_STRATA)+1` through
+`floor((h+1)*N/SAMPLE_STRATA)`. The final stratum receives any remainder. A census
+category SHALL use one stratum containing ordinals `1..N`.
+
+**LREQ-SMP-060**: Selection within each stratum SHALL compute a SHA-256 digest of
+the UTF-8 encoding of the three values joined by a NUL delimiter:
+`sampling_rule_version + NUL + category + NUL + asset_identity_key`. Assets SHALL
+be sorted by `(digest, asset_identity_key)` and the first `SAMPLE_PER_STRATUM`
+assets SHALL be selected. The implementation SHALL NOT use an unseeded random
+generator or platform-dependent hash function.
 
 **LREQ-SMP-070**: A large-category sample SHALL include assets from early, middle,
 and late discovery positions. Selecting only the first page or first 100 results is
@@ -413,13 +433,24 @@ non-conforming.
 size, usable sample size by component, stratum boundaries, stratum sizes and
 selected counts, selected identity keys or a reproducible selection digest,
 sampling-rule version, census flag, and duplicate/cross-category overlap counts.
+For every stratum, the persisted summary SHALL include `N_h` (discovered
+population), `n_h` (sampled population), `u_demand_h`, `u_recent_h`, and
+`u_quality_h`, together with the eligibility rule used for each usable count.
+For a census category, all discovered canonical assets SHALL be selected and
+`sample_is_census` SHALL be true; its stratum summaries SHALL retain the same
+`N_h`, `n_h`, and usable-count fields used by the sampled estimator.
 
-The run SHALL also persist `discovered_population_count`, `enriched_sample_count`,
+The following SHALL be persisted as distinct values:
+`discovered_population_count`, `enriched_sample_count`,
 `usable_demand_sample_count`,
 `usable_recent_supply_sample_count`, and `usable_quality_sample_count` as distinct
-values. `enriched_sample_count` SHALL never replace the discovered population
+values. `enriched_sample_count` SHALL never replace the discovered population.
 The enrichment set SHALL be the union of all category samples, and each unique
 identity SHALL be enriched once only.
+
+The selected identity keys SHALL be joined back to every category sample that
+contains them. Preflight-selected identities are members of the ordinary sample;
+they are not an additional enrichment population.
 
 **LREQ-SMP-090**: If a stratum contains fewer than 25 assets, all assets in that
 stratum SHALL be eligible for selection and the reduced count SHALL be reported.
@@ -446,7 +477,8 @@ run_id, run_started_at_utc, scoring_cutoff_utc, completed_at_utc,
 categories_json, config_snapshot_json, config_sha256,
 taxonomy_version, taxonomy_captured_at_utc, taxonomy_sha256,
 endpoint_contract_version, identity_mapping_rule_version, sampling_rule_version,
-page_view_semantics_status, status
+page_view_semantics_status, identity_preflight_status,
+identity_preflight_summary_json, status
 ```
 
 `status` SHALL be `running`, `completed`, or `failed`.
@@ -459,7 +491,8 @@ Required fields:
 observation_id, run_id, category, discovery_ordinal, asset_identity_key,
 identity_candidates_json, identity_resolution_status, identity_resolution_reason,
 category_value_json, category_filter_validation_status, stratum_index,
-is_duplicate, duplicate_of_observation_id, retrieved_at_utc
+is_duplicate, duplicate_of_observation_id, request_metadata_json,
+error_summary_json, retrieved_at_utc
 ```
 
 Raw response bodies MAY be omitted, but a structured redacted error summary SHALL
@@ -473,7 +506,7 @@ Required fields:
 run_id, category, asset_identity_key, stratum_index,
 stratum_start_ordinal, stratum_end_ordinal, sample_rank_within_stratum,
 sample_is_census, selection_digest, overlap_category_count,
-overlap_sample_percentage
+overlap_sample_percentage, preflight_selected
 ```
 
 The primary key SHALL prevent duplicate membership for a run, category, and
@@ -488,7 +521,8 @@ run_id, asset_identity_key, product_detail_status, page_views_status,
 graphql_id, product_id, rating_average, rating_count, review_count,
 first_published_date_utc, publisher_json, category_json, state, product_page_views,
 id_mapping_mismatch,
-product_detail_error_summary, page_views_error_summary, retrieved_at_utc
+product_detail_error_summary, page_views_error_summary, request_metadata_json,
+retrieved_at_utc
 ```
 
 `product_page_views` SHALL be nullable and SHALL never use zero as an error sentinel.
@@ -508,6 +542,7 @@ breadth_source, breadth_completeness_status, discovery_bounded_by_verified_total
 demand_population_coverage, recent_supply_usable_count, recent_supply_coverage,
 quality_usable_count, quality_coverage, demand_per_asset_raw,
 demand_median_raw, breadth_raw, recent_share_raw, median_age_raw, quality_raw,
+stratum_statistics_json,
 component_d, component_c, component_r, component_q,
 market_opportunity_score, score_state, evidence_grade, rankability_status,
 missing_components_json, warnings_json, reference_size,
@@ -517,6 +552,13 @@ ranking_sensitivity_json, computed_at_utc
 ```
 
 Raw metrics and scores except counts and status fields SHALL be nullable.
+
+`page_view_semantics_status` SHALL use only `unvalidated`, `validated_cumulative`,
+or `contradicted`. A contradiction is a critical warning and SHALL disable the
+page-view-dependent components; it SHALL not turn a collected page-view value into
+zero. `request_metadata_json` SHALL contain concise operation names, correlation
+keys, HTTP status, and retry/error metadata, but no credentials or full response
+bodies.
 
 ---
 
@@ -540,8 +582,11 @@ The floor of age may be used for display only.
 ### 7.2 Demand
 
 For category `c`, let `N_h` be the discovered canonical population in stratum `h`,
-`N` the total discovered canonical population, and `n_h` the number of sampled
-assets in that stratum with a usable age-normalized page-view index.
+`N` the total discovered canonical population, `n_h` the number of sampled
+assets in that stratum, and `u_h` the number of sampled assets with a usable
+age-normalized page-view index. The persisted stratum summary is the authoritative
+source for these values; formulas SHALL not reconstruct population denominators
+from the enrichment sample.
 
 For each usable stratum:
 
@@ -639,20 +684,29 @@ stratum_recent_share_h =
 **LREQ-MET-080**: `RecentShareRaw` SHALL be the stratum-population-weighted mean
 of usable `stratum_recent_share_h` values, renormalized over usable strata.
 `MedianAgeRaw` SHALL be the corresponding stratum-expanded weighted median of exact
-ages. `recent_supply_coverage` SHALL be the represented population weight.
+ages. A stratum SHALL be usable for Recent Supply only when its dated usable count
+meets `MIN_USABLE_SAMPLES_PER_STRATUM`; `recent_supply_coverage` SHALL be the
+represented population weight of those usable strata. `recent_supply_usable_count`
+SHALL be the sum of usable dated observations in those strata.
 
-For each stratum, `N_h` is its discovered population, `n_h` is its sampled dated
-population, and `u_h` is the usable dated count. A missing or unusable stratum SHALL
-reduce coverage and SHALL NOT contribute zero to the recent-share numerator.
+For each stratum, `N_h` is its discovered population, `n_h` is its total sampled
+population, and `u_recent_h` is its usable dated count. Each usable dated
+observation receives expansion weight `N_h / n_h` for `MedianAgeRaw`; missing or
+unusable dates SHALL reduce coverage and SHALL NOT contribute zero to the
+recent-share numerator. A stratum is usable for Recent Supply only when
+`u_recent_h >= MIN_USABLE_SAMPLES_PER_STRATUM`.
 
 `RECENT_WINDOW_DAYS` defaults to `365`, inclusive. Recent supply measures catalog
 composition, not sales flow or publication velocity.
 
 ### 7.5 Quality gap
-
 An asset is quality-eligible only when ProductDetail and ProductPageViews succeeded,
 identity mapping matched, `state = "published"`, `rating_average` is finite in
-`[0, 5]`, `rating_count >= QUALITY_MIN_RATING_COUNT`, the page-view index is usable,
+[0, 5], `rating_count >= QUALITY_MIN_RATING_COUNT`, the page-view index is usable,
+and page-view semantics are not contradicted. Only quality-eligible observations in
+strata meeting `MIN_USABLE_SAMPLES_PER_STRATUM` contribute to `QualityRaw`; other
+valid observations remain visible in counts but do not create a partially supported
+stratum estimate.
 and page-view semantics are not contradicted.
 
 **LREQ-MET-090**: Default quality constants SHALL be:
@@ -662,7 +716,10 @@ QUALITY_MIN_RATING_COUNT = 5
 QUALITY_MIN_ELIGIBLE_ASSETS = 5
 ```
 
-Quality is unavailable below the minimum eligible count.
+Quality is unavailable below the minimum eligible count. `quality_coverage` SHALL
+be the sum of `N_h / N` for strata with at least
+`MIN_USABLE_SAMPLES_PER_STRATUM` quality-eligible observations; it is not a count
+fraction and is not renormalized to the sampled assets.
 
 Quality SHALL also be unavailable when weighted usable coverage is below
 `MIN_REQUIRED_COMPONENT_COVERAGE`, when page-view semantics are contradicted, or
@@ -697,7 +754,11 @@ an apparent opportunity signal, not a causal measure of dissatisfaction.
 the reference contains all other categories in the same run.
 
 **LREQ-NRM-020**: `reference_size = category_count - 1`. Field-specific usable
-reference counts SHALL be stored separately.
+reference counts SHALL be stored separately. `STRONG_REFERENCE_CATEGORY_COUNT = 21`
+is an operational run-size threshold: a run with 21 categories qualifies for the
+strong-reference policy and has 20 leave-one-out peers for each target. The stored
+`reference_size` remains 20 for that run; the threshold SHALL not be misreported as
+21 peers.
 
 **LREQ-NRM-030**: For target `x` and usable reference values `r_1..r_m`:
 
@@ -725,9 +786,10 @@ midrank ordering.
 **LREQ-SCR-010**: Demand SHALL be:
 
 ```text
-D0 = weighted available mean of:
-       0.60 * P_ref(DemandPerAssetRaw)
-       0.40 * P_ref(DemandMedianRaw)
+D0 = 0.60 * P_ref(DemandPerAssetRaw) + 0.40 * P_ref(DemandMedianRaw)
+       when both normalized values are available;
+     the one available normalized value when exactly one is available;
+     unavailable when neither is available;
  D = clamp(0.5 + demand_population_coverage * (D0 - 0.5), 0, 1)
 ```
 
@@ -744,9 +806,10 @@ It is available only with verified and sufficiently complete discovery.
 **LREQ-SCR-030**: Recent supply SHALL be:
 
 ```text
-Rpressure0 = weighted available mean of:
-    0.70 * P_ref(RecentShareRaw)
-    0.30 * (1 - P_ref(MedianAgeRaw))
+Rpressure0 = 0.70 * P_ref(RecentShareRaw) + 0.30 * (1 - P_ref(MedianAgeRaw))
+    when both normalized values are available;
+    the one available normalized value when exactly one is available;
+    unavailable when neither is available;
 R0 = 1 - Rpressure0
 R = clamp(0.5 + recent_supply_coverage * (R0 - 0.5), 0, 1)
 ```
@@ -771,7 +834,11 @@ Default weights are `w_D=0.35`, `w_C=0.30`, `w_R=0.20`, and `w_Q=0.15`.
 ```text
 W_A = sum(weights of available components)
 S_available = sum(weight_x * x for available x) / W_A
-market_opportunity_score = clamp(0.5 + W_A * (S_available - 0.5), 0, 1)
+market_opportunity_score = null, score_state = "unavailable", when fewer than
+    two components are available;
+market_opportunity_score = clamp(0.5 + W_A * (S_available - 0.5), 0, 1),
+    score_state = "available" when all four components are available, otherwise
+    "partial", when at least two components are available.
 ```
 
 The composite MAY be persisted as `partial`, but it SHALL not be a rankable
@@ -786,8 +853,8 @@ recommendation when required evidence policies fail.
 **LREQ-EVD-010**: Use `not_rankable`, `provisional`, and `rankable` states.
 
 **LREQ-EVD-020**: A category is `not_rankable` when any of the following applies:
-discovery filtering is unverified; identity conflicts remain unresolved at a material
-rate; required demand data is unavailable; recent-supply minimum evidence is not met;
+discovery filtering is unverified; any unresolved or conflicting discovery identity
+remains in the category; required demand data is unavailable; recent-supply minimum evidence is not met;
 quality is unavailable under the configured required-component policy; page-view
 semantics are contradicted for a page-view-dependent score; no valid leave-one-out
 reference exists; identity preflight fails; or an unrecoverable data-integrity error
@@ -795,18 +862,19 @@ occurs. Material discovery failure or unbounded breadth also makes competition
 non-rankable.
 
 **LREQ-EVD-030**: A score SHALL be `provisional` when computable and required
-conditions pass, but the run has 8–20 categories, the reference has fewer than 21
-categories, breadth uses the incomplete fallback estimate, sample coverage is
-acceptable but below the strong policy, or sensitivity is high. Discovery bounded by
-a verified total is sufficient for rankability and SHALL not by itself force a
-provisional status.
+conditions pass, but the run has 8–20 categories, the run has fewer than
+`STRONG_REFERENCE_CATEGORY_COUNT` categories, breadth uses the incomplete fallback
+estimate, sample coverage is acceptable but below the strong policy, or sensitivity
+is high. Discovery bounded by a verified total is sufficient for rankability and
+SHALL not by itself force a provisional status.
 
 **LREQ-EVD-040**: A category may be `rankable` only when the run contains at least
 8 categories, discovery and identity checks pass, required component evidence
-policies pass, sample and field coverage meet configured thresholds, breadth is
+conditions pass, sample and field coverage meet configured thresholds, breadth is
 verified or bounded by a verified total, no critical contradiction exists, sensitivity
-is within limits, and the reference contains at least 21 categories. A run with 8–20
-categories SHALL never be labeled `rankable`; it may be `provisional`.
+is within limits, and the run contains at least `STRONG_REFERENCE_CATEGORY_COUNT`
+categories. A run with 8–20 categories SHALL never be labeled `rankable`; it may be
+`provisional`.
 
 ```text
 MIN_CATEGORIES_PER_RUN = 8
@@ -830,7 +898,7 @@ sensitivity. Sample count alone SHALL not determine it.
 
 | Grade | Default policy |
 |---|---|
-| `strong` | At least 80 usable sampled assets, or a census of at least 50; required coverage at least `STRONG_COMPONENT_COVERAGE`; verified discovery; no identity conflict; at least 21 reference categories; no critical contradiction; acceptable sensitivity. |
+| `strong` | At least 80 usable sampled assets, or a census of at least 50; required coverage at least `STRONG_COMPONENT_COVERAGE`; verified discovery; no identity conflict; a run containing at least `STRONG_REFERENCE_CATEGORY_COUNT` categories (20 leave-one-out peers per target); no critical contradiction; acceptable sensitivity. |
 | `moderate` | At least 40 usable sampled assets, or a census of at least 20; required coverage at least `MIN_REQUIRED_COMPONENT_COVERAGE`; at least 8 reference categories; no critical identity failure. |
 | `weak` | Computable but below moderate policy in sample, coverage, reference, discovery, or sensitivity. |
 | `insufficient` | Required evidence is invalid, unavailable, or contradictory; category is not rankable. |
@@ -891,10 +959,11 @@ niche-scout dashboard
 ```
 
 **LREQ-RPT-020**: The primary table SHALL show category, rank, composite score,
-`D/C/R/Q`, discovered population, sample size, census flag, usable count and
-coverage per component, evidence grade, rankability, discovery status, page-view
-semantic status, `top_3_stability`, sensitivity warning, and the percentage of the
-category sample shared with other categories.
+`D/C/R/Q`, discovered population, sample size, census flag, unique enrichment count,
+cross-category overlap count, usable count and coverage per component, evidence
+grade, rankability, discovery status, page-view semantic status, `top_3_stability`,
+`top_5_stability`, `maximum_score_delta`, `maximum_rank_displacement`, sensitivity
+warning, and the percentage of the category sample shared with other categories.
 
 **LREQ-RPT-030**: Category details SHALL show formulas or concise explanations,
 metric inputs, sample strata, warnings, timestamps, and observed-versus-inferred
@@ -921,8 +990,8 @@ niche-scout run --categories config/categories.json --config config/default.toml
 
 It SHALL run one pipeline and exit non-zero on unrecoverable errors.
 
-**LREQ-CLI-020**: A report command SHALL read the database and SHALL not initiate
-discovery or enrichment.
+**LREQ-CLI-020**: The `niche-scout dashboard` command SHALL read the database and
+SHALL not initiate discovery or enrichment.
 
 **LREQ-CLI-030**: CLI options SHALL override TOML configuration, which SHALL
 override documented in-code defaults.
@@ -1132,7 +1201,8 @@ The implementation and report SHALL document that:
 
 The implementation is acceptable only when:
 
-1. at least eight categories are required for a normal run;
+1. at least eight categories are required for a normal run, and a run with fewer
+   than 21 categories is visibly provisional rather than reliable/rankable;
 2. taxonomy and filter validation occur before scoring;
 3. identity conflicts and unresolved identities are retained and visible;
 4. identity preflight blocks bulk enrichment when thresholds fail;
@@ -1171,13 +1241,17 @@ age_normalized_page_view_index = product_page_views * 7 / age_days_exact
 stratum_weight_h = N_h / N
 DemandPerAssetRaw = sum(stratum_weight_h * stratum_view_mean_h for usable strata)
                     / sum(stratum_weight_h for usable strata)
+DemandMedianRaw = weighted median of usable indices with weight N_h / n_h
+RecentShareRaw = sum(stratum_weight_h * stratum_recent_share_h for usable strata)
+                 / sum(stratum_weight_h for usable strata)
+MedianAgeRaw = weighted median of usable ages with weight N_h / n_h
 P_ref(x) = (L + 0.5 * E) / m
-D0 = weighted available mean of 0.60*P_ref(DemandPerAssetRaw),
-     0.40*P_ref(DemandMedianRaw)
+D0 = 0.60*P_ref(DemandPerAssetRaw) + 0.40*P_ref(DemandMedianRaw)
+     when both are available, otherwise the one available value
 D = clamp(0.5 + demand_population_coverage*(D0 - 0.5), 0, 1)
 C = clamp(1 - P_ref(BreadthRaw), 0, 1)
-Rpressure0 = weighted available mean of 0.70*P_ref(RecentShareRaw),
-             0.30*(1 - P_ref(MedianAgeRaw))
+Rpressure0 = 0.70*P_ref(RecentShareRaw) + 0.30*(1-P_ref(MedianAgeRaw))
+             when both are available, otherwise the one available value
 R0 = 1 - Rpressure0
 R = clamp(0.5 + recent_supply_coverage*(R0 - 0.5), 0, 1)
 QualityRaw = sum((rating_average / 5) * age_normalized_page_view_index)
@@ -1186,7 +1260,8 @@ Q0 = 1 - P_ref(QualityRaw)
 Q = clamp(0.5 + quality_coverage*(Q0 - 0.5), 0, 1)
 W_A = sum(weight_x for available components)
 S_available = sum(weight_x*x for available x) / W_A
-market_opportunity_score = clamp(0.5 + W_A*(S_available - 0.5), 0, 1)
+market_opportunity_score = null when fewer than two components are available;
+otherwise clamp(0.5 + W_A*(S_available - 0.5), 0, 1)
 ```
 
 ---
