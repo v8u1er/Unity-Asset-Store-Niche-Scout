@@ -6,7 +6,7 @@
 |---|---|
 | Document type | Software Requirements Specification (SRS) |
 | Format basis | ISO/IEC/IEEE 29148:2018 structure, adapted |
-| Version | 2.1.0 |
+| Version | 2.2.0 |
 | Status | Draft — pending resolution of open items in §2.6 |
 | Target release | v0.1.0 (MVP) |
 
@@ -17,6 +17,7 @@
 | 1.0.0 | Initial SRS. Derived from `V3_MATHEMATICAL_REFERENCE.md`, `V3_MATHEMATICAL_AUDIT_REPORT.md`, and `Unity_Data_Extraction_API.md`, with corrections for two identified defects (see §2.1) and an intentional architecture change (leave-one-out reference, see DD-1 in §6.5). |
 | 2.0.0 | Incorporates the Unity Asset Store GraphQL storefront API section added to `Unity_Data_Extraction_API.md`. Replaces the single-source, Coveo-only field model with a two-stage **discovery (Coveo) + enrichment (GraphQL)** extraction architecture: Coveo is retained only for what it uniquely provides (which assets exist in a category), and every other per-asset attribute (rating, review count, first-publication date, page views, price, publisher, category, state) is now sourced from GraphQL. This closes **OI-1** (views field) and **OI-2** (publish-date field) from v1.0.0, updates **OI-4** (asset identity) to require cross-system ID mapping validation, adds a new non-blocking **OI-5** (favorite count, deferred), and introduces **DD-3** (weekly-views approximation from an undocumented, apparently-cumulative view counter) and **DD-4** (asset-state exclusion rule). Per operator instruction, this SRS — not `Unity_Data_Extraction_API.md` — is the single source of truth for every field name, formula, and requirement from this point forward; a future change to either live endpoint requires a revision to this document, not a silent code change. |
 | 2.1.0 | Resolves the mathematical, data-quality, and scraping ambiguities identified in the second-opinion review: discovery completeness and taxonomy validation, canonical asset identity handling, explicit state semantics, GraphQL response-shape validation, exact category matching, corrected midrank wording, field-specific reference evidence, rankability boundaries, timestamp provenance, and clarification that the score is a deterministic within-run heuristic rather than an inferential statistical estimate. |
+| 2.2.0 | Corrects fractional-age rate bias by using exact UTC age; renames the unvalidated page-view derivative as an age-normalized index; makes aggregate missing-data treatment explicit; strengthens rankability with field-specific reference support; treats unresolved discovery identities as incomplete breadth; replaces restrictive category regex validation with taxonomy membership; distinguishes pagination completion from snapshot consistency; defines filter verification, identity conflicts, GraphQL null/malformed responses, metric populations, and timestamp normalization. |
 
 ### Table of contents
 
@@ -85,6 +86,9 @@ Out of scope for the MVP: see §10.
 | Midrank percentile | Nonparametric rank-based normalization, defined in §6.5. |
 | Component | One of `D`, `C`, `R`, `Q`. |
 | Evidence-count proxy | A coverage-adjusted evidence heuristic used by confidence; it is not an effective sample size or an inferential statistic (§6.7). |
+| Discovered population | All distinct canonical assets returned for a category by verified discovery, including assets that later fail enrichment or are not published. |
+| Published-eligible population | Discovered assets with successful, identity-matched enrichment and `state = "published"`; D, R, and Q use subsets of this population. |
+| Age-normalized page-view index | `product_page_views * 7 / age_days_exact`, calculated from an undocumented page-view field. It SHALL NOT be called a weekly traffic rate unless Assumption A-3 is validated. |
 | MVP | Minimum viable product. |
 | LOO | Leave-one-out. |
 
@@ -111,7 +115,7 @@ This is a clean MVP rebuild, not a port. Four changes are made relative to `[REF
 3. **The override/provisional workflow, cross-run provenance-compatibility gates, and the stability module (nested-prefix / independent-policy analysis) are cut from the MVP.** They existed in `[REF-MATH]` to protect a *frozen, cross-run* reference cohort from drift and contamination. The MVP reference is reconstructed fresh from the current run's data, so target and reference category rows share the same run and collection policy. However, LOO does **not** eliminate underlying asset, publisher, or taxonomy overlap: an asset discovered in multiple categories contributes to multiple category aggregates, so the resulting scores are descriptive relative comparisons rather than independent statistical estimates. See §10 and §11 for the remaining non-goals and limitation.
 4. **(New in v2.0.0) Per-asset data collection is split into a two-stage discovery-then-enrichment pipeline, with GraphQL as the primary source of per-asset attributes.** The Coveo endpoint is retained only for what it uniquely provides — the set of assets visible under a given category facet, which is the raw input to the Competition (`C`) component and to `observed_asset_count` (§6.2). Every other per-asset attribute needed for scoring — rating, review count, first-publication date, and page views — is now sourced from the Unity Asset Store's GraphQL storefront endpoint (`[REF-API]`, GraphQL section), queried once per uniquely discovered asset per run (REQ-GQL-055). This resolves **OI-1** and **OI-2** from v1.0.0 (neither Coveo field existed; both GraphQL fields do — see §2.6) and introduces a new operational dependency: an anonymous storefront CSRF session, alongside the existing Coveo bearer token.
 
-   **This change is not free of new limitations, and they are treated as first-class design decisions, not oversights.** GraphQL's `productPageViews` field is an undocumented, apparently-cumulative counter with no declared refresh cadence or time window (`[REF-API]`'s own caveat). It cannot be substituted directly for the `views_count` / `views_window_days` pair envisioned for Coveo in v1.0.0. §6.1 (**REQ-MET-010**, **DD-3**) defines a lifetime-average approximation in its place, and §11 records the resulting methodological limitation (**L-6**). Enrichment cost also now scales with the number of *unique assets discovered*, not the number of categories or pages — a materially different performance profile from v1.0.0 (§7, **REQ-NFR-015**; §11, **L-7**).
+   **This change is not free of new limitations, and they are treated as first-class design decisions, not oversights.** GraphQL's `productPageViews` field is an undocumented counter with no declared refresh cadence or time window (`[REF-API]`'s own caveat). It cannot be substituted directly for the `views_count` / `views_window_days` pair envisioned for Coveo in v1.0.0. §6.1 (**REQ-MET-010**, **DD-3**) defines an age-normalized page-view index in its place. The index SHALL NOT be described as a lifetime-average weekly rate until Assumption A-3 has been validated; §11 records the resulting methodological limitation (**L-6**). Enrichment cost also now scales with the number of *unique assets discovered*, not the number of categories or pages — a materially different performance profile from v1.0.0 (§7, **REQ-NFR-015**; §11, **L-7**).
 
 Everything else in `[REF-MATH]` that was assessed as sound — missing-vs-zero handling, coverage-based shrinkage toward 0.5, confidence as a completeness heuristic kept separate from the score, and the general midrank/component/composite structure — is retained and made normative below.
 
@@ -144,7 +148,8 @@ Single local operator (e.g., a 3D artist or analyst) running the tool on their o
 - **REQ-GEN-015 (NEW)**: The system SHALL implement the GraphQL batch request contract exactly as specified in `[REF-API]`'s GraphQL section (endpoint, batch array shape, headers, CSRF cookie/header pairing) unless explicitly overridden below (§4.2).
 - **REQ-GEN-020**: The system SHALL NOT persist, log, or transmit the Coveo bearer token in any form other than passing it in the `Authorization` header of the outbound request for which it is needed.
 - **REQ-GEN-025 (NEW)**: The system SHALL NOT persist, log, or transmit the Unity storefront CSRF token/cookie in any form other than the `_csrf` cookie and `X-CSRF-Token` header of the outbound GraphQL request for which it is needed.
-- **REQ-GEN-030 (revised in v2.1.0)**: The scoring engine (metrics + normalization + components + composite + confidence heuristic) SHALL be implemented as pure functions: given the same inputs, they SHALL return the same outputs, and SHALL NOT perform network I/O, file I/O, or read the system clock. `run_started_at_utc` SHALL be captured at orchestration start; `scoring_cutoff_utc` SHALL be captured once immediately before metrics/scoring after enrichment and passed explicitly to the pure functions.
+- **REQ-GEN-030 (revised in v2.2.0)**: The scoring engine (metrics + normalization + components + composite + confidence heuristic) SHALL be implemented as pure functions: given the same inputs, they SHALL return the same outputs, and SHALL NOT perform network I/O, file I/O, or read the system clock. `run_started_at_utc` SHALL be captured at orchestration start; `scoring_cutoff_utc` SHALL be captured once immediately before metrics/scoring after enrichment and passed explicitly to the pure functions. All timestamp arithmetic SHALL use timezone-aware UTC values.
+- **REQ-GEN-035 (NEW)**: All GraphQL timestamps used by scoring SHALL be timezone-aware ISO 8601 values. The client SHALL convert them to UTC before persistence and reject malformed or timezone-naive timestamps. Date-only values SHALL be rejected unless a future SRS revision explicitly defines their timezone and midnight interpretation. A timestamp after `scoring_cutoff_utc` MAY be retained for audit but SHALL be unavailable to scoring.
 
 ### 2.6 Assumptions, dependencies, and open data gaps
 
@@ -160,7 +165,7 @@ Single local operator (e.g., a 3D artist or analyst) running the tool on their o
 
 - **Assumption A-1**: `timezone` in the Coveo discovery request body does not affect `ec_category` filtering correctness and MAY default to `"UTC"` rather than the session-specific `"Asia/Tehran"` value shown as an example in `[REF-API]`. If this assumption is found false during OI-3 verification, it SHALL be revised.
 - **Assumption A-2**: The operator holds a currently valid Coveo bearer token and is responsible for refreshing it; token acquisition/automation is out of scope (§10).
-- **Assumption A-3 (new in v2.0.0)**: `productPageViews` is assumed to be a cumulative, monotonically-non-decreasing lifetime total, not a rolling or periodic figure, per `[REF-API]`'s own framing ("confirm whether the value is cumulative... before using changes... as a time-series measure"). This assumption is not resolved merely by field availability and SHALL be validated against live observations before the result is described as a lifetime-average proxy. This SRS does not attempt to detect non-monotonic behavior at scoring time in the MVP; if a future observation contradicts this assumption (e.g., a later run shows a lower value for the same asset than an earlier run), it SHALL be treated as a data-quality signal for manual investigation, not silently accepted (§10, ND-11).
+- **Assumption A-3 (revised in v2.2.0)**: `productPageViews` is assumed to be a cumulative, monotonically-non-decreasing lifetime total, not a rolling or periodic figure, per `[REF-API]`'s own framing ("confirm whether the value is cumulative... before using changes... as a time-series measure"). This assumption is not resolved merely by field availability. Until validated, the derived value SHALL be named and presented only as an **age-normalized page-view index**, not as a lifetime-average weekly traffic rate. Validation SHALL select at least 10 assets spanning ages and categories, collect each asset on at least three dates, test monotonicity, compare changes with elapsed time, inspect newly published assets for plausible starting values, and record the validation status, date, asset count, and contradictions. A later observation showing a lower value for the same asset SHALL be treated as a data-quality signal and set the semantic status to `contradicted`, not silently accepted (§10, ND-11).
 - **Assumption A-4 (new in v2.0.0)**: The operator holds a currently valid Unity Asset Store storefront CSRF token/session (the `_csrf` cookie value) and is responsible for refreshing it if a run fails with a CSRF or auth error; automated acquisition is out of scope (§10, ND-8).
 - **Dependency**: Outbound network access to `unitytechnologiesproductionmkahteav.org.coveo.com` (Coveo discovery) and to `assetstore.unity.com` (GraphQL enrichment), both on port 443.
 
@@ -184,10 +189,10 @@ Single local operator (e.g., a 3D artist or analyst) running the tool on their o
 
 ```text
  1. CLI loads operator category list + config + Coveo bearer token + Unity storefront CSRF token/cookie.
-  2. pipeline generates run_id (UUID4) and `run_started_at_utc = now(UTC)`, validates and records the taxonomy metadata, then writes the `runs` row (status=running). `scoring_cutoff_utc` is initially unset in orchestration state and is captured after enrichment in step 8.
+  2. pipeline generates run_id (UUID4) and `run_started_at_utc = now(UTC)`, validates and records the taxonomy metadata, initializes `page_view_semantics_status` from the latest operator validation (`unvalidated` unless validated or contradicted), sets `discovery_pagination_mode = "offset_best_effort"`, then writes the `runs` row (status=running). `scoring_cutoff_utc` is initially unset in orchestration state and is captured after enrichment in step 8.
 3. For each category: extraction.coveo_client.fetch_category(category, run_started_at_utc)
     -> raw discovery records (paginated, retried).
- 4. persistence stores each raw discovery record as a row in `raw_observations`, tagged with run_id + category.
+  4. persistence stores each raw discovery record as a row in `raw_observations`, tagged with run_id + category, including all identity candidates, canonicalization status, source, and resolution reason.
  5. pipeline computes the deduplicated set of every asset_identity_key discovered across all
     categories in the run (REQ-GQL-055).
  6. For each unique asset_identity_key: extraction.graphql_client.fetch_product(asset_identity_key)
@@ -222,10 +227,10 @@ Single local operator (e.g., a 3D artist or analyst) running the tool on their o
 - **REQ-EXT-030**: Headers SHALL be exactly: `Authorization: Bearer <token>`, `Content-Type: application/json`, `Accept: application/json`, `Origin: https://assetstore.unity.com`, `Referer: https://assetstore.unity.com/`. The token SHALL be read from the environment variable `NICHESCOUT_COVEO_BEARER_TOKEN` at process start; if absent or empty, the process SHALL exit with a non-zero status and an error message that does not echo any partial token value.
 - **REQ-EXT-040 (revised in v2.0.0)**: `fieldsToInclude` SHALL contain exactly: `permanentid`, `ec_product_id`, `ec_name`, `ec_category`, `publisher_name`. This is a **discovery-only** field set (§2.1, item 4): rating, price, and popularity are no longer sourced from Coveo as of v2.0.0. Fields present in v1.0.0 that are superseded by GraphQL equivalents (`ec_price`, `ec_rating`, `ec_rating_count`, `ec_thumbnails`, `ec_tags`, `min_unity_version`) SHALL NOT be requested, to reduce payload size and avoid two systems disagreeing about the same fact. This list SHALL override whatever `fieldsToInclude` value is present in the captured base template (REQ-EXT-020).
 - **REQ-EXT-050 (revised in v2.0.0)**: At startup, the system SHALL validate that both the Coveo bearer token (REQ-EXT-030) and the Unity storefront CSRF token (REQ-GQL-040) are configured (non-empty). If either is unset, the system SHALL abort before making any network request, with an error identifying which credential is missing. (v1.0.0's OI-1/OI-2 field-mapping validation at this requirement is removed: those fields are now fixed GraphQL field names confirmed in `[REF-API]`, not runtime configuration — see §2.6.)
-- **REQ-EXT-060 (revised in v2.1.0)**: Per-asset identity SHALL first select the first non-empty candidate in this priority order: `ec_product_id`, `permanentid`, response-level `clickUri`, response-level `uri`. The selected candidate SHALL then be canonicalized into the identifier format accepted by GraphQL. URI candidates SHALL be parsed; a complete URL SHALL NOT be passed directly as the GraphQL key unless live API validation explicitly confirms that behavior. A candidate that cannot be canonicalized SHALL be stored as `discovery_identity_raw`, marked `identity_resolution_status = 'unresolved'`, dropped from enrichment, and logged with a warning. Only the canonical, non-empty value SHALL be stored as `asset_identity_key` and passed to GraphQL (REQ-GQL-055, REQ-GQL-060).
-- **REQ-EXT-070 (revised in v2.1.0)**: `numberOfResults` SHALL be `96` per page (the documented maximum). `firstResult` SHALL increment by `96` each page. A category is `discovery_status = 'complete'` only when all required pages succeed, the filter is verified, and pagination ends naturally through a short page or a reconciled `totalCount`. If accumulated results reach `MAX_RESULTS_PER_CATEGORY` before completion, the category SHALL be marked `truncated`; the observed breadth is a lower bound and SHALL NOT be treated as complete evidence.
+- **REQ-EXT-060 (revised in v2.2.0)**: For each discovery record, the system SHALL collect every non-empty candidate from `ec_product_id`, `permanentid`, response-level `clickUri`, and response-level `uri`, then canonicalize every parseable candidate. If at least one candidate canonicalizes and all canonicalized candidates agree, the agreed value SHALL be stored as `asset_identity_key` and the source candidate SHALL be stored as `identity_source`. If a higher-priority candidate is malformed but a lower-priority candidate canonicalizes, the valid lower-priority candidate MAY be used and the malformed candidate SHALL be retained for audit. If canonicalized candidates conflict, the record SHALL be marked `identity_resolution_status = 'conflict'`, excluded from enrichment, and counted as an unresolved identity. If no candidate canonicalizes, the record SHALL be marked `identity_resolution_status = 'unresolved'`, excluded from enrichment, and logged with a reason. URI candidates SHALL be parsed; a complete URL SHALL NOT be passed directly as the GraphQL key unless live API validation explicitly confirms that behavior. Only a canonical, non-empty value SHALL be passed to GraphQL (REQ-GQL-055, REQ-GQL-060).
+- **REQ-EXT-070 (revised in v2.2.0)**: `numberOfResults` SHALL be `96` per page (the documented maximum). `firstResult` SHALL increment by `96` each page. `pagination_complete` means that all required requests succeeded, the filter was verified, and pagination terminated through a short page or reconciled `totalCount`. This is best-effort offset traversal, not proof of an immutable catalog snapshot; assets may be inserted, removed, reordered, duplicated, or skipped while pages are fetched. The system SHALL persist `snapshot_completeness_status = 'not_guaranteed'` for every run; no category may claim an immutable snapshot. A category is `discovery_status = 'complete'` only when pagination is complete, filter verification succeeds, and no unresolved or conflicting identities were returned. If accumulated results reach `MAX_RESULTS_PER_CATEGORY` before completion, the category SHALL be marked `truncated`; the observed breadth is a lower bound and SHALL NOT be treated as complete evidence.
 - **REQ-EXT-080**: No free-text `q` or `query` field SHALL be present in any request body (per `[REF-API]`'s explicit warning that this contaminates category filtering with keyword relevance).
-- **REQ-EXT-090 (revised in v2.1.0)**: After each category's discovery completes, the system SHALL validate category application using exact normalized category-path membership, not substring containment. Normalization SHALL apply `.strip().casefold()` to each complete path. The requested path SHALL equal a returned `ec_category` path, unless a separately specified descendant-path policy is enabled; parent text appearing within a child path SHALL not count as an exact match. The system SHALL record `discovery_filter_verified = 1` only when the response's `advancedExpression` (when present) and returned category paths provide sufficient evidence that the requested filter was applied. A mismatch, failed page, or unverified filter SHALL set the corresponding discovery status and SHALL prevent C and rankability from being considered complete. A `totalCount` of zero is valid zero-breadth evidence only when the filter is independently verified; otherwise the category SHALL be marked `filter_unverified`.
+- **REQ-EXT-090 (revised in v2.2.0)**: After discovery, the system SHALL validate category application using exact normalized category-path membership, not substring containment. Normalization SHALL apply `.strip().casefold()` to each complete path. The MVP policy SHALL be `category_match_policy = 'exact'`; descendant matching is not enabled unless separately configured and persisted. `discovery_filter_verified = 1` SHALL be recorded only when: (a) the request contains exactly one selected canonical target category; (b) no free-text query is present; (c) any returned `advancedExpression` contains a category predicate agreeing with the target, when present; (d) every returned category path exactly equals the normalized target path under the exact policy; and (e) the response has the expected structural fields. A mismatch, failed page, unresolved/conflicting identity, or unverified filter SHALL prevent C and rankability from being complete. A `totalCount` of zero is valid zero-breadth evidence only when the request predicate and response structure are independently verified; otherwise the category SHALL be marked `filter_unverified`.
 - **REQ-EXT-100**: Between consecutive Coveo requests (across all categories/pages in a run), the system SHALL wait at least `COVEO_MIN_REQUEST_INTERVAL_SECONDS` (default `1.0`s, configurable; renamed from `MIN_REQUEST_INTERVAL_SECONDS` in v1.0.0 for symmetry with the new GraphQL client, §4.2). On HTTP `429` or `5xx`, the system SHALL retry with exponential backoff (base `2.0`s, up to `MAX_RETRIES` = `5`), honoring a `Retry-After` response header when present, before giving up and marking that page as failed (failure removes that page's records from the category's `observed_*` counts; it SHALL NOT be treated as zero evidence).
 
 ### 4.2 Unity Asset Store GraphQL Storefront API — enrichment only (NEW; source of truth: `[REF-API]`, GraphQL section)
@@ -271,18 +276,18 @@ Single local operator (e.g., a 3D artist or analyst) running the tool on their o
   The exploratory-only fields `elevatorPitch`, `keyFeatures`, `compatibilityInfo`, `overlay`, `overlayText`, `licenseText` seen elsewhere in `[REF-API]` are NOT required for MVP scoring and SHALL NOT be added without a corresponding SRS revision (schema stability).
 - **REQ-GQL-055**: Before enrichment, the system SHALL compute the union of `asset_identity_key` values across every category discovered in the run and SHALL query GraphQL **at most once per unique key per run**, regardless of how many categories reference it. The resulting `raw_product_details` row SHALL be joined back to every `raw_observations` row sharing that key during metrics computation (§3.2, step 8).
 - **REQ-GQL-060**: The same string value SHALL be passed as `ProductDetail`'s `id` variable and `ProductPageViews`'s `packageId` variable for a given asset (OI-4).
-- **REQ-GQL-070**: For each batch item, the system SHALL check the response item's `errors` member independently of the overall HTTP status. An HTTP `200` response containing `errors` for the `ProductDetail` item SHALL be recorded as `product_detail_status = 'error'` for that asset; likewise `page_views_status = 'error'` for a `ProductPageViews` item with `errors`. These two statuses SHALL be tracked independently, since one operation in a batch can fail while the other succeeds. A field sourced from a failed operation SHALL be persisted as null, never coerced to a default or zero value.
-- **REQ-GQL-080**: Between consecutive GraphQL requests, the system SHALL wait at least `GRAPHQL_MIN_REQUEST_INTERVAL_SECONDS` (default `0.5`s, configurable, Appendix C). On HTTP `429` or `5xx`, the system SHALL retry with the same exponential-backoff policy as REQ-EXT-100 (shared `MAX_RETRIES` / `RETRY_BACKOFF_BASE_SECONDS`). On HTTP `400` with a body indicating `csrf token mismatch`, or HTTP `401`/`403`, the system SHALL NOT retry that request — it SHALL abort the entire run immediately with an error identifying the CSRF/session dependency (Assumption A-4), since a stale session will fail identically on every subsequent asset and retrying wastes the remaining rate-limit budget.
+- **REQ-GQL-070 (revised in v2.2.0)**: For each batch item, the system SHALL check the response item's `errors` member independently of the overall HTTP status. An HTTP `200` response containing `errors` for the `ProductDetail` item SHALL be recorded as `product_detail_status = 'error'`; likewise, `page_views_status = 'error'` for a `ProductPageViews` item with `errors`. An HTTP `200` response with a missing required object, `product = null`, `productPageViews = null`, a wrong response type, a boolean/non-finite/negative page-view scalar, or any missing required identity field SHALL also be recorded as an operation error. The two statuses SHALL be tracked independently. A field sourced from a failed or malformed operation SHALL be persisted as null, never coerced to a default or zero value.
+- **REQ-GQL-080 (revised in v2.2.0)**: Between consecutive GraphQL requests, the system SHALL wait at least `GRAPHQL_MIN_REQUEST_INTERVAL_SECONDS` (default `0.5`s, configurable, Appendix C). On HTTP `429` or `5xx`, it SHALL retry with the same exponential-backoff policy as REQ-EXT-100. On HTTP `400` with a body indicating `csrf token mismatch`, or HTTP `401`/`403`, it SHALL NOT retry and SHALL abort the run with an error identifying the CSRF/session dependency. Other `4xx` responses, including `404`, `409`, and `422`, SHALL NOT be retried and SHALL be recorded as permanent operation errors. Malformed JSON, timeout, connection-reset, and DNS failures SHALL be classified explicitly as transient or permanent by the client; transient failures follow the retry policy and permanent failures produce an error status without coercion.
 - **REQ-GQL-090**: The system SHALL NOT attempt to collect `favorite_count` / `packageInListHotness` in the MVP (§2.6, OI-5; §10, ND-9).
 - **REQ-GQL-100**: The system SHALL NOT include any GraphQL operation other than `ProductDetail` and `ProductPageViews` in a batch — specifically excluding `CurrentUser`, `ShoppingCartQuery`, `ServerTime`, `ProductRatingStar`, `Publisher`, `BigQueryCachedPackages`, `ProductTags`, and `ProductMLRecommendation`, all of which `[REF-API]` documents as observed in browser traffic but unneeded for a single-product collector.
-- **REQ-GQL-110 (revised in v2.1.0)**: For every enriched asset, the system SHALL compare the requested canonical `asset_identity_key` against the `id` field of the returned `product` object. A mismatch SHALL be logged, persisted as `id_mapping_mismatch = 1` and `enrichment_identity_status = 'mismatch'`, and treated as an enrichment identity failure for scoring: the asset SHALL remain available to discovery breadth but SHALL be excluded from D/R/Q. A match SHALL set `enrichment_identity_status = 'matched'`.
+- **REQ-GQL-110 (revised in v2.2.0)**: For every enriched asset, the system SHALL compare the requested canonical `asset_identity_key` against the `id` field of the returned `product` object. A mismatch SHALL be logged, persisted as `id_mapping_mismatch = 1` and `enrichment_identity_status = 'mismatch'`, and treated as an enrichment identity failure for scoring: the asset remains available to the discovered population but is excluded from D/R/Q. A match SHALL set `enrichment_identity_status = 'matched'`. A missing or malformed returned product identity SHALL set `enrichment_identity_status = 'unresolved'` and exclude the asset from D/R/Q.
 - **REQ-GQL-120 (DD-4, revised in v2.1.0)**: State eligibility SHALL be explicit: `product.state == "published"` is eligible for D/R/Q; a null or missing state is `state_unknown` and is excluded from D/R/Q; any present value other than `"published"` is `state_excluded` and is excluded from D/R/Q. The asset SHALL remain in `raw_product_details` for audit purposes. State filtering does not remove an asset from discovery breadth or C, because C is a discovery-only metric (REQ-MET-040).
 
 ### 4.3 Category input interface
 
 - **REQ-CAT-010**: The operator SHALL supply categories via a JSON file, default path `config/categories.json`, containing a JSON array of strings, e.g. `["3d > props > exterior", "3d > props > interior"]`.
-- **REQ-CAT-020**: Each category string SHALL be validated against the pattern `^[a-z0-9]+( > [a-z0-9\- ]+)*$` (lowercase segments separated by `" > "`). Any entry that does not match after `.strip().lower()` normalization SHALL cause the run to abort with the offending entry named in the error.
-- **REQ-CAT-030**: Duplicate category strings (after normalization) SHALL be deduplicated with a warning; the deduplicated, order-preserved list is the operative category set for the run.
+- **REQ-CAT-020 (revised in v2.2.0)**: Each category input SHALL be a string and SHALL be normalized with `normalize_category_path(value) = value.strip().casefold()`. The normalized value SHALL be matched against the normalized canonical category-path inventory in `config/category_taxonomy.json`; the taxonomy inventory, not an ad hoc ASCII regex, is authoritative. If no taxonomy match exists, the run SHALL abort before network collection and name the offending value. The canonical taxonomy spelling SHALL be used in requests and persisted as the operative category value.
+- **REQ-CAT-030 (revised in v2.2.0)**: Duplicate category inputs after `casefold()` normalization SHALL be deduplicated with a warning; the deduplicated, order-preserved canonical taxonomy list is the operative category set. The original operator input and canonical value SHOULD both be retained in run metadata.
 - **REQ-CAT-040 (revised in v2.1.0)**: The operative category set SHALL contain at least `MIN_CATEGORIES_PER_RUN` = `2` entries (the mathematical minimum for any LOO reference to exist). If fewer, the run SHALL abort with an explanatory error. A run with fewer than `MIN_CATEGORIES_FOR_RANKABILITY` = `21` categories MAY compute provisional scores, but no category in that run SHALL be rankable because its LOO reference is too small for the MVP rankability threshold. The operator's categories SHALL also be checked against the captured taxonomy; a missing category SHALL abort before network collection.
 
 ### 4.4 Dashboard interface (see also §6.9)
@@ -304,6 +309,8 @@ CREATE TABLE runs (
     completed_at_utc      TEXT,
     taxonomy_captured_at_utc TEXT NOT NULL,
     taxonomy_sha256       TEXT NOT NULL,
+    page_view_semantics_status TEXT NOT NULL CHECK (page_view_semantics_status IN ('unvalidated','validated_cumulative','contradicted')),
+    discovery_pagination_mode TEXT NOT NULL CHECK (discovery_pagination_mode IN ('offset_best_effort')),
     categories_json          TEXT NOT NULL,
     config_snapshot_json       TEXT NOT NULL,
     status                       TEXT NOT NULL CHECK (status IN ('running','completed','failed'))
@@ -316,10 +323,13 @@ CREATE TABLE raw_observations (
     category                  TEXT NOT NULL,
     asset_identity_key           TEXT,
     discovery_identity_raw       TEXT,
+    identity_candidates_json     TEXT NOT NULL,
     ec_product_id                   TEXT,
     permanentid                        TEXT,
     source_url                            TEXT,
-    identity_resolution_status            TEXT NOT NULL CHECK (identity_resolution_status IN ('canonical','unresolved')),
+    identity_resolution_status            TEXT NOT NULL CHECK (identity_resolution_status IN ('canonical','unresolved','conflict')),
+    identity_source                         TEXT,
+    identity_resolution_reason              TEXT,
     ec_name                                  TEXT,
     publisher_name                              TEXT,
     ec_category_raw_json                           TEXT NOT NULL,
@@ -374,16 +384,20 @@ CREATE TABLE category_scores (
     observed_asset_count                INTEGER NOT NULL,
     usable_view_count                      INTEGER,
     usable_view_coverage                      REAL,
-    median_lifetime_average_weekly_view_proxy    REAL,
-    views_per_observed_asset                        REAL,
+    median_age_normalized_page_view_index       REAL,
+    page_view_index_per_observed_asset           REAL,
     observed_discovery_breadth                         INTEGER NOT NULL,
-    discovery_status                                    TEXT NOT NULL CHECK (discovery_status IN ('complete','truncated','page_failed','filter_unverified','category_mismatch','request_failed')),
+    discovery_status                                    TEXT NOT NULL CHECK (discovery_status IN ('complete','truncated','page_failed','filter_unverified','category_mismatch','identity_incomplete','request_failed')),
+    pagination_complete                                  INTEGER NOT NULL CHECK (pagination_complete IN (0,1)),
+    snapshot_completeness_status                         TEXT NOT NULL CHECK (snapshot_completeness_status IN ('not_guaranteed','not_assessed')),
     discovery_total_count                              INTEGER,
     discovery_returned_count                           INTEGER NOT NULL,
     discovery_failed_page_count                        INTEGER NOT NULL,
     discovery_termination_reason                       TEXT NOT NULL,
     discovery_filter_verified                          INTEGER NOT NULL CHECK (discovery_filter_verified IN (0,1)),
     discovery_category_mismatch_count                 INTEGER NOT NULL,
+    discovery_unresolved_identity_count               INTEGER NOT NULL,
+    discovery_duplicate_count                        INTEGER NOT NULL,
     dated_asset_count                                     INTEGER,
     dated_coverage                                           REAL,
     recent_share_365                                            REAL,
@@ -412,11 +426,12 @@ CREATE TABLE category_scores (
 ### 5.2 Data dictionary (selected non-obvious fields)
 
 | Field | Table | Type | Nullable | Domain | Notes |
-|---|---|---|---|---|---|
-| `asset_identity_key` | `raw_observations`, `raw_product_details` | TEXT | Yes in `raw_observations`; No in `raw_product_details` | canonical, non-empty when present | Canonical GraphQL/package identifier resolved per REQ-EXT-060. An unresolved discovery record is retained with a null key and excluded from enrichment; the original candidate is retained separately in `discovery_identity_raw`. |
-| `product_page_views` | `raw_product_details` | REAL | Yes | ≥ 0, finite | From GraphQL `productPageViews`. Cumulative, undocumented-window page-view proxy (Assumption A-3). Null = unavailable, error, or state-excluded (REQ-GQL-120) — never coerced to 0. Not a literal weekly count; see DD-3 (§6.1). |
-| `median_lifetime_average_weekly_view_proxy` | `category_scores` | REAL | Yes | ≥ 0, finite | Median of usable lifetime-average weekly-view proxies; persisted as the Demand median input and not a literal rolling-week count. |
- | `first_published_date_utc` | `raw_product_details` | TEXT | Yes | ISO 8601 UTC, ≤ `scoring_cutoff_utc` | From GraphQL `product.firstPublishedDate` (resolves v1.0.0 OI-2). A value after `scoring_cutoff_utc` SHALL be stored as-is but treated as unavailable by `metrics` (REQ-MET-060). |
+| `asset_identity_key` | `raw_observations`, `raw_product_details` | TEXT | Yes in `raw_observations`; No in `raw_product_details` | canonical, non-empty when present | Canonical GraphQL/package identifier resolved per REQ-EXT-060. An unresolved or conflicting discovery record is retained with a null key and excluded from enrichment; the original candidates and resolution reason are retained separately. |
+| `identity_resolution_status` | `raw_observations` | TEXT | No | `canonical`, `unresolved`, `conflict` | Identity resolution outcome per REQ-EXT-060. Unresolved/conflicting records are retained for audit but excluded from enrichment and complete breadth. |
+| `identity_candidates_json` | `raw_observations` | TEXT | No | JSON array | All non-empty identity candidates considered during canonicalization, retained to make fallback and conflict decisions auditable. |
+| `product_page_views` | `raw_product_details` | REAL | Yes | ≥ 0, finite | Raw value from GraphQL `productPageViews`. Its cumulative/window semantics are unvalidated under A-3. Null = unavailable, error, malformed response, or state-excluded — never coerced to 0. |
+| `median_age_normalized_page_view_index` | `category_scores` | REAL | Yes | ≥ 0, finite | Median of usable age-normalized page-view indices; it is not a literal rolling-week count. |
+| `first_published_date_utc` | `raw_product_details` | TEXT | Yes | normalized, timezone-aware ISO 8601 UTC | From GraphQL `product.firstPublishedDate`. A future value MAY be stored for audit but is unavailable to metrics when after `scoring_cutoff_utc`. |
 | `current_version_published_date_utc` | `raw_product_details` | TEXT | Yes | ISO 8601 UTC | Persisted for possible future use; NOT used for age/recency in the MVP (§10, ND-10) — do not confuse with `first_published_date_utc`. |
 | `rating_average` | `raw_product_details` | REAL | Yes | `[0, 5]` | From GraphQL `product.rating.average`. Replaces Coveo's `ec_rating` as of v2.0.0. |
 | `rating_count` | `raw_product_details` | INTEGER | Yes | ≥ 0 | From GraphQL `product.rating.count`. Not an eligibility condition or weight (§11, L-4). |
@@ -427,7 +442,7 @@ CREATE TABLE category_scores (
 | `market_opportunity_score` | `category_scores` | REAL | Yes | `[0,1]` when non-null | Null iff `score_state = 'unavailable'`. |
 | `missing_components_json` | `category_scores` | TEXT | No | JSON array, e.g. `[]`, `["Q"]`, `["D","R"]` | Replaces the enumerated fallback-state approach of `[REF-MATH]` with a direct list, per DD-2 (§6.6). |
  | `reference_size` | `category_scores` | INTEGER | No | ≥ 1 | Number of *other* categories in this run in this row's LOO reference (= N − 1), regardless of field-level missingness. Field-specific usable counts are stored in `reference_usable_counts_json`. |
-| `rankable` | `category_scores` | INTEGER | No | 0 or 1 | See REQ-CNF-040. |
+| `rankable` | `category_scores` | INTEGER | No | 0 or 1 | See REQ-CNF-040. A rankable row still represents an offset-pagination collection for which point-in-time snapshot completeness is not guaranteed. |
 
 ---
 
@@ -435,66 +450,67 @@ CREATE TABLE category_scores (
 
 ### 6.1 Demand metric
 
-- **REQ-MET-005 (NEW, revised in v2.1.0)**: An enrichment record is usable *for demand purposes* only if `product_detail_status = 'ok'`, `page_views_status = 'ok'`, `enrichment_identity_status = 'matched'`, and `state = "published"`. A null/missing state (`state_unknown`) and every non-published state (`state_excluded`) are excluded. State and identity exclusions affect D/R/Q only; they do not remove the asset from discovery breadth or C.
-- **REQ-MET-010 (revised in v2.1.0 — DD-3, lifetime-average page-view proxy)**: For each asset satisfying REQ-MET-005, with a finite `product_page_views ≥ 0` and a usable `first_published_date_utc` (non-null, parseable ISO 8601, ≤ `scoring_cutoff_utc`):
+- **REQ-MET-005 (NEW, revised in v2.2.0)**: An enrichment record is usable *for demand purposes* only if `product_detail_status = 'ok'`, `page_views_status = 'ok'`, `enrichment_identity_status = 'matched'`, and `state = "published"`. A null/missing state (`state_unknown`), every non-published state (`state_excluded`), and enrichment identity/operation failures are excluded from D/R/Q. State and enrichment-operation exclusions do not remove the asset from the discovered population or C; unresolved/conflicting discovery identities are not countable breadth and make C unavailable under REQ-MET-040.
+- **REQ-MET-010 (revised in v2.2.0 — DD-3, age-normalized page-view index)**: For each asset satisfying REQ-MET-005, with a finite `product_page_views ≥ 0` and a usable timezone-aware `first_published_date_utc` normalized to UTC (non-null, parseable ISO 8601, ≤ `scoring_cutoff_utc`):
   ```text
-  age_days_since_published = floor((scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400)
-  lifetime_average_weekly_view_proxy = product_page_views * 7 / age_days_since_published
-                                       only if age_days_since_published >= MIN_AGE_DAYS_FOR_RATE
+  age_days_exact = (scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400
+  age_days_floor = floor(age_days_exact)       [display/bucketing only]
+  age_normalized_page_view_index = product_page_views * 7 / age_days_exact
+                                     only if age_days_exact >= MIN_AGE_DAYS_FOR_RATE
   ```
-  An asset with `age_days_since_published < MIN_AGE_DAYS_FOR_RATE` (default `30`, Appendix C) SHALL be excluded from the *usable* view population for that category — not coerced to 0 or to the raw count — because a lifetime-average proxy computed over a very short lifetime is dominated by noise. An asset with `product_page_views` or `first_published_date_utc` missing, non-finite, boolean, wrong-typed, `product_page_views < 0`, or `first_published_date_utc` after `scoring_cutoff_utc` SHALL likewise be excluded from the usable population. An explicit `product_page_views = 0` with a usable, sufficiently-old publish date IS usable and yields a proxy value of `0`.
+  An asset with `age_days_exact < MIN_AGE_DAYS_FOR_RATE` (default `30`, Appendix C) SHALL be excluded before division — not coerced to 0 or to the raw count — because a very short age produces a noisy index. An asset with `product_page_views` or `first_published_date_utc` missing, non-finite, boolean, wrong-typed, `product_page_views < 0`, a naive timestamp, or a date after `scoring_cutoff_utc` SHALL likewise be excluded. An explicit `product_page_views = 0` with a usable, sufficiently-old publish date IS usable and yields an index of `0`. `age_days_exact = 0` SHALL never be used as a denominator.
 
-  **DD-3 note (non-normative)**: this is a lifetime-average page-view proxy, not a genuine recent/rolling-window rate, because `[REF-API]`'s `productPageViews` field carries no documented window and Assumption A-3 remains subject to live validation. It systematically understates current interest for an asset whose traffic is growing and overstates it for one whose traffic has decayed since a past spike. This is recorded as **L-6** in §11 and is not corrected in the MVP.
+  **DD-3 note (non-normative)**: this is an age-normalized index, not a genuine recent/rolling-window rate or validated lifetime average, because `[REF-API]`'s `productPageViews` field carries no documented window and Assumption A-3 remains subject to live validation. It may understate current interest for an asset whose traffic is growing and overstate it for one whose traffic has decayed since a past spike. This is recorded as **L-6** in §11.
 - **REQ-MET-020**: Per category:
   ```text
   observed_asset_count      = count of distinct asset_identity_key observed in this category after dedup
-   usable_view_count         = count of those with a usable lifetime_average_weekly_view_proxy (REQ-MET-010)
+   usable_view_count         = count of those with a usable age_normalized_page_view_index (REQ-MET-010)
   usable_view_coverage      = usable_view_count / observed_asset_count   (0 if observed_asset_count = 0)
-   median_lifetime_average_weekly_view_proxy = median(lifetime_average_weekly_view_proxy over usable records)
-   sum_lifetime_average_weekly_views_usable  = sum(lifetime_average_weekly_view_proxy over usable records)
-   views_per_observed_asset  = sum_lifetime_average_weekly_views_usable / observed_asset_count   (0 if observed_asset_count = 0)
+   median_age_normalized_page_view_index = median(age_normalized_page_view_index over usable records; null if usable_view_count = 0)
+   sum_page_view_indices_usable  = sum(age_normalized_page_view_index over usable records; 0 if usable_view_count = 0)
+   page_view_index_per_observed_asset = sum_page_view_indices_usable / observed_asset_count   (0 if observed_asset_count = 0)
   ```
-  `views_per_observed_asset` is defined over the full observed population (not just the usable subset) so that categories with many unusable/missing/too-young enrichment records are not inflated; `usable_view_coverage` separately expresses how much of that mean is backed by usable evidence. This deliberately applies a compounded conservative treatment to immature categories: too-young assets remain in the denominator and low coverage separately shrinks D toward 0.5 (DD-5, L-9).
+  `page_view_index_per_observed_asset` is deliberately defined over the full discovered population, not just the usable subset. An unavailable index contributes zero to the numerator while remaining in `observed_asset_count`; this is an aggregate zero-contribution policy, not persistence of a raw zero. `usable_view_coverage` separately expresses how much of the aggregate is backed by usable evidence, so the full denominator and subsequent coverage shrinkage intentionally impose a compounded conservative treatment on immature or incompletely enriched categories (DD-5, L-9).
 - **REQ-MET-030**: Raw fields for normalization (no log transform, per §2.1 finding 1):
   ```text
-  DemandPerAssetRaw = views_per_observed_asset
-   DemandMedianRaw   = median_lifetime_average_weekly_view_proxy
+   DemandPerAssetRaw = page_view_index_per_observed_asset
+    DemandMedianRaw   = median_age_normalized_page_view_index
   ```
 
 ### 6.2 Competition (breadth) metric
 
 This metric is unaffected by the v2.0.0 GraphQL enrichment stage: breadth is a discovery-only concept, computed purely from `raw_observations` (§2.1, item 4).
 
-- **REQ-MET-040 (revised in v2.1.0)**: `observed_discovery_breadth` = count of distinct canonical `asset_identity_key` values returned for the category after dedup. A zero-result category (`totalCount = 0`, REQ-EXT-090) SHALL yield `observed_discovery_breadth = 0` only when the discovery filter is verified. State-excluded, state-unknown, and enrichment-failed assets remain part of discovery breadth because C measures discovered catalog breadth. The breadth value is usable for C only when discovery is complete and verified; otherwise it is retained as an audit lower bound and C is unavailable.
+- **REQ-MET-040 (revised in v2.2.0)**: `observed_discovery_breadth` = count of distinct canonical `asset_identity_key` values returned for the category after dedup. A zero-result category (`totalCount = 0`, REQ-EXT-090) SHALL yield `observed_discovery_breadth = 0` only when the discovery filter is verified. State-excluded, state-unknown, and enrichment-failed assets remain part of the discovered population because C measures catalog breadth. Records with unresolved or conflicting identities are retained for audit but are not counted in breadth; any such record makes breadth a lower bound, sets `discovery_status = 'identity_incomplete'`, makes C unavailable, and makes the category non-rankable.
 - **REQ-MET-050**: `BreadthRaw = observed_discovery_breadth` (no log transform).
 
 ### 6.3 Recent-supply metric
 
-- **REQ-MET-060 (revised in v2.1.0)**: For each distinct asset with `product_detail_status = 'ok'`, `enrichment_identity_status = 'matched'`, `state = "published"`, and a usable `first_published_date_utc` (non-null, parseable ISO 8601, ≤ `scoring_cutoff_utc`):
+- **REQ-MET-060 (revised in v2.2.0)**: For each distinct asset in the published-eligible population — `product_detail_status = 'ok'`, `enrichment_identity_status = 'matched'`, `state = "published"` — with a usable timezone-aware `first_published_date_utc` normalized to UTC (non-null, parseable ISO 8601, ≤ `scoring_cutoff_utc`):
   ```text
-   age_days = floor((scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400)
+   age_days_exact = (scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400
   ```
-  A `first_published_date_utc` strictly after `scoring_cutoff_utc` SHALL be treated as unavailable and SHALL count toward `missing_date_coverage`, not toward `dated_asset_count`. This is the same underlying `first_published_date_utc` field (and, for a given asset, the same `age_days`/`age_days_since_published` value) used by REQ-MET-010; an implementation MAY compute it once per asset and share it between the Demand and Recent-Supply metrics.
+  A `first_published_date_utc` strictly after `scoring_cutoff_utc` SHALL be treated as unavailable and SHALL count toward `missing_date_coverage`, not toward `dated_asset_count`. This is the same underlying `first_published_date_utc` field used by REQ-MET-010; an implementation MAY compute `age_days_exact` once per asset and share it between the Demand and Recent-Supply metrics.
 - **REQ-MET-070**:
   ```text
   dated_asset_count     = count of distinct assets with a usable first_published_date_utc
   dated_coverage        = dated_asset_count / observed_asset_count           (0 if observed_asset_count = 0)
-  recent_share_365      = count(dated assets with age_days <= 365) / dated_asset_count   (null if dated_asset_count = 0)
-  median_age_days       = median(age_days over dated assets)                              (null if dated_asset_count = 0)
+   recent_share_365      = count(dated assets with 0 <= age_days_exact <= RECENT_WINDOW_DAYS) / dated_asset_count   (null if dated_asset_count = 0)
+   median_age_days       = median(age_days_exact over dated assets)                                      (null if dated_asset_count = 0)
   RecentShareRaw        = recent_share_365
   MedianAgeRaw           = median_age_days      (no log transform)
   ```
-  `RECENT_WINDOW_DAYS = 365` is inclusive (`age_days <= 365` counts as recent).
+  `RECENT_WINDOW_DAYS = 365` is inclusive and measured as an exact UTC duration (`age_days_exact <= 365` counts as recent).
 
 ### 6.4 Quality metric
 
-- **REQ-MET-080 (revised in v2.1.0)**: An asset is *quality-eligible* iff `product_detail_status = 'ok'`, `enrichment_identity_status = 'matched'`, `state = "published"`, it has a finite `rating_average` in `[0, 5]` (from GraphQL `product.rating.average`, replacing Coveo's `ec_rating` as of v2.0.0), AND it has a usable lifetime-average weekly-view proxy (REQ-MET-010). `rating_count` and `review_count` are NOT eligibility conditions and are NOT weights, per `[REF-MATH]`. (This is retained as a known inherited limitation — see §11, L-4.)
+- **REQ-MET-080 (revised in v2.2.0)**: An asset is *quality-eligible* iff it is in the published-eligible population, has a finite `rating_average` in `[0, 5]`, and has a usable age-normalized page-view index (REQ-MET-010). `rating_count` and `review_count` are NOT eligibility conditions and are NOT weights, per `[REF-MATH]`. (This is retained as a known inherited limitation — see §11, L-4.)
 - **REQ-MET-090**:
   ```text
-   quality_adjusted_visibility = sum((rating_average / 5) * lifetime_average_weekly_view_proxy over eligible assets)
-                                / sum(lifetime_average_weekly_view_proxy over eligible assets)
+   quality_adjusted_visibility = sum((rating_average / 5) * age_normalized_page_view_index over eligible assets)
+                                 / sum(age_normalized_page_view_index over eligible assets)
   ```
-   Unavailable (null) if the eligible set is empty or the denominator is exactly 0 (i.e., all eligible assets have a zero lifetime-average weekly-view proxy — no unweighted-rating fallback is used).
+   Unavailable (null) if the eligible set is empty or the denominator is exactly 0 (i.e., all eligible assets have a zero index — no unweighted-rating fallback is used).
   ```text
   quality_eligible_count        = count of distinct quality-eligible assets
   quality_observation_coverage  = quality_eligible_count / observed_asset_count   (0 if observed_asset_count = 0)
@@ -518,6 +534,7 @@ Reference(c_i) = { raw-field values of c_j for all j != i, j in 1..N }
   P_ref(x) = (L + 0.5*E) / m        (undefined if m = 0)
   ```
   A null target value SHALL yield a null percentile regardless of `m`. Ties SHALL receive the same midpoint value. If all usable reference values are equal and the target equals that common value, `P_ref(x) = 0.5`; a target below the common value receives `0`, and a target above it receives `1`.
+- **REQ-NRM-035**: Field-specific reference counts SHALL be treated as distinct from `reference_size`. With small `m`, the midrank percentile is necessarily coarse; for example, `m = 1` permits only `0`, `0.5`, or `1`. The system SHALL describe these values as descriptive rank positions, not inferential percentiles or estimates.
 - **REQ-NRM-040**: All six normalized fields (`DemandPerAssetRaw`, `DemandMedianRaw`, `BreadthRaw`, `RecentShareRaw`, `MedianAgeRaw`, `QualityRaw`) SHALL be normalized independently via REQ-NRM-030, each against the corresponding raw field's values across `Reference(c_i)`.
 - **REQ-NRM-050**: Formulas SHALL be evaluated at full `float64` precision internally. Persisted values SHALL NOT be pre-rounded; display-only rounding (3 decimal places) is a dashboard concern only (REQ-DSH-030).
 
@@ -563,7 +580,7 @@ Reference(c_i) = { raw-field values of c_j for all j != i, j in 1..N }
       market_opportunity_score = clamp(0.5 + W_A * (S_available - 0.5), 0, 1)
       score_state = "available" if |A| = 4 else "partial"
   ```
-- **REQ-SCR-060 (DD-2)**: `missing_components_json` SHALL be the JSON array of component names (subset of `["D","C","R","Q"]`) not in `A`, replacing the enumerated fallback-state names of `[REF-MATH]` (`missing_demand`, etc.) with a direct, always-accurate list. This is a simplification, not a behavior change.
+ - **REQ-SCR-060 (DD-2)**: `missing_components_json` SHALL be the JSON array of component names (subset of `["D","C","R","Q"]`) not in `A`, replacing the enumerated fallback-state names of `[REF-MATH]` (`missing_demand`, etc.) with a direct, always-accurate list. This is a simplification, not a behavior change. Omitting unavailable components and renormalizing the available weights is an explicit design convention, not a mathematically unique treatment of missing components.
 
 ### 6.7 Confidence, coverage, and rankability
 
@@ -593,7 +610,7 @@ Reference(c_i) = { raw-field values of c_j for all j != i, j in 1..N }
                    = "partial"             elif score_state = "partial" OR evidence_count_proxy < 60
                    = "full"                 otherwise
   ```
-- **REQ-CNF-040 (revised in v2.1.0)**: `rankable = 1` iff ALL of: `score_state = "available"`; `coverage_status = "full"`; `reference_size >= MIN_CATEGORIES_FOR_RANKABILITY - 1`; `discovery_status = "complete"`; `discovery_filter_verified = 1`; `discovery_failed_page_count = 0`; and `discovery_category_mismatch_count = 0`. Otherwise `rankable = 0`. Numeric scores may still be computed for smaller or incomplete runs, but they are provisional/non-rankable.
+- **REQ-CNF-040 (revised in v2.2.0)**: `rankable = 1` iff ALL of: `score_state = "available"`; `coverage_status = "full"`; `reference_size >= MIN_CATEGORIES_FOR_RANKABILITY - 1`; for every available component `x`, its field-specific support count `M_x >= REFERENCE_FACTOR_DENOMINATOR`; `discovery_status = "complete"`; `discovery_filter_verified = 1`; `discovery_failed_page_count = 0`; `discovery_category_mismatch_count = 0`; and `discovery_unresolved_identity_count = 0`. Otherwise `rankable = 0`. Numeric scores may still be computed for smaller or incomplete runs, but they are provisional/non-rankable. `confidence_heuristic` remains continuous evidence information and does not replace this gate.
 
 ### 6.8 Persistence of results
 
@@ -607,6 +624,7 @@ Reference(c_i) = { raw-field values of c_j for all j != i, j in 1..N }
 - **REQ-DSH-040**: The dashboard SHALL provide a bar chart of `market_opportunity_score` across all categories in the selected run, and, on selecting a single category, a small chart of its four component values.
 - **REQ-DSH-050**: A run selector SHALL allow choosing among previously completed runs (by `run_id`/`created_at_utc`). The dashboard SHALL NOT allow editing persisted data.
 - **REQ-DSH-060**: Non-rankable rows (`rankable = 0`) SHALL be visually distinguished (e.g., a badge or muted row style) rather than hidden, so the operator can still see their score/coverage context.
+- **REQ-DSH-070 (NEW)**: The dashboard SHALL label `market_opportunity_score` as a deterministic within-run heuristic. It SHALL state that component weights have not been calibrated against sales, downloads, revenue, or another external outcome, and SHALL distinguish the age-normalized page-view index from a validated weekly traffic rate.
 
 ### 6.10 CLI / orchestration
 
@@ -727,15 +745,16 @@ niche-scout/
 ## 9. Testing Requirements
 
 - **REQ-TST-010**: Every formula in §6.1–§6.7 SHALL have at least one unit test covering: the normal case, the "explicit zero is valid" case where applicable, the "missing/invalid input" case, and the minimum-count boundary (e.g., exactly 1 vs. exactly 2 dated assets for `R`).
-- **REQ-TST-020 (revised in v2.1.0)**: A golden-vector test suite (`tests/golden/test_golden_vectors.py`) SHALL fix a synthetic reference set and target values, hand-compute the expected `D`, `C`, `R`, `Q`, composite score, evidence-count proxy, field-specific reference factor, and confidence heuristic, and assert exact (within float tolerance `1e-9`) agreement — mirroring the worked-example discipline of `[REF-AUDIT]`. It SHALL include all-equal reference values with target below, equal to, and above the common value.
+- **REQ-TST-020 (revised in v2.2.0)**: A golden-vector test suite (`tests/golden/test_golden_vectors.py`) SHALL fix a synthetic reference set and target values, hand-compute the expected `D`, `C`, `R`, `Q`, composite score, evidence-count proxy, field-specific reference factor, confidence heuristic, and rankability decision, and assert exact (within float tolerance `1e-9`) agreement — mirroring the worked-example discipline of `[REF-AUDIT]`. It SHALL include all-equal reference values with target below, equal to, and above the common value, plus a partial missing-component vector that documents the chosen renormalization behavior.
 - **REQ-TST-030**: `tests/architecture/test_purity_boundary.py` SHALL statically assert that `niche_scout.metrics` and `niche_scout.scoring` import nothing from `niche_scout.extraction`, `niche_scout.persistence`, or `niche_scout.dashboard` (REQ-GEN-040).
 - **REQ-TST-040**: Minimum line coverage for `metrics` and `scoring` packages SHALL be 95%, enforced in CI.
 - **REQ-TST-050 (NEW)**: `tests/unit/test_dedup.py` SHALL verify that when the same `asset_identity_key` is discovered under two or more categories in one run, exactly one GraphQL enrichment call is made for it (REQ-GQL-055), and that the resulting `raw_product_details` row is correctly joined to every referencing category during metrics computation.
-- **REQ-TST-060 (revised in v2.1.0)**: `tests/unit/test_graphql_client.py` SHALL cover: a batch response with both operations succeeding; reversed or ambiguous response ordering; wrong operation/data shape; a response where exactly one operation's item contains `errors` (REQ-GQL-070); canonical URI identity extraction; an `id_mapping_mismatch` case that excludes the asset from D/R/Q (REQ-GQL-110); `product.state = "published"`, a non-published state, null/missing state, and state exclusion from D/R/Q but not C (REQ-GQL-120); and the `400 csrf token mismatch` / `401` / `403` non-retry-abort path (REQ-GQL-080).
-- **REQ-TST-070 (revised in v2.1.0)**: `tests/unit/test_demand.py` (extending REQ-TST-010) SHALL include a case for `age_days_since_published < MIN_AGE_DAYS_FOR_RATE` (excluded), exactly the boundary value (included), timestamps at 29 days 23 hours and 30 days 1 second, and scoring against `scoring_cutoff_utc` rather than run start.
-- **REQ-TST-080 (NEW)**: Discovery tests SHALL cover natural pagination completion, `totalCount` reconciliation, maximum-result truncation, a failed middle page, exact category-path matching, parent/child path non-matching, verified and unverified zero-result responses, taxonomy category absence, and the requirement that incomplete discovery makes C unavailable and rankable false.
-- **REQ-TST-090 (NEW)**: Confidence tests SHALL cover a large `reference_size` with only two usable reference values, field-specific usable reference counts, two-category runs, 20-category runs, and the 21-category rankability boundary.
+- **REQ-TST-060 (revised in v2.2.0)**: `tests/unit/test_graphql_client.py` SHALL cover: a batch response with both operations succeeding; reversed or ambiguous response ordering; wrong operation/data shape; `product = null`; `productPageViews = null`; wrong scalar types; negative/non-finite page views; a response where exactly one operation's item contains `errors`; canonical URI identity extraction; malformed high-priority candidate with valid fallback; conflicting canonical candidates; an `id_mapping_mismatch` case that excludes the asset from D/R/Q; `product.state = "published"`, a non-published state, null/missing state, and state exclusion from D/R/Q but not C; HTTP 404/409/422 permanent-error handling; and the `400 csrf token mismatch` / `401` / `403` non-retry-abort path.
+- **REQ-TST-070 (revised in v2.2.0)**: `tests/unit/test_demand.py` SHALL include: exact-age calculation without floor bias; age 29 days 23 hours excluded; exactly `MIN_AGE_DAYS_FOR_RATE` included; age 30 days and 1 second using the fractional denominator; an asset younger than one day excluded without division by zero; explicit zero page views; future and naive timestamps excluded; exact recent-window boundaries at 365 days and 365 days plus one second; and scoring against `scoring_cutoff_utc` rather than run start.
+- **REQ-TST-080 (revised in v2.2.0)**: Discovery tests SHALL cover natural pagination completion, `totalCount` reconciliation, offset-pagination best-effort metadata, duplicate observations, maximum-result truncation, a failed middle page, exact category-path matching, parent/child path non-matching, verified and unverified zero-result responses, taxonomy category absence, malformed fallback identities, conflicting identities, unresolved identity counts, and the requirement that incomplete discovery makes C unavailable and rankable false.
+- **REQ-TST-090 (revised in v2.2.0)**: Confidence tests SHALL cover a large `reference_size` with only two usable reference values, field-specific usable reference counts, required-component support below and at `REFERENCE_FACTOR_DENOMINATOR`, two-category runs, 20-category runs, and the 21-category rankability boundary.
 - **REQ-TST-100 (NEW)**: Overlap tests SHALL verify that an asset discovered under multiple categories is enriched once, joined to each referencing category, and documented as creating category-level dependence rather than independent observations.
+- **REQ-TST-110 (NEW)**: Date and taxonomy tests SHALL verify timezone-aware UTC normalization, rejection of naive timestamps, Unicode `casefold()` normalization, taxonomy-membership validation for punctuation/non-ASCII category names, and preservation of canonical taxonomy spelling.
 
 ---
 
@@ -751,7 +770,7 @@ niche-scout/
 - **ND-8 (NEW)**: No automated acquisition or refresh of the Unity storefront CSRF token/session; operator-supplied only (mirrors ND-4).
 - **ND-9 (NEW)**: No collection of `favorite_count` / `packageInListHotness` (§2.6, OI-5); the field is undocumented, unvalidated across products, and not returned by the required `ProductDetail`/`ProductPageViews` batch.
 - **ND-10 (NEW)**: `currentVersion.*`, `description`, `publishNotes`, `supportedUnityVersions`, `downloadSize`, `assetCount`, `publisher.url`/`supportUrl`/`supportEmail`, `originalPrice.*`, and `category.*` (GraphQL) are persisted (REQ-GQL-050, §5.1) for possible future dashboard display or analysis, but are NOT used by any scoring formula in the MVP.
-- **ND-11 (NEW)**: No automated cross-run consistency check on `product_page_views` monotonicity (Assumption A-3); a decreasing value across runs for the same asset is not automatically flagged.
+- **ND-11 (NEW)**: The MVP does not automatically compare `product_page_views` across ordinary runs. The separate A-3 validation study may mark the run-level semantic status `contradicted` when its controlled repeated observations show a decrease; no general historical alerting or repair workflow is implemented.
 - **ND-12 (NEW)**: No resume/checkpoint CLI mechanism for an interrupted enrichment stage (§11, L-7); a new run always starts enrichment from zero, even though a prior run's completed `raw_product_details` rows are retained (REQ-PER-020).
 
 ---
@@ -765,27 +784,25 @@ These were identified as real methodological concerns in the prior review, or in
 - **L-3 (per-run reference, not cross-time)**: DD-1 resolves "no category excluded" but means scores are only comparable within one run's category set; comparing a score from one run to a score from a differently-scoped run is not meaningful.
 - **L-8 (NEW — category overlap and dependence)**: Categories may share assets, publishers, or taxonomy ancestry. LOO excludes the target category's aggregate row from its reference set but does not produce independent observations. Scores are descriptive within-run relative comparisons, not inferential estimates based on independent samples.
 - **L-4 (rating reliability not modeled)**: `quality_adjusted_visibility` weights `rating_average` (from GraphQL as of v2.0.0) by traffic, not by the number of reviews behind the rating; a high-traffic asset with one review counts as strongly as one with a thousand.
-- **L-5 (outlier concentration)**: `views_per_observed_asset` and `quality_adjusted_visibility` are both susceptible to domination by a single high-traffic asset within a category; no winsorization or cap is applied.
-- **L-6 (NEW — views proxy is a lifetime average, not a rolling rate)**: `lifetime_average_weekly_view_proxy` (§6.1, DD-3) is derived by dividing a presumed cumulative, undocumented-window `product_page_views` counter by an asset's total age. The cumulative interpretation remains Assumption A-3 and requires live validation. It understates current interest for assets with growing traffic and overstates it for assets whose traffic has decayed since a past spike, and it cannot distinguish "steady evergreen demand" from "one old viral spike, now dormant." No windowed or decayed alternative is implemented in the MVP.
+- **L-5 (outlier concentration)**: `page_view_index_per_observed_asset` and `quality_adjusted_visibility` are both susceptible to domination by a single high-traffic asset within a category; no winsorization or cap is applied.
+- **L-6 (NEW — undocumented page-view semantics)**: `age_normalized_page_view_index` (§6.1, DD-3) is derived from an undocumented `product_page_views` field divided by exact asset age. The cumulative interpretation remains Assumption A-3 and requires live validation. If the counter is rolling, reset, delayed, or begins after publication, the index does not represent a lifetime-average weekly rate. Even if cumulative, it may understate current interest for growing assets and overstate it for assets whose traffic has decayed since a past spike. No windowed or decayed alternative is implemented in the MVP.
 - **L-9 (NEW — conservative treatment of immature assets)**: Categories with many assets younger than `MIN_AGE_DAYS_FOR_RATE` receive both a lower full-population demand mean because those assets remain in the denominator and coverage-based shrinkage of D toward 0.5. This compounded conservative treatment is deliberate in the MVP and may disadvantage categories with rapidly growing catalogs.
 - **L-10 (NEW — recent share is composition, not flow)**: `RecentShareRaw` measures the proportion of the dated catalog published within the recent window. It is not an asset-arrival rate, sales rate, or catalog-growth velocity; categories with different catalog sizes can have the same recent share.
 - **L-11 (NEW — collection-window snapshot)**: Discovery and enrichment occur at different times. The run is an approximate collection-window snapshot, not a perfect point-in-time snapshot; `run_started_at_utc`, per-record retrieval timestamps, and `scoring_cutoff_utc` are retained for provenance.
 - **L-7 (NEW — enrichment cost scales with unique assets, not categories)**: Unlike the Coveo-only design in v1.0.0, every additional uniquely discovered asset costs one additional GraphQL round trip (REQ-GQL-055). A broad, high-volume category set can make a single run take hours (REQ-NFR-015). No resume/checkpoint mechanism is implemented (ND-12); a failed or interrupted run's completed `raw_product_details` rows remain in the database (REQ-PER-020), but there is no CLI-level way to resume a specific `run_id` — a new run starts enrichment from zero. Operators running large category sets SHOULD start with a conservative `MAX_RESULTS_PER_CATEGORY` (Appendix C) to bound the unique-asset count.
 
 ---
-
-## Appendix A — Consolidated Formula Reference
-
 ```text
-age_days_since_published  = floor((scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400)
-lifetime_average_weekly_view_proxy = product_page_views * 7 / age_days_since_published
-                                     [only if age_days_since_published >= MIN_AGE_DAYS_FOR_RATE]
-DemandPerAssetRaw         = views_per_observed_asset
- DemandMedianRaw           = median_lifetime_average_weekly_view_proxy
+age_days_exact = (scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400
+age_days_floor = floor(age_days_exact)                 [display/bucketing only]
+age_normalized_page_view_index = product_page_views * 7 / age_days_exact
+                                 [only if age_days_exact >= MIN_AGE_DAYS_FOR_RATE]
+DemandPerAssetRaw         = page_view_index_per_observed_asset
+DemandMedianRaw           = median_age_normalized_page_view_index
 BreadthRaw                = observed_discovery_breadth
 RecentShareRaw             = recent_share_365
-MedianAgeRaw                = median_age_days
-QualityRaw                   = quality_adjusted_visibility
+MedianAgeRaw              = median_age_days
+QualityRaw                = quality_adjusted_visibility
 
 P_ref(x) = (L + 0.5*E) / m         [midrank percentile vs. LOO reference, REQ-NRM-030]
 
@@ -793,7 +810,8 @@ D0 = weighted-available-mean(P_ref(DemandPerAssetRaw)*0.60, P_ref(DemandMedianRa
 D  = clamp(0.5 + usable_view_coverage*(D0-0.5), 0, 1)
 
 C  = clamp(1 - P_ref(BreadthRaw), 0, 1)
-     [only if discovery_status = "complete" and discovery_filter_verified = 1]
+     [only if discovery_status = "complete" and discovery_filter_verified = 1
+      and discovery_unresolved_identity_count = 0]
 
 Rpressure0 = weighted-available-mean(P_ref(RecentShareRaw)*0.70, (1-P_ref(MedianAgeRaw))*0.30)
 R0 = 1 - Rpressure0
@@ -856,15 +874,15 @@ See §1.4. No additional terms.
 
 | Requirement range | Module |
 |---|---|
-| REQ-EXT-010–100 | `extraction/coveo_client.py`, `extraction/validation.py` |
+| `REQ-EXT-010–100` | `extraction/coveo_client.py`, `extraction/validation.py`; pagination and snapshot metadata are persisted by `pipeline.py` / `persistence/db.py` |
 | REQ-GQL-010–120 | `extraction/graphql_client.py`, `extraction/validation.py`; dedup orchestration (REQ-GQL-055) lives in `pipeline.py` |
 | REQ-CAT-010–040 | `cli.py`, `config.py` |
-| REQ-MET-005–090 | `metrics/demand.py`, `metrics/competition.py`, `metrics/recent_supply.py`, `metrics/quality.py` |
-| REQ-NRM-010–050 | `scoring/normalization.py` |
+| `REQ-MET-005–090` | `metrics/demand.py`, `metrics/competition.py`, `metrics/recent_supply.py`, `metrics/quality.py`; exact UTC timestamp normalization is enforced in `extraction/validation.py` |
+| `REQ-NRM-010–050` | `scoring/normalization.py` |
 | REQ-SCR-010–060 | `scoring/components.py`, `scoring/composite.py` |
-| REQ-CNF-010–040 | `scoring/confidence.py` |
-| REQ-PER-010–020 | `persistence/db.py` |
-| REQ-DSH-010–060 | `dashboard/app.py` |
+| `REQ-CNF-010–040` | `scoring/confidence.py` |
+| `REQ-PER-010–020` | `persistence/db.py` |
+| `REQ-DSH-010–070` | `dashboard/app.py` |
 | REQ-CLI-010–030 | `cli.py`, `pipeline.py` |
-| REQ-NFR-010–100 | cross-cutting; enforced via CI config + `pyproject.toml` |
-| REQ-TST-010–070 | `tests/` |
+| `REQ-NFR-010–100` | cross-cutting; enforced via CI config + `pyproject.toml` |
+| `REQ-TST-010–110` | `tests/` |
