@@ -384,6 +384,16 @@ SAMPLE_PER_STRATUM = 25
 MIN_USABLE_SAMPLES_PER_STRATUM = 5
 ```
 
+For lean v1, these sampling constants are fixed and SHALL satisfy:
+
+```text
+ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY = SAMPLE_STRATA * SAMPLE_PER_STRATUM
+```
+
+Changing the sample size, stratum count, or per-stratum allocation requires a new
+sampling-rule version and SRS revision; an implementation SHALL not expose one of
+these values as independently configurable.
+
 **LREQ-SMP-040**: A category with at most 100 canonical discovered assets SHALL be
 fully enriched. Its `sample_is_census` flag SHALL be true.
 
@@ -434,7 +444,7 @@ Required fields:
 ```text
 run_id, run_started_at_utc, scoring_cutoff_utc, completed_at_utc,
 categories_json, config_snapshot_json, config_sha256,
-taxonomy_captured_at_utc, taxonomy_sha256,
+taxonomy_version, taxonomy_captured_at_utc, taxonomy_sha256,
 endpoint_contract_version, identity_mapping_rule_version, sampling_rule_version,
 page_view_semantics_status, status
 ```
@@ -494,13 +504,16 @@ usable_quality_sample_count,
 discovery_status, discovery_filter_verified, discovery_unresolved_identity_count,
 discovery_conflict_count, discovery_duplicate_count, sample_size,
 sample_is_census, unique_enrichment_count, demand_usable_count,
-demand_coverage, recent_supply_usable_count, recent_supply_coverage,
+breadth_source, breadth_completeness_status, discovery_bounded_by_verified_total,
+demand_population_coverage, recent_supply_usable_count, recent_supply_coverage,
 quality_usable_count, quality_coverage, demand_per_asset_raw,
 demand_median_raw, breadth_raw, recent_share_raw, median_age_raw, quality_raw,
 component_d, component_c, component_r, component_q,
 market_opportunity_score, score_state, evidence_grade, rankability_status,
 missing_components_json, warnings_json, reference_size,
-reference_usable_counts_json, ranking_sensitivity_json, computed_at_utc
+reference_usable_counts_json, top_3_stability, top_5_stability,
+maximum_score_delta, maximum_rank_displacement, sensitivity_warning,
+ranking_sensitivity_json, computed_at_utc
 ```
 
 Raw metrics and scores except counts and status fields SHALL be nullable.
@@ -581,20 +594,37 @@ weight. The same algorithm and boundary rule SHALL be used for `MedianAgeRaw`.
 **LREQ-MET-060**: Demand coverage SHALL be:
 
 ```text
-demand_coverage = sum(stratum_weight_h for strata meeting the usable minimum)
+demand_population_coverage =
+    sum(stratum_weight_h for strata meeting the usable minimum)
 ```
 
 bounded to `[0, 1]`.
 
+`demand_population_coverage` is the persisted name. Any implementation-local alias
+such as `demand_coverage` SHALL map exactly to this value and SHALL not represent
+sample-count coverage.
+
 ### 7.3 Competition / catalog breadth
 
 **LREQ-MET-070**: `BreadthRaw` SHALL be the verified discovered canonical
-population count, not the enrichment sample size. A verified, reconciled
-`totalCount` MAY be used; otherwise use distinct canonical discovered identities and
-record the limitation.
+population count, not the enrichment sample size. When the endpoint provides a
+structurally verified, category-filter-consistent `totalCount`, `breadth_source`
+SHALL be `verified_total_count` and `BreadthRaw` SHALL equal that count. Otherwise,
+`breadth_source` SHALL be `distinct_canonical_discovered_count`, `BreadthRaw` SHALL
+equal the distinct canonical discovered count, and
+`breadth_completeness_status` SHALL be `incomplete_estimate`.
+
+The fallback estimate SHALL be treated as potentially materially different from the
+true breadth for lean v1. Therefore, a category using the fallback breadth SHALL not
+be `rankable`; it MAY be `provisional` only when all other required evidence passes.
+This is a conservative operational interpretation of the plan's materiality rule and
+prevents an unverified denominator from supporting a fully rankable competition
+comparison.
 
 Competition is unavailable when filtering is unverified, a material page failed,
-or identity incompleteness makes breadth an unbounded lower bound.
+identity incompleteness makes breadth an unbounded lower bound, or the fallback
+breadth cannot be bounded. A failed or truncated discovery page SHALL never be
+interpreted as zero assets.
 
 ### 7.4 Recent supply
 
@@ -634,10 +664,16 @@ QUALITY_MIN_ELIGIBLE_ASSETS = 5
 
 Quality is unavailable below the minimum eligible count.
 
-Quality SHALL also be unavailable when weighted usable coverage is insufficient under
-the configured evidence policy, when page-view semantics are contradicted, or when
-the visibility-weighted denominator is zero. `rating_count` is a reliability
+Quality SHALL also be unavailable when weighted usable coverage is below
+`MIN_REQUIRED_COMPONENT_COVERAGE`, when page-view semantics are contradicted, or
+when the visibility-weighted denominator is zero. `rating_count` is a reliability
 minimum only and SHALL NOT weight the quality formula.
+
+The same `MIN_REQUIRED_COMPONENT_COVERAGE` policy applies to Demand and Recent
+Supply: if `demand_population_coverage` or `recent_supply_coverage` is below the
+threshold, the affected component SHALL be unavailable for rankability and SHALL not
+receive composite weight. Coverage below the threshold SHALL remain distinguishable
+from a valid metric value of zero.
 
 **LREQ-MET-100**: Quality raw value SHALL be:
 
@@ -692,7 +728,7 @@ midrank ordering.
 D0 = weighted available mean of:
        0.60 * P_ref(DemandPerAssetRaw)
        0.40 * P_ref(DemandMedianRaw)
-D = clamp(0.5 + demand_coverage * (D0 - 0.5), 0, 1)
+ D = clamp(0.5 + demand_population_coverage * (D0 - 0.5), 0, 1)
 ```
 
 `D` is unavailable when no demand raw value is usable.
@@ -760,20 +796,31 @@ non-rankable.
 
 **LREQ-EVD-030**: A score SHALL be `provisional` when computable and required
 conditions pass, but the run has 8–20 categories, the reference has fewer than 21
-categories, discovery is bounded by a verified total rather than fully complete,
-sample coverage is acceptable but below the strong policy, or sensitivity is high.
+categories, breadth uses the incomplete fallback estimate, sample coverage is
+acceptable but below the strong policy, or sensitivity is high. Discovery bounded by
+a verified total is sufficient for rankability and SHALL not by itself force a
+provisional status.
 
 **LREQ-EVD-040**: A category may be `rankable` only when the run contains at least
 8 categories, discovery and identity checks pass, required component evidence
-policies pass, sample and field coverage meet configured thresholds, no critical
-contradiction exists, sensitivity is within limits, and the reference contains at
-least 21 categories. A run with 8–20 categories SHALL never be labeled `rankable`;
-it may be `provisional`.
+policies pass, sample and field coverage meet configured thresholds, breadth is
+verified or bounded by a verified total, no critical contradiction exists, sensitivity
+is within limits, and the reference contains at least 21 categories. A run with 8–20
+categories SHALL never be labeled `rankable`; it may be `provisional`.
 
 ```text
 MIN_CATEGORIES_PER_RUN = 8
 STRONG_REFERENCE_CATEGORY_COUNT = 21
+MIN_REQUIRED_COMPONENT_COVERAGE = 0.50
+STRONG_COMPONENT_COVERAGE = 0.80
 ```
+
+`MIN_REQUIRED_COMPONENT_COVERAGE` is the minimum weighted population coverage for
+each required sample-derived component. A component below this threshold is
+unavailable for rankability and receives no composite weight. A category cannot be
+rankable when any required component is below this threshold. The
+`STRONG_COMPONENT_COVERAGE` threshold is used by the strong evidence grade; it does
+not create a statistical confidence interval or guarantee estimate accuracy.
 
 ### 9.2 Evidence grade
 
@@ -783,8 +830,8 @@ sensitivity. Sample count alone SHALL not determine it.
 
 | Grade | Default policy |
 |---|---|
-| `strong` | At least 80 usable sampled assets, or a census of at least 50; required coverage at least 80%; verified discovery; no identity conflict; at least 21 reference categories; no critical contradiction; acceptable sensitivity. |
-| `moderate` | At least 40 usable sampled assets, or a census of at least 20; required coverage at least 50%; at least 8 reference categories; no critical identity failure. |
+| `strong` | At least 80 usable sampled assets, or a census of at least 50; required coverage at least `STRONG_COMPONENT_COVERAGE`; verified discovery; no identity conflict; at least 21 reference categories; no critical contradiction; acceptable sensitivity. |
+| `moderate` | At least 40 usable sampled assets, or a census of at least 20; required coverage at least `MIN_REQUIRED_COMPONENT_COVERAGE`; at least 8 reference categories; no critical identity failure. |
 | `weak` | Computable but below moderate policy in sample, coverage, reference, discovery, or sensitivity. |
 | `insufficient` | Required evidence is invalid, unavailable, or contradictory; category is not rankable. |
 
@@ -803,7 +850,25 @@ competition_heavy: D=0.30, C=0.45, R=0.15, Q=0.10
 **LREQ-SEN-020**: Report top-three membership stability, top-five membership
 stability, each category's rank under each policy, maximum rank displacement, and
 maximum score displacement. The persisted field names SHALL include
-`top_3_stability`, `top_5_stability`, and `maximum_score_delta`.
+`top_3_stability`, `top_5_stability`, `maximum_score_delta`,
+`maximum_rank_displacement`, and `sensitivity_warning`.
+
+For each policy, rank categories by descending composite score. Ties SHALL be broken
+deterministically by canonical category path in ascending lexical order. Let `T_k,p`
+be the resulting top-`k` category set under policy `p`; categories that are not
+rankable SHALL remain visible but SHALL be excluded from the ranked set. Define:
+
+```text
+top_k_stability =
+    |T_k,balanced ∩ T_k,demand_heavy ∩ T_k,competition_heavy| / k
+```
+
+for `k = 3` and `k = 5`. If fewer than `k` rankable categories exist, the value is
+null rather than padded with unavailable categories. For each category,
+`maximum_score_delta` is the maximum absolute difference between its score under a
+non-balanced policy and its balanced score, and `maximum_rank_displacement` is the
+maximum absolute rank difference across policies. The same diagnostics SHALL be
+stored in `ranking_sensitivity_json` with each policy's scores and ranks.
 
 **LREQ-SEN-030**: Warn when `top_3_stability < 2 / 3`, or when a category's rank
 changes by more than `max(3 positions, 25% of reference-set size)`. The warning
@@ -970,7 +1035,9 @@ sensitivity, SQLite persistence, and report rendering.
 
 **LREQ-TST-090**: Golden vectors SHALL assert exact results within `1e-9` for
 sample-aware metrics, normalization, components, composite score, coverage, evidence,
-and sensitivity outputs.
+and sensitivity outputs. The vectors SHALL include a two-category input rejected
+before ranking, an 8-category provisional run, and a 21-category strong-reference
+run.
 
 Formatting, linting, secret handling, and analytical tests remain mandatory. The lean
 variant may defer package-wide strict typing, architecture import-linter enforcement,
@@ -987,10 +1054,12 @@ and exhaustive tests of non-scoring infrastructure.
 | `MIN_CATEGORIES_PER_RUN` | 8 | No | Minimum comparison set. |
 | `STRONG_REFERENCE_CATEGORY_COUNT` | 21 | No | Strong reference boundary. |
 | `MAX_TAXONOMY_AGE_DAYS` | 30 | Yes | Taxonomy freshness. |
-| `ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY` | 100 | Yes, bounded | Large-category sample target. |
+| `ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY` | 100 | No for v1 | Large-category sample target. |
 | `SAMPLE_STRATA` | 4 | No for v1 | Ordinal strata count. |
 | `SAMPLE_PER_STRATUM` | 25 | No for v1 | Per-stratum sample target. |
 | `MIN_USABLE_SAMPLES_PER_STRATUM` | 5 | Yes | Stratum evidence minimum. |
+| `MIN_REQUIRED_COMPONENT_COVERAGE` | 0.50 | No for v1 | Minimum required weighted coverage. |
+| `STRONG_COMPONENT_COVERAGE` | 0.80 | No for v1 | Strong evidence coverage threshold. |
 | `MIN_AGE_DAYS_FOR_RATE` | 30 | Yes | Index age threshold. |
 | `RECENT_WINDOW_DAYS` | 365 | Yes | Recent window. |
 | `QUALITY_MIN_RATING_COUNT` | 5 | Yes | Rating evidence minimum. |
@@ -1087,7 +1156,8 @@ The implementation is acceptable only when:
 22. every sample-derived metric distinguishes population size, sample size, usable sample size, and coverage;
 23. sample selection includes late-result strata and shared assets are enriched once;
 24. identity conflicts prevent rankable output and contradicted page-view semantics disable affected components;
-25. the traceability matrix maps every lean requirement area to a module and test;
+25. the traceability matrix maps every individual `LREQ-*` requirement ID (grouped
+only by explicitly exhaustive wildcard range) to a primary module and required test;
 26. the SRS contains no unresolved references to removed historical, scheduling, resume, or full-enrichment requirements;
 27. no unsupported claim of statistical precision, sales prediction, revenue prediction, or representative marketplace estimation remains.
 
@@ -1104,7 +1174,7 @@ DemandPerAssetRaw = sum(stratum_weight_h * stratum_view_mean_h for usable strata
 P_ref(x) = (L + 0.5 * E) / m
 D0 = weighted available mean of 0.60*P_ref(DemandPerAssetRaw),
      0.40*P_ref(DemandMedianRaw)
-D = clamp(0.5 + demand_coverage*(D0 - 0.5), 0, 1)
+D = clamp(0.5 + demand_population_coverage*(D0 - 0.5), 0, 1)
 C = clamp(1 - P_ref(BreadthRaw), 0, 1)
 Rpressure0 = weighted available mean of 0.70*P_ref(RecentShareRaw),
              0.30*(1 - P_ref(MedianAgeRaw))
@@ -1123,7 +1193,7 @@ market_opportunity_score = clamp(0.5 + W_A*(S_available - 0.5), 0, 1)
 
 ## Appendix B — Traceability matrix
 
-| Requirement area | Primary module | Required tests |
+| Exhaustive requirement ID range | Primary module | Required tests |
 |---|---|---|
 | `LREQ-EXT-*` | `collector.py`, `validation.py` | `test_collector.py` |
 | `LREQ-GQL-*` | `collector.py`, `validation.py` | `test_collector.py`, `test_identity.py` |
@@ -1139,6 +1209,11 @@ market_opportunity_score = clamp(0.5 + W_A*(S_available - 0.5), 0, 1)
 | `LREQ-SEC-*` | `config.py`, `collector.py`, `database.py` | `test_collector.py`, `test_end_to_end.py` |
 | `LREQ-NFR-*` | cross-cutting | project checks and end-to-end tests |
 | `LREQ-TST-*` | `tests/` | all test modules |
+
+Every `LREQ-*` identifier defined in this SRS SHALL belong to exactly one row in this
+matrix. A wildcard row denotes the complete set of IDs in that area, not an optional
+or approximate grouping. The implementation review SHALL verify that no requirement
+ID is omitted, duplicated across rows, or mapped without at least one required test.
 
 ---
 
