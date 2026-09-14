@@ -11,19 +11,21 @@ criteria if they conflict with the files above.
 
 ## Architecture rules (non-negotiable, all chunks)
 - Module boundary is fixed: models.py (typed structures), validation.py
-  (structural/semantic validation primitives), sampling.py (deterministic
-  sampling), metrics.py (eligibility + raw estimators), scoring.py
-  (normalization, score components, evidence, sensitivity). I/O and
-  orchestration live only in collector.py, database.py, pipeline.py,
-  report.py, cli.py.
-- metrics.py and scoring.py must never import sqlite3, network, filesystem,
-  CLI, or system-clock APIs. All time-dependent pure functions take
-  scoring_cutoff_utc as an explicit argument.
-- Null, zero, invalid, and unavailable are distinct states. Never silently
-  convert missing/invalid data to zero.
-- Determinism: same inputs + same policy versions → structurally and
-  numerically equivalent results. No random generators in sampling; no
-  current-time reads in pure code.
+  (structural/domain validity), sampling.py (deterministic sampling), metrics.py
+  (metric eligibility + raw estimators), scoring.py (normalization, score
+  components, evidence, sensitivity). I/O and orchestration live only in
+  collector.py, config.py, database.py, pipeline.py, report.py, cli.py.
+- Pure modules must have no direct or transitive I/O, network, database, CLI,
+  filesystem, or system-clock dependencies. Time-dependent pure functions take
+  an explicit timezone-aware UTC scoring_cutoff_utc; analytical calculations use
+  float64 precision.
+- validation.py classifies structural/domain validity; metrics.py decides
+  metric-specific eligibility. Null, zero, invalid, and unavailable remain
+  distinguishable through typed status/reason data where relevant; never convert
+  missing or invalid data to zero.
+- Determinism: the same normalized inputs, effective configuration, and policy
+  versions produce structurally and numerically equivalent results. No random
+  generators or current-time reads in pure code.
 
 ## Test traceability (non-negotiable, all chunks)
 - Every analytical test has an explicit `@pytest.mark.lreq("LREQ-....")`
