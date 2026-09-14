@@ -13,6 +13,16 @@ The SRS contains **89 individually defined `LREQ-*` requirements**. The wildcard
 - `I/O` identifies network, filesystem, database, process, or orchestration behavior.
 - `Test type` follows the SRS traceability matrix and expands it into the likely test mechanism.
 - `—` means no direct LREQ prerequisite; foundational project setup may still be required.
+- A requirement may have an early **supporting contract** or pure primitive and a later **integration completion**. A chunk that defines a contract does not thereby claim to complete the runtime behavior of every requirement using that contract.
+- Chunk ownership is described separately from the dependency table using these labels: **primary implementation chunk**, **supporting contract chunk**, and **integration completion chunk**. This prevents early validation and persistence work from being mistaken for complete adapter or orchestration behavior.
+- The dependency graph is a DAG. The runtime path is shown separately from parallelizable protocol, fixture, persistence, and pure-function work.
+
+For the early ownership cases that otherwise look contradictory in the table:
+
+- Chunk 1 is the supporting contract chunk for identity, taxonomy, and value validation; Chunks 3 and 5 are the integration completion chunks for Coveo and GraphQL responses.
+- Chunk 2 is the supporting contract chunk for sampling summaries, unique enrichment persistence, streaming, and redaction; Chunks 3, 4, and 6 are the integration completion chunks.
+- Chunk 6A is the primary implementation chunk for preflight planning and gating; Chunk 6B completes unique enrichment and reuse behavior.
+- Chunk 7A supplies eligibility primitives; Chunk 7B completes the raw estimators. Chunk 9A freezes base candidates; Chunk 9B completes sensitivity and final rankability.
 
 ---
 
@@ -24,7 +34,7 @@ The SRS contains **89 individually defined `LREQ-*` requirements**. The wildcard
 |---|---|---|---|---|---|
 | LREQ-ARCH-010 | `models.py`, `metrics`, `scoring` | — | Pure boundary | Architecture/import test; analytical tests | Typed structures only; no imports from collector/database/report/CLI; no file or network I/O |
 | LREQ-ARCH-020 | `metrics`, `scoring` | LREQ-ARCH-010 | Pure | Determinism/unit test | No system-clock reads; timestamps must be supplied |
-| LREQ-ARCH-030 | `metrics`, `scoring`, `pipeline` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure plus orchestration | Repeated-input deterministic test; end-to-end test | Same inputs, policy versions, and configuration must produce byte-equivalent logical results |
+| LREQ-ARCH-030 | `metrics`, `scoring`, `pipeline` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure plus orchestration | Repeated-input deterministic test; end-to-end test | Same inputs, policy versions, and configuration must produce structurally and numerically equivalent logical results; byte identity requires a separately defined canonical serialization |
 
 ## Coveo discovery and external collection
 
@@ -188,67 +198,63 @@ These are verification requirements rather than runtime features.
 
 # 2. Dependency graph
 
-The implementation should follow this high-level directed graph:
+The implementation is a directed acyclic graph rather than a single mostly
+linear pipeline. The runtime path remains ordered, but protocol adapters,
+validation primitives, persistence contracts, and fixture work can proceed in
+parallel after their foundations exist.
 
 ```text
-Project foundation and status contracts
+Foundation: typed models, constants, statuses, configuration contracts
+    ├── pure taxonomy, identity, and value-validation primitives
+    ├── SQLite schema, transaction, redaction, and persistence contracts
+    ├── Coveo request/response protocol adapter
+    ├── GraphQL protocol adapter and response correlation
+    └── metric/scoring fixture contracts
+
+Coveo adapter + persistence contracts
     ↓
-Typed models and configuration
+Streamed raw discovery observations
     ↓
-Pure taxonomy and identity validation
+Canonical populations
     ↓
-SQLite schema and persistence contracts
+Deterministic sampling
+    ├── sampling summaries and overlap metadata
+    └── fixed sampled-identity set
+
+GraphQL adapter + identity primitives + sampled identities
     ↓
-Coveo request/response adapter
+Identity preflight planner and gate
+    ├── failed → failed run; no bulk enrichment
+    └── passed → unique enrichment executor and persistence
+
+Persisted observations + scoring cutoff
     ↓
-Streamed raw discovery persistence
+Eligibility/date/page-view primitives
     ↓
-Canonical populations and deterministic sampling
+Sample-aware raw estimators
     ↓
-GraphQL protocol adapter and response correlation
+LOO normalization → D/C/R/Q scoring
     ↓
-Identity preflight and preflight-controlled enrichment
+Evidence and fixed base-rankable candidate set
     ↓
-Metric eligibility and sample-aware estimators
+Sensitivity diagnostics → final evidence/rankability
     ↓
-LOO normalization
-    ↓
-D/C/R/Q components and composite score
-    ↓
-Evidence/rankability
-    ↓
-Ranking sensitivity
-    ↓
-Pipeline orchestration and final SQLite result persistence
-    ↓
-Report rendering
-    ↓
-CLI commands and configuration precedence
-    ↓
-End-to-end and golden acceptance suite
+Pipeline result persistence → report read model → CLI/dashboard
 ```
 
-Some work can occur in parallel:
+The runtime order is therefore:
 
 ```text
-Typed models/config/statuses ───┬── pure validation
-                                ├── database schema/contracts
-                                └── test fixture framework
-
-Coveo request adapter ──────────┬── streamed discovery persistence
-                                 └── canonical population construction
-
-GraphQL protocol adapter ───────┬── identity preflight
-                                 └── response-validation fixtures
-
-Canonical populations ────────── deterministic sampling ──┐
-Database schema/contracts ──────────────────────────────────┤
-                                                           ↓
-Preflight gate ─────────── unique enrichment and persistence
-
-Pure metrics ─────────────┬── normalization/scoring
-Database read model ──────┘
+discover → persist → canonicalize → sample → preflight → enrich → cutoff
+→ metrics → normalize → score → base candidates → sensitivity
+→ final evidence/rankability → persist results → report
 ```
+
+The Coveo and GraphQL adapters may be developed in parallel after the
+foundational contracts. Sampling is operationally downstream of persisted
+discovery; preflight is downstream of sampling and the GraphQL adapter; bulk
+enrichment is downstream of a successful preflight gate. Pure metric/scoring
+work and the report read model may also proceed against frozen fixtures.
 
 ---
 
@@ -296,7 +302,7 @@ Gate:
 
 - Package imports successfully.
 - `metrics` and `scoring` do not import I/O modules.
-- Configuration precedence is represented in tests.
+- Configuration precedence has a typed contract and fixture cases; behavioral CLI precedence tests are completed in Chunk 12.
 - All required status values and mandatory logical row fields are represented by typed structures.
 - `.env` is ignored and `.env.example` contains no credentials.
 - No network code is required yet.
@@ -305,7 +311,7 @@ Gate:
 
 ## Chunk 1 — Pure taxonomy, identity, and response validation
 
-**Goal:** Build all deterministic validators before writing network collectors.
+**Goal:** Build pure validation primitives before writing network collectors; adapter-specific integration is completed in Chunks 3 and 5.
 
 Implement:
 
@@ -322,11 +328,8 @@ Implement:
 Requirements:
 
 - LREQ-EXT-020
-- LREQ-EXT-060
-- LREQ-EXT-070
-- LREQ-EXT-080
-- LREQ-GQL-060
-- LREQ-GQL-070
+- supporting contracts for LREQ-EXT-060, LREQ-EXT-070, and LREQ-EXT-080
+- supporting contracts for LREQ-GQL-060 and LREQ-GQL-070
 - LREQ-MET-010
 
 Tests:
@@ -339,12 +342,13 @@ Gate:
 - All identity and taxonomy tests pass without network access.
 - Invalid data is represented explicitly, never silently converted to zero or an ordinary asset.
 - Validation functions accept typed data and return typed results.
+- This chunk does not claim complete Coveo or GraphQL requirement behavior; those validators are applied to external responses in Chunks 3 and 5.
 
 ---
 
 ## Chunk 2 — SQLite schema and persistence contracts
 
-**Goal:** Define the audit trail and persistence API before runtime discovery or sampling.
+**Goal:** Define the audit trail and persistence API before runtime discovery or sampling. This chunk supplies persistence contracts; complete sampling, enrichment, streaming, and redaction behavior is verified by the integration chunks that use them.
 
 Implement tables:
 
@@ -362,12 +366,12 @@ Implement:
 - streamed insertion APIs and transaction boundaries
 - run/category status transitions that preserve unrelated category failures
 
-Requirements:
+Supporting contracts:
 
-- LREQ-SMP-080
-- LREQ-GQL-080
-- LREQ-NFR-010
-- LREQ-SEC-020
+- persistence support for LREQ-SMP-080
+- persistence support for LREQ-GQL-080
+- persistence support for LREQ-NFR-010
+- persistence support for LREQ-SEC-020
 
 Gate:
 
@@ -376,6 +380,8 @@ Gate:
 - `(run_id, category)` is enforced for category scores.
 - Secrets cannot enter persisted records.
 - A failed category does not roll back unrelated category observations.
+- Streaming insertion APIs and category-isolated transactions/savepoints are available to Chunks 3, 4, and 6.
+- Behavioral verification of sampling summaries, unique enrichment, streamed discovery, and collector/error redaction remains in Chunks 3, 4, and 6.
 
 ---
 
@@ -422,6 +428,7 @@ Gate:
 - Failed pages remain failures and are never interpreted as zero assets.
 - Raw observations are persisted before canonical populations or samples are constructed.
 - Discovery can process one category without loading the complete result set into memory.
+- This chunk completes the Coveo-side integration of the validation primitives from Chunk 1; the primitive contracts alone do not satisfy LREQ-EXT-060 or LREQ-EXT-080.
 
 ---
 
@@ -494,12 +501,13 @@ Gate:
 - Missing or ambiguous operation correlation fails safely.
 - Partial ProductDetail/PageViews success is persisted independently.
 - The adapter does not perform bulk enrichment or bypass the preflight gate.
+- This chunk completes GraphQL response validation and correlation using the primitives from Chunk 1; bulk identity/enrichment behavior remains in Chunk 6.
 
 ---
 
-## Chunk 6 — Identity preflight, enrichment execution, and enrichment persistence
+## Chunk 6A — Identity preflight planner and gate
 
-**Goal:** Enforce the SRS sequence: sample identities, run identity preflight, then enrich remaining identities only after the gate passes.
+**Goal:** Select and validate a deterministic preflight set, persist its observations, and prevent bulk enrichment unless the gate passes.
 
 Implement:
 
@@ -509,21 +517,13 @@ Implement:
 - success/conflict rate calculations
 - preflight persistence
 - preflight failure gate
-- successful preflight response reuse
-- unique sampled-identity union across categories
-- one enrichment per unique identity
-- bulk enrichment only after successful preflight
-- enrichment persistence coordination
-- projected minimum enrichment-time calculation and pre-enrichment logging
 
 Requirements:
 
 - LREQ-ID-010
 - LREQ-ID-020
 - LREQ-ID-030
-- LREQ-ID-040
-- LREQ-GQL-080
-- LREQ-NFR-020
+- primary implementation for LREQ-ID-040
 
 Tests:
 
@@ -538,20 +538,90 @@ Gate:
 - Successful preflight responses count toward enrichment exactly once.
 - Zero attempted identities produces `insufficient`, not zero success.
 - A failed preflight marks the run failed and does not become an informational-only warning.
+- Preflight rates use unique identities, not category references.
+- Preflight status, summary, and observations are persisted before the gate returns.
 
 ---
 
-## Chunk 7 — Pure sample-aware metrics
+## Chunk 6B — Unique enrichment executor and persistence
 
-**Goal:** Implement the four raw signal families without database or network dependencies.
+**Goal:** Enrich the unique sampled-identity union only after a successful preflight, reusing successful preflight responses and isolating asset failures.
+
+Implement:
+
+- successful preflight response reuse
+- unique sampled-identity union across categories
+- one enrichment request per unique identity
+- bulk enrichment only after successful preflight
+- enrichment persistence coordination
+- projected minimum enrichment-time calculation and pre-enrichment logging
+
+Requirements:
+
+- integration completion for LREQ-GQL-080
+- LREQ-NFR-020
+- LREQ-NFR-030
+
+Tests:
+
+- overlapping category samples
+- response-reuse tests
+- one-request-per-identity tests
+- failed-asset isolation tests
+
+Gate:
+
+- Overlapping category samples cause one enrichment request per unique identity.
+- Successful preflight observations are not requested again.
+- A failed asset does not abort unrelated assets.
+- No bulk-enrichment request is issued when the preflight gate is failed or `insufficient`.
+
+---
+
+## Chunk 7A — Eligibility, date, and page-view metric primitives
+
+**Goal:** Freeze the pure eligibility and time semantics used by every estimator.
+
+Implement:
+
+- UTC normalization
+- exact fractional age calculation
+- page-view index
+- state, identity, date, and range eligibility
+- zero versus null versus invalid/unavailable behavior
+- component-eligibility and zero-population rules
+
+Requirements:
+
+- LREQ-MET-010
+- LREQ-MET-020
+- supporting primitives for LREQ-MET-030, LREQ-MET-040, LREQ-MET-080, and LREQ-MET-090
+- LREQ-ARCH-010
+- LREQ-ARCH-020
+
+Tests:
+
+- `test_validation.py`
+- date and eligibility golden vectors
+
+Gate:
+
+- All primitives are pure and receive `scoring_cutoff_utc` explicitly.
+- No metric reads the current time.
+- Exact fractional age is used.
+- Zero is distinguished from null, invalid, and unavailable.
+- Invalid values are excluded rather than converted to zero.
+
+---
+
+## Chunk 7B — Sample-aware raw estimators
+
+**Goal:** Implement the four raw signal families over frozen eligibility fixtures without database or network dependencies.
 
 Implementation note: choose one explicit module convention before coding. If the lean structure keeps both layers in `scoring.py`, document and test two internal pure layers there: raw metric functions first, then normalization/component/evidence functions. Alternatively, split the raw metric layer into `metrics.py` and retain relative scoring in `scoring.py`; do not leave the architecture ambiguous.
 
 Implement:
 
-- age normalization
-- page-view index
-- usable-value eligibility
 - DemandPerAssetRaw
 - weighted DemandMedianRaw
 - BreadthRaw
@@ -559,30 +629,29 @@ Implement:
 - weighted MedianAgeRaw
 - QualityRaw
 - component coverage
-- zero-population behavior
 - stratum expansion weights
+- exact weighted-median boundary behavior
+- zero-population behavior
 
 Requirements:
 
-- LREQ-MET-010 through LREQ-MET-100
-- LREQ-ARCH-010
-- LREQ-ARCH-020
+- LREQ-MET-030 through LREQ-MET-100
+- integration completion for the LREQ-MET primitives supported by Chunk 7A
 - LREQ-ARCH-030
 
 Tests:
 
 - `test_scoring.py`
-- `test_validation.py`
-- golden vectors
+- metric golden vectors
+- zero-population and unequal-stratum fixtures
 
 Gate:
 
-- All metric functions are pure.
-- No metric reads the current time.
-- Exact fractional age is used.
-- Zero is distinguished from null/unavailable.
+- All estimators are pure and use the Chunk 7A eligibility results.
 - Weighted medians use the exact boundary rule.
 - Quality uses `N_h / n_h`, not a simple sample average.
+- Zero-population metrics are null where specified and coverage is zero where specified.
+- Sample fraction remains distinct from stratum eligibility coverage.
 
 ---
 
@@ -624,15 +693,44 @@ Gate:
 
 ---
 
-## Chunk 9 — Evidence, rankability, and sensitivity
+## Chunk 9A — Evidence, base candidates, and provisional states
 
-**Goal:** Separate score computation from whether the score is suitable for ranking.
+**Goal:** Decide whether scores have sufficient evidence and construct the immutable candidate set before sensitivity is evaluated.
 
 Implement:
 
-- fixed `base_rankable_candidates` constructed before sensitivity
-- `not_rankable`, `provisional`, and `rankable`
+- score-state versus rankability-state handling
 - evidence grades
+- field-specific support checks
+- fixed `base_rankable_candidates`
+- `not_rankable` and `provisional` decisions
+- the rule that sensitivity cannot create candidates or mutate the balanced score
+
+Requirements:
+
+- LREQ-EVD-010 through LREQ-EVD-050, excluding sensitivity-only completion
+- supporting contract for LREQ-SEN-030
+
+Tests:
+
+- evidence/rankability matrices
+- candidate-set construction tests
+- provisional/not-rankable golden vectors
+
+Gate:
+
+- The base candidate set is frozen before any alternate policy is ranked.
+- Score state, evidence grade, and rankability status remain distinct.
+- Categories with insufficient support are excluded from the base candidate set without changing their stored score fields.
+
+---
+
+## Chunk 9B — Sensitivity diagnostics and final rankability
+
+**Goal:** Evaluate alternate policies only over the fixed base candidate set and apply the SRS sensitivity policy.
+
+Implement:
+
 - balanced, demand-heavy, and competition-heavy policies
 - deterministic rank tie-breaking
 - top-3 and top-5 stability
@@ -642,12 +740,11 @@ Implement:
 
 Requirements:
 
-- LREQ-EVD-010 through LREQ-EVD-050
 - LREQ-SEN-010 through LREQ-SEN-040
+- integration completion for LREQ-EVD-040 and LREQ-EVD-050
 
 Tests:
 
-- scoring golden vectors
 - sensitivity golden vectors
 - candidate-set immutability tests
 - rankability transition tests
@@ -657,8 +754,8 @@ Gate:
 - Sensitivity never adds or removes candidates.
 - Sensitivity never modifies the balanced primary score.
 - A sensitivity warning demotes final rankability only as specified.
-- Insufficient candidate counts produce null stability values.
-- Final rankability and evidence are assigned only after sensitivity is computed.
+- Insufficient candidate counts produce the explicitly defined null outputs.
+- Final rankability is assigned only after sensitivity is computed.
 
 ---
 
@@ -700,16 +797,17 @@ Gate:
 - A failed category does not abort unrelated categories.
 - The scoring cutoff is captured once and passed into pure functions.
 - A failed preflight prevents enrichment.
-- Two-category runs are rejected before ranking.
+- Runs with fewer than `MIN_CATEGORIES_PER_RUN` categories (configured as 8) are rejected before ranking.
 - Configuration or taxonomy failure causes no network request.
-- Preflight failure marks the run failed; category-level `not_rankable` remains separately representable.
+- If identity preflight fails: persist `run.status = failed`, retain discovery/sample/preflight observations, issue no bulk-enrichment requests, skip metric/score/ranking computation, persist category limitations where possible, produce no rankable scores, allow the dashboard to display the failed run as an audit/diagnostic report, and return a non-zero CLI exit code.
+- Category-level failure is represented through `discovery_status`, warnings, `evidence_grade`, and `rankability_status`; it is not a separate persisted enum unless the schema explicitly adds a typed `category_status`.
 - 8–20 category runs may compute provisional scores, but have no rankable candidate set and null sensitivity stability values.
 
 ---
 
 ## Chunk 11 — Report renderer and read-only dashboard
 
-**Goal:** Expose the completed run without initiating unexpected network activity.
+**Goal:** Expose completed and failed runs as read-only audit/diagnostic views without initiating unexpected network activity.
 
 Implement:
 
@@ -730,6 +828,7 @@ Gate:
 - `dashboard` performs database reads only.
 - Reports include every mandatory score, sample, coverage, evidence, and sensitivity field.
 - Non-rankable categories remain visible.
+- Report fixtures assert the required distinctions between pagination completion and immutable snapshot completeness, page-view index and weekly traffic rate, midranks and inferential percentiles, sample fraction and stratum eligibility coverage, deterministic evidence and statistical confidence, and heuristic output versus sales/revenue/conversion/traffic-rate claims.
 - Report language does not imply sales forecasting, statistical confidence, or representative marketplace estimation.
 
 ---
@@ -789,6 +888,7 @@ Gate:
 - Preflight failure produces a failed run and zero bulk-enrichment requests.
 - Partial GraphQL operation success and contradicted page-view semantics remain distinguishable.
 - Sensitivity is null when the fixed candidate set is empty and never changes that set.
+- Every analytical test contains an explicit LREQ marker, and a machine-checkable traceability check verifies that every individual `LREQ-*` has at least one required test reference.
 - No stale requirement from the retired SRS is accidentally implemented.
 
 ---
@@ -804,17 +904,20 @@ Chunk 2  SQLite schema and persistence contracts
 Chunk 3  Coveo discovery
 Chunk 4  Canonical populations and deterministic sampling
 Chunk 5  GraphQL protocol adapter
-Chunk 6  Identity preflight, enrichment, and enrichment persistence
-Chunk 7  Metrics
+Chunk 6A Identity preflight planner and gate
+Chunk 6B Unique enrichment executor and persistence
+Chunk 7A Eligibility, date, and page-view primitives
+Chunk 7B Sample-aware raw estimators
 Chunk 8  Normalization and scoring
-Chunk 9  Evidence and sensitivity
+Chunk 9A Evidence and base candidates
+Chunk 9B Sensitivity diagnostics and final rankability
 Chunk 10 Pipeline
 Chunk 11 Report renderer and read-only dashboard
 Chunk 12 CLI commands and configuration precedence
 Chunk 13 Acceptance and quality gates
 ```
 
-After Chunk 0, Chunks 1, 2, and the metric fixture interfaces can proceed in parallel. After Chunks 1 and 2, the Coveo adapter and GraphQL protocol adapter can proceed in parallel. Sampling is operationally downstream of persisted discovery; preflight is downstream of sampling; bulk enrichment is downstream of a successful preflight gate. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
+After Chunk 0, Chunks 1, 2, 5, and the metric fixture interfaces can proceed in parallel. After Chunks 1 and 2, the Coveo adapter and GraphQL protocol adapter can proceed in parallel. Sampling is operationally downstream of persisted discovery; preflight is downstream of sampling and the GraphQL adapter; bulk enrichment is downstream of a successful preflight gate. Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
 
 # 5. Important implementation constraints
 
@@ -827,7 +930,8 @@ After Chunk 0, Chunks 1, 2, and the metric fixture interfaces can proceed in par
 7. **Do not use category overlap to inflate enrichment counts or preflight rates.**
 8. **Use the SRS’s exact weights, thresholds, and boundary conditions.**
 9. **Use fixtures and golden vectors to freeze behavior before connecting to live endpoints.**
-10. **Map every implementation test back to one or more individual `LREQ-*` IDs.**
+10. **Map every implementation test back to one or more individual `LREQ-*` IDs and enforce the mapping mechanically.**
+11. **Use structurally and numerically equivalent logical results for determinism; require byte equivalence only if a canonical serialization format is separately specified.**
 
 ## 6. Implementation clarifications from independent review
 
@@ -841,7 +945,13 @@ Runs with 8–20 categories may calculate provisional scores, but they do not pr
 
 ### 6.3 Empty sensitivity candidate sets
 
-Sensitivity is evaluated only over the fixed `base_rankable_candidates` set. If that set is empty or too small for a stability statistic, sensitivity values are `null`; sensitivity does not independently create candidates or alter the balanced score.
+Sensitivity is evaluated only over the fixed `base_rankable_candidates` set. If that set is empty or too small for a stability statistic, sensitivity does not independently create candidates or alter the balanced score. The null contract is explicit:
+
+- `top_3_stability = null` when fewer than 3 base candidates exist.
+- `top_5_stability = null` when fewer than 5 base candidates exist.
+- `maximum_score_delta = null` and `maximum_rank_displacement = null` when there are no base candidates or no comparable policy ranks.
+- `sensitivity_warning = null` when the required sensitivity statistic cannot be computed; it is not `false` or zero.
+- `ranking_sensitivity_json` retains an explicit empty-candidate or insufficient-candidate status rather than becoming an empty, ambiguous object.
 
 ### 6.4 Runtime invariant
 
@@ -852,5 +962,20 @@ discover → persist → canonicalize → sample → preflight → enrich → cu
 ```
 
 The GraphQL protocol adapter may be implemented before preflight, but it must not execute bulk enrichment until the preflight-controlled executor has passed the gate.
+
+### 6.5 Category failure representation
+
+Category-level failure is represented through `discovery_status`, warnings,
+`evidence_grade`, and `rankability_status`; run-level `status` remains separate.
+If implementation needs a standalone category state, it must add and document a
+typed `category_status` field rather than overloading discovery or rankability.
+
+### 6.6 Test traceability contract
+
+Every analytical test must contain an explicit individual `LREQ-*` marker, for
+example `@pytest.mark.lreq("LREQ-SMP-060")`, or be listed in a machine-readable
+test-to-requirement matrix. Chunk 13 must verify both directions: every required
+test has at least one valid LREQ marker, and every individual LREQ has at least
+one required test reference.
 
 This plan exposes the primary hidden dependency: the difficult networked parts are downstream of deterministic taxonomy, identity, sampling, status, and persistence contracts. Implementing those foundational pieces first substantially reduces the risk of building a collector that produces data the scoring layer cannot safely interpret.
