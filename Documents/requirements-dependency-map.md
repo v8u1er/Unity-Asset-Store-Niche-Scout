@@ -15,14 +15,16 @@ The SRS contains **89 individually defined `LREQ-*` requirements**. The wildcard
 - `—` means no direct LREQ prerequisite; foundational project setup may still be required.
 - A requirement may have an early **supporting contract** or pure primitive and a later **integration completion**. A chunk that defines a contract does not thereby claim to complete the runtime behavior of every requirement using that contract.
 - Chunk ownership is described separately from the dependency table using these labels: **primary implementation chunk**, **supporting contract chunk**, and **integration completion chunk**. This prevents early validation and persistence work from being mistaken for complete adapter or orchestration behavior.
+- The module boundary is fixed: `models.py` contains typed structures; `validation.py` contains structural and semantic validation primitives; `sampling.py` contains deterministic sampling; `metrics.py` contains metric eligibility and raw sample-aware estimators; `scoring.py` contains normalization, score components, evidence, and sensitivity; I/O and orchestration remain in `collector.py`, `database.py`, `pipeline.py`, `report.py`, and `cli.py`.
 - The dependency graph is a DAG. The runtime path is shown separately from parallelizable protocol, fixture, persistence, and pure-function work.
 
 For the early ownership cases that otherwise look contradictory in the table:
 
 - Chunk 1 is the supporting contract chunk for identity, taxonomy, and value validation; Chunks 3 and 5 are the integration completion chunks for Coveo and GraphQL responses.
 - Chunk 2 is the supporting contract chunk for sampling summaries, unique enrichment persistence, streaming, and redaction; Chunks 3, 4B, 6A, and 6B are the integration completion chunks.
+- Chunk 4B owns initial sampling-summary persistence; Chunk 6B owns post-enrichment finalization of usable counts and authoritative sample summaries.
 - Chunk 6A is the primary implementation chunk for preflight planning and gating; Chunk 6B completes unique enrichment and reuse behavior.
-- Chunk 7A supplies structural validation and metric-eligibility primitives; Chunk 7B completes the raw estimators. Chunk 9A produces pre-sensitivity evidence state and freezes base candidates; Chunk 9B completes sensitivity, final evidence, and final rankability.
+- Chunk 1 supplies structural validation; Chunk 7A supplies metric-eligibility primitives; Chunk 7B completes the raw estimators. Chunk 9A produces pre-sensitivity evidence state and freezes base candidates; Chunk 9B completes sensitivity, final evidence, and final rankability.
 
 ---
 
@@ -30,11 +32,17 @@ For the early ownership cases that otherwise look contradictory in the table:
 
 The dependency tables above describe logical prerequisites. The following
 machine-actionable matrix assigns every individual requirement a primary owner,
-supporting chunks, an integration/completion chunk, and the required test
+supporting chunks, one or more integration/completion chunks, and the required test
 references. Ranges are intentionally not used in this matrix so that tooling
 can validate coverage one `LREQ-*` at a time.
 
-| REQ ID | Primary owner | Supporting chunks | Completion chunk | Required tests |
+`Completion chunk(s)` is intentionally plural. A requirement may have multiple
+completion chunks when protocol behavior, metric semantics, and orchestration are
+distributed across layers. The primary owner is the chunk accountable for the
+requirement's principal implementation; completion chunks identify every layer
+that must be complete before the requirement is considered satisfied.
+
+| REQ ID | Primary owner | Supporting chunks | Completion chunk(s) | Required tests |
 |---|---|---|---|---|
 | LREQ-ARCH-010 | Chunk 0 | — | Chunk 0 | LREQ-TST-010, LREQ-NFR-040 |
 | LREQ-ARCH-020 | Chunk 0 | — | Chunk 0 | LREQ-TST-010, LREQ-NFR-040 |
@@ -54,15 +62,15 @@ can validate coverage one `LREQ-*` at a time.
 | LREQ-GQL-030 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
 | LREQ-GQL-040 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
 | LREQ-GQL-050 | Chunk 5 | Chunk 1, Chunk 2 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
-| LREQ-GQL-060 | Chunk 7A | Chunk 1, Chunk 5 | Chunk 7A | LREQ-TST-040, LREQ-TST-050 |
-| LREQ-GQL-070 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-030, LREQ-TST-040 |
+| LREQ-GQL-060 | Chunk 7A | Chunk 1, Chunk 5 | Chunk 5, Chunk 7A | LREQ-TST-040, LREQ-TST-050 |
+| LREQ-GQL-070 | Chunk 5 | Chunk 1 | Chunk 5, Chunk 7A | LREQ-TST-030, LREQ-TST-040 |
 | LREQ-GQL-080 | Chunk 6B | Chunk 2, Chunk 5, Chunk 6A | Chunk 6B | LREQ-TST-030, LREQ-TST-040, LREQ-TST-080 |
 | LREQ-SEC-010 | Chunk 0 | Chunk 3, Chunk 5, Chunk 12 | Chunk 3, Chunk 5, Chunk 12 | LREQ-TST-080 |
 | LREQ-SEC-020 | Chunk 2 | Chunk 0, Chunk 3, Chunk 5 | Chunk 13 | LREQ-TST-080, LREQ-NFR-060 |
 | LREQ-ID-010 | Chunk 6A | Chunk 2, Chunk 4B, Chunk 5 | Chunk 6A | LREQ-TST-080 |
 | LREQ-ID-020 | Chunk 6A | Chunk 1, Chunk 2, Chunk 5 | Chunk 6A | LREQ-TST-040, LREQ-TST-080 |
 | LREQ-ID-030 | Chunk 6A | Chunk 0 | Chunk 6A | LREQ-TST-080 |
-| LREQ-ID-040 | Chunk 6A | Chunk 2, Chunk 5 | Chunk 10 | LREQ-TST-080 |
+| LREQ-ID-040 | Chunk 6A | Chunk 2, Chunk 5 | Chunk 6A, Chunk 10 | LREQ-TST-080 |
 | LREQ-SMP-010 | Chunk 4A | Chunk 1, Chunk 2, Chunk 3 | Chunk 4A | LREQ-TST-020, LREQ-TST-080 |
 | LREQ-SMP-020 | Chunk 4A | Chunk 3 | Chunk 4A | LREQ-TST-020 |
 | LREQ-SMP-030 | Chunk 4A | Chunk 0 | Chunk 4A | LREQ-TST-020 |
@@ -70,7 +78,7 @@ can validate coverage one `LREQ-*` at a time.
 | LREQ-SMP-050 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
 | LREQ-SMP-060 | Chunk 4A | Chunk 0 | Chunk 4A | LREQ-TST-020 |
 | LREQ-SMP-070 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
-| LREQ-SMP-080 | Chunk 4B | Chunk 2, Chunk 4A | Chunk 4B | LREQ-TST-020, LREQ-TST-080 |
+| LREQ-SMP-080 | Chunk 4B | Chunk 2, Chunk 4A, Chunk 6B | Chunk 4B, Chunk 6B | LREQ-TST-020, LREQ-TST-080 |
 | LREQ-SMP-090 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
 | LREQ-MET-010 | Chunk 7A | Chunk 1, Chunk 5 | Chunk 7A | LREQ-TST-010, LREQ-TST-050 |
 | LREQ-MET-020 | Chunk 7A | Chunk 0 | Chunk 7A | LREQ-TST-010, LREQ-TST-050 |
@@ -134,9 +142,9 @@ can validate coverage one `LREQ-*` at a time.
 
 | REQ ID | Module | Depends on LREQs | Pure/I/O | Test type | Edge cases |
 |---|---|---|---|---|---|
-| LREQ-ARCH-010 | `models.py`, `metrics`, `scoring` | — | Pure boundary | Architecture/import test; analytical tests | Typed structures only; no imports from collector/database/report/CLI; no file or network I/O |
-| LREQ-ARCH-020 | `metrics`, `scoring` | LREQ-ARCH-010 | Pure | Determinism/unit test | No system-clock reads; timestamps must be supplied |
-| LREQ-ARCH-030 | `metrics`, `scoring`, `pipeline` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure plus orchestration | Repeated-input deterministic test; end-to-end test | Same inputs, policy versions, and configuration must produce structurally and numerically equivalent logical results; byte identity requires a separately defined canonical serialization |
+| LREQ-ARCH-010 | `models.py`, `metrics.py`, `scoring.py` | — | Pure boundary | Architecture/import test; analytical tests | Typed structures only; no imports from collector/database/report/CLI; no file or network I/O |
+| LREQ-ARCH-020 | `metrics.py`, `scoring.py` | LREQ-ARCH-010 | Pure | Determinism/unit test | No system-clock reads; timestamps must be supplied |
+| LREQ-ARCH-030 | `metrics.py`, `scoring.py`, `pipeline.py` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure plus orchestration | Repeated-input deterministic test; end-to-end test | Same inputs, policy versions, and configuration must produce structurally and numerically equivalent logical results; byte identity requires a separately defined canonical serialization |
 
 ## Coveo discovery and external collection
 
@@ -200,16 +208,16 @@ can validate coverage one `LREQ-*` at a time.
 
 | REQ ID | Module | Depends on LREQs | Pure/I/O | Test type | Edge cases |
 |---|---|---|---|---|---|
-| LREQ-MET-010 | `validation.py`, `scoring.py` | LREQ-GQL-060, LREQ-GQL-070 | Pure | Eligibility unit test | Structural validation is supplied by Chunk 1; Chunk 7A owns metric eligibility semantics: null, malformed, wrong type, invalid range, future, naive, negative, non-finite, and excluded-state values |
-| LREQ-MET-020 | `scoring.py` | LREQ-ARCH-020 | Pure | Date unit/golden test | UTC normalization, naive dates, exact fractional age, future dates |
-| LREQ-MET-030 | `scoring.py` | LREQ-MET-010, LREQ-MET-040, LREQ-SMP-080 | Pure | Metric unit/golden test | No usable stratum; zero population; never divide by zero; denominator uses usable-stratum weights |
-| LREQ-MET-040 | `scoring.py` | LREQ-MET-010, LREQ-MET-020, LREQ-GQL-050, LREQ-GQL-060, LREQ-GQL-070 | Pure | Index unit/golden test | Zero page views are valid; negative/non-finite values invalid; age threshold; identity/state mismatch; ProductDetail may remain usable when PageViews is unavailable |
-| LREQ-MET-050 | `scoring.py` | LREQ-MET-040, LREQ-SMP-080 | Pure | Weighted-median golden test | Parallel to DemandPerAssetRaw; ties, exact half-weight boundary, final-value boundary, empty usable set |
-| LREQ-MET-060 | `scoring.py` | LREQ-MET-030, LREQ-SMP-080 | Pure | Coverage unit/golden test | Coverage bounded to `[0,1]`; missing strata; zero population |
-| LREQ-MET-070 | `validation.py`, `scoring.py` | LREQ-EXT-050, LREQ-EXT-060, LREQ-EXT-070, LREQ-EXT-080 | Pure over persisted discovery data | Breadth validation test | Verified total, duplicate collapse, unresolved/conflicting identity, incomplete discovery |
-| LREQ-MET-080 | `scoring.py` | LREQ-MET-010, LREQ-MET-020, LREQ-GQL-060, LREQ-SMP-080 | Pure | Recent-supply unit/golden test | Inclusive 365-day window; boundary date; missing dates; zero population; weighted median age |
-| LREQ-MET-090 | `scoring.py` | LREQ-MET-010, LREQ-GQL-060, LREQ-MET-040 | Pure | Constants and threshold test | Rating count below 5; eligible asset count below 5; contradicted page-view semantics |
-| LREQ-MET-100 | `scoring.py` | LREQ-GQL-050, LREQ-GQL-060, LREQ-GQL-070, LREQ-MET-040, LREQ-MET-090, LREQ-SMP-080 | Pure | Quality golden test | ProductDetail/PageViews operation eligibility; identity mismatch; published state; zero visibility denominator; unequal strata; `N_h / n_h` weights; invalid ratings; insufficient coverage |
+| LREQ-MET-010 | `validation.py`, `metrics.py` | LREQ-GQL-060, LREQ-GQL-070 | Pure | Eligibility unit test | Structural validation is supplied by Chunk 1; Chunk 7A owns metric eligibility semantics: null, malformed, wrong type, invalid range, future, naive, negative, non-finite, and excluded-state values |
+| LREQ-MET-020 | `metrics.py` | LREQ-ARCH-020 | Pure | Date unit/golden test | UTC normalization, naive dates, exact fractional age, future dates |
+| LREQ-MET-030 | `metrics.py` | LREQ-MET-010, LREQ-MET-040, LREQ-SMP-080 | Pure | Metric unit/golden test | No usable stratum; zero population; never divide by zero; denominator uses usable-stratum weights |
+| LREQ-MET-040 | `metrics.py` | LREQ-MET-010, LREQ-MET-020, LREQ-GQL-050, LREQ-GQL-060, LREQ-GQL-070 | Pure | Index unit/golden test | Zero page views are valid; negative/non-finite values invalid; age threshold; identity/state mismatch; ProductDetail may remain usable when PageViews is unavailable |
+| LREQ-MET-050 | `metrics.py` | LREQ-MET-040, LREQ-SMP-080 | Pure | Weighted-median golden test | Parallel to DemandPerAssetRaw; ties, exact half-weight boundary, final-value boundary, empty usable set |
+| LREQ-MET-060 | `metrics.py` | LREQ-MET-030, LREQ-SMP-080 | Pure | Coverage unit/golden test | Coverage bounded to `[0,1]`; missing strata; zero population |
+| LREQ-MET-070 | `validation.py`, `metrics.py` | LREQ-EXT-050, LREQ-EXT-060, LREQ-EXT-070, LREQ-EXT-080 | Pure over persisted discovery data | Breadth validation test | Verified total, duplicate collapse, unresolved/conflicting identity, incomplete discovery |
+| LREQ-MET-080 | `metrics.py` | LREQ-MET-010, LREQ-MET-020, LREQ-GQL-060, LREQ-SMP-080 | Pure | Recent-supply unit/golden test | Inclusive 365-day window; boundary date; missing dates; zero population; weighted median age |
+| LREQ-MET-090 | `metrics.py` | LREQ-MET-010, LREQ-GQL-060, LREQ-MET-040 | Pure | Constants and threshold test | Rating count below 5; eligible asset count below 5; contradicted page-view semantics |
+| LREQ-MET-100 | `metrics.py` | LREQ-GQL-050, LREQ-GQL-060, LREQ-GQL-070, LREQ-MET-040, LREQ-MET-090, LREQ-SMP-080 | Pure | Quality golden test | ProductDetail/PageViews operation eligibility; identity mismatch; published state; zero visibility denominator; unequal strata; `N_h / n_h` weights; invalid ratings; insufficient coverage |
 
 ## Normalization
 
@@ -276,7 +284,7 @@ can validate coverage one `LREQ-*` at a time.
 | LREQ-NFR-010 | `collector.py`, `database.py` | LREQ-EXT-050, LREQ-SMP-080 | Network/database streaming I/O | Streaming/instrumentation test | Large discovery results must not require all responses in memory |
 | LREQ-NFR-020 | `pipeline.py`, `collector.py` | LREQ-SMP-080, LREQ-ID-010, LREQ-GQL-080 | Logging/process I/O | Pipeline-log fixture test | Log canonical count, sample count, unique enrichment count, and projected minimum time before enrichment |
 | LREQ-NFR-030 | `collector.py`, `pipeline.py` | LREQ-EXT-050, LREQ-GQL-040, LREQ-ID-040 | Orchestration/I/O | Failure-isolation integration test | One page or asset failure must not abort unrelated categories/assets |
-| LREQ-NFR-040 | `metrics`, `scoring` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure | Static inspection plus API tests | Type hints and docstrings must describe null and edge behavior |
+| LREQ-NFR-040 | `metrics.py`, `scoring.py` | LREQ-ARCH-010, LREQ-ARCH-020 | Pure | Static inspection plus API tests | Type hints and docstrings must describe null and edge behavior |
 | LREQ-NFR-050 | Project-wide | — | Runtime/platform | Environment smoke test | Python 3.11+; Windows, macOS, Linux; `pathlib` paths |
 | LREQ-NFR-060 | Project-wide | LREQ-NFR-040, LREQ-TST-010 | Tooling/process I/O | Formatting, linting, secret, and analytical checks | Strict whole-project typing, 95% coverage, and CI-on-every-commit are explicitly deferred |
 
@@ -290,7 +298,7 @@ These are verification requirements rather than runtime features.
 | LREQ-TST-020 | `tests/test_sampling.py` | LREQ-SMP-010 through LREQ-SMP-090 | Test-only | Sampling unit/golden tests | Census boundaries, four strata, deterministic repeat, reduced final stratum, digest changes, no duplicates |
 | LREQ-TST-030 | `tests/test_identity.py` | LREQ-EXT-060, LREQ-EXT-070, LREQ-GQL-070, LREQ-GQL-080 | Test-only | Identity fixture/unit tests | Valid, malformed, unresolved, conflicting, URI parsing, GraphQL mismatch, cross-category duplicates |
 | LREQ-TST-040 | `tests/test_collector.py`, `tests/test_identity.py` | LREQ-GQL-010 through LREQ-GQL-080 | Test-only | HTTP/GraphQL fixture tests | Reversed order, missing association, errors, null data, wrong types, invalid page views, partial success, auth/CSRF failure |
-| LREQ-TST-050 | `tests/test_scoring.py`, `tests/test_validation.py` | LREQ-MET-010 through LREQ-MET-100 | Test-only | Date/metric unit and golden tests | UTC, naive dates, fractional age, thresholds, future dates, zero views, windows, weighted strata/medians, zero denominator |
+| LREQ-TST-050 | `tests/test_metrics.py`, `tests/test_validation.py` | LREQ-MET-010 through LREQ-MET-100 | Test-only | Date/metric unit and golden tests | UTC, naive dates, fractional age, thresholds, future dates, zero views, windows, weighted strata/medians, zero denominator |
 | LREQ-TST-060 | `tests/test_scoring.py` | LREQ-NRM-010 through LREQ-SCR-060, LREQ-EVD-010 through LREQ-EVD-040 | Test-only | Scoring golden/integration tests | Ties, all-equal references, missing components, coverage shrinkage, 8 versus 21 categories, fixed candidate set |
 | LREQ-TST-070 | `tests/test_scoring.py` | LREQ-SEN-010 through LREQ-SEN-040 | Test-only | Sensitivity golden tests | All policies, displacement, stability, thresholds, score preservation, unchanged candidate set |
 | LREQ-TST-080 | `tests/test_end_to_end.py` | All collection, sampling, scoring, persistence, and reporting requirements | Test-only with fixture I/O | End-to-end fixture | Category validation, pagination, duplicates, overlap, sample, one enrichment per identity, partial GraphQL, SQLite, report |
@@ -352,14 +360,15 @@ discover → persist → canonicalize → sample → preflight → enrich → cu
 → final evidence/rankability → persist results → report
 ```
 
-The Coveo and GraphQL adapters may be developed in parallel after the
-foundational contracts. Sampling is operationally downstream of persisted
-discovery; preflight is downstream of sampling and the GraphQL adapter; bulk
-enrichment is downstream of a successful preflight gate. Pure metric/scoring
-Pure metric/scoring work and the report template, view-model contract, and
-fixture renderer may proceed against frozen fixtures. Database-backed report
-integration begins only after the final score, sensitivity, and failed-run read
-models are frozen.
+The precise parallelization rule is:
+
+- After Chunk 0, Chunk 1, Chunk 2, and metric fixture/interface design may proceed in parallel.
+- Chunk 5 may begin against the frozen interfaces from Chunk 1, but its integration is blocked until Chunk 1 is complete; Chunk 3 depends on both Chunk 1 and Chunk 2.
+- After Chunk 1 and Chunk 2 are complete, Chunks 3 and 5 may proceed in parallel.
+- Sampling is operationally downstream of persisted discovery: 4A computes the pure result and 4B materializes it. Preflight is downstream of 4B and the Chunk 5 adapter; bulk enrichment is downstream of a successful preflight gate.
+- Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The report template, view-model contract, and fixture renderer may also proceed against frozen result fixtures; database-backed report integration begins only after final score, sensitivity, and failed-run read models are frozen.
+
+The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
 ---
 
 # 3. Chunked implementation plan
@@ -369,6 +378,12 @@ Each chunk should be independently reviewable and should end with a testable gat
 ## Chunk 0 — Project skeleton and contracts
 
 **Goal:** Establish the package boundaries before implementing behavior.
+
+Internal sub-gates:
+
+- **Chunk 0A — Package and architecture contracts:** package layout, import boundaries, module ownership, and pure/I/O dependency rules.
+- **Chunk 0B — Domain models, statuses, and serialization contracts:** typed SRS structures, enums, policy versions, statuses, and logical row fields.
+- **Chunk 0C — Configuration, persistence, and test-traceability contracts:** configuration precedence, repository/schema contracts, fixture conventions, and machine-readable traceability validation.
 
 Implement:
 
@@ -391,7 +406,16 @@ Implement:
 - `scoring_cutoff_utc` as an explicit pure-function input
 - SQLite schema specification and repository protocol only; no SQLite implementation
 - test fixture conventions
-- pytest `lreq` marker registration and the machine-readable test-to-requirement matrix format
+- pytest `lreq` marker registration
+- `tests/traceability.json`, whose keys are fully qualified test node IDs such as `tests/test_sampling.py::test_digest_changes_with_rule_version` and whose values are arrays of individual `LREQ-*` IDs, for example:
+
+  ```json
+  {
+    "tests/test_sampling.py::test_digest_changes_with_rule_version": ["LREQ-SMP-060", "LREQ-TST-020"]
+  }
+  ```
+
+- `python -m niche_scout.tools.validate_traceability` as the validator command; it checks that every referenced LREQ exists, every analytical test has both a pytest marker and a matrix entry, every required LREQ has at least one test mapping, and no retired or unknown requirement is referenced
 
 Requirements primarily covered:
 
@@ -406,11 +430,13 @@ Requirements primarily covered:
 Gate:
 
 - Package imports successfully.
-- `metrics` and `scoring` do not import I/O modules.
+- `metrics.py` and `scoring.py` do not import I/O modules.
 - Configuration precedence has a typed contract and fixture cases; behavioral CLI precedence tests are completed in Chunk 12.
 - All required status values and mandatory logical row fields are represented by typed structures.
 - The repository protocol and schema specification are defined without requiring SQLite behavior in this chunk.
-- Every analytical test fixture has a traceability marker or matrix entry; missing markers fail the local test command.
+- Chunk 0A, 0B, and 0C sub-gates pass independently.
+- Every analytical test has an explicit `@pytest.mark.lreq("LREQ-...")` marker and a corresponding `tests/traceability.json` entry; missing markers or entries fail the local test command, while parameterized tests use their base node ID.
+- The traceability validator passes in both directions: every referenced LREQ exists and every individual LREQ has at least one mapped test.
 - `.env` is ignored and `.env.example` contains no credentials.
 - No network code is required yet.
 
@@ -585,7 +611,7 @@ Implement:
 
 - `sample_members` materialization with selected identity keys or selection digest
 - per-category sampling summaries and census status
-- per-stratum `N_h`, `n_h`, `u_demand_h`, `u_recent_h`, and `u_quality_h` values or explicit placeholders until enrichment eligibility is known
+- per-stratum `N_h`, `n_h`, and explicit pending placeholders for `u_demand_h`, `u_recent_h`, and `u_quality_h` until enrichment eligibility is known
 - stratum boundaries, selected counts, sample fraction, and rule version persistence
 - cross-category overlap counts and percentages after all category samples are selected
 - persisted-value verification against the Chunk 4A pure sampling result
@@ -603,6 +629,7 @@ Gate:
 
 - Every selected sample has a persisted membership or reproducible digest.
 - Per-category and per-stratum summaries survive a database round trip.
+- Before enrichment, usable-count fields are explicitly marked pending rather than presented as measured values.
 - Overlap is calculated from unique canonical identities after all samples are selected.
 - Persisted sample fraction is distinct from per-stratum eligibility coverage.
 - A pure sampling test cannot pass this gate without a corresponding persistence verification.
@@ -628,7 +655,13 @@ Implement:
 
 Requirements:
 
-- LREQ-GQL-010 through LREQ-GQL-070
+Primary implementation:
+
+- LREQ-GQL-010 through LREQ-GQL-050
+
+Supporting adapter behavior:
+
+- LREQ-GQL-060 and LREQ-GQL-070; their metric-eligibility and metric identity-mismatch completion is owned by Chunk 7A.
 - LREQ-SEC-010
 - LREQ-SEC-020
 - LREQ-NFR-030
@@ -645,6 +678,7 @@ Gate:
 - Partial ProductDetail/PageViews success is persisted independently.
 - The adapter does not perform bulk enrichment or bypass the preflight gate.
 - This chunk completes GraphQL response validation and correlation using the primitives from Chunk 1; it does not decide metric eligibility or bulk enrichment. Bulk identity/enrichment behavior remains in Chunks 6A and 6B.
+- The metric-eligibility portion of LREQ-GQL-060 and the metric identity-mismatch eligibility portion of LREQ-GQL-070 are not complete until Chunk 7A applies them to metric inputs.
 
 ---
 
@@ -701,6 +735,8 @@ Implement:
 - at most one enrichment execution per unique identity per run; a successful preflight observation counts as that identity's enrichment
 - bulk enrichment only after successful preflight
 - enrichment persistence coordination
+- post-enrichment finalization of per-stratum `u_demand_h`, `u_recent_h`, and `u_quality_h` from the authoritative enrichment observations and eligibility rules
+- final category/sample summaries and authoritative `sample_members`/summary consistency checks
 - projected minimum enrichment-time calculation and pre-enrichment logging
 
 Requirements:
@@ -708,6 +744,7 @@ Requirements:
 - integration completion for LREQ-GQL-080
 - LREQ-NFR-020
 - LREQ-NFR-030
+- final usable-count and sample-summary persistence for LREQ-SMP-080
 
 Tests:
 
@@ -722,6 +759,8 @@ Gate:
 - Successful preflight observations are not requested again.
 - A failed asset does not abort unrelated assets.
 - No bulk-enrichment request is issued when the preflight gate is failed or `insufficient`.
+- After enrichment, every sampled stratum has final usable counts or an explicit unavailable/invalid status with the eligibility rule used for that count; pending placeholders are not left in a completed run.
+- Final `u_demand_h`, `u_recent_h`, and `u_quality_h` values agree with the pure metric inputs and are consistent across `sample_members`, `enrichment_observations`, `stratum_statistics_json`, and `category_scores`.
 
 ---
 
@@ -743,6 +782,8 @@ Requirements:
 - LREQ-MET-010
 - LREQ-MET-020
 - supporting primitives for LREQ-MET-030, LREQ-MET-040, LREQ-MET-080, and LREQ-MET-090
+- metric-eligibility completion for LREQ-GQL-060
+- metric identity-mismatch eligibility completion for LREQ-GQL-070
 - LREQ-ARCH-010
 - LREQ-ARCH-020
 
@@ -766,7 +807,7 @@ Gate:
 
 **Goal:** Implement the four raw signal families over frozen eligibility fixtures without database or network dependencies.
 
-Implementation note: choose one explicit module convention before coding. If the lean structure keeps both layers in `scoring.py`, document and test two internal pure layers there: raw metric functions first, then normalization/component/evidence functions. Alternatively, split the raw metric layer into `metrics.py` and retain relative scoring in `scoring.py`; do not leave the architecture ambiguous.
+Raw estimators belong in `metrics.py`; `scoring.py` begins with Chunk 8 and owns normalization, score components, evidence, and sensitivity. This boundary is fixed by Chunk 0 and must be enforced by import-boundary tests.
 
 Implement:
 
@@ -789,13 +830,14 @@ Requirements:
 
 Tests:
 
-- `test_scoring.py`
+- `test_metrics.py`
 - metric golden vectors
 - zero-population and unequal-stratum fixtures
 
 Gate:
 
 - All estimators are pure and use the Chunk 7A eligibility results.
+- Raw estimators are implemented in `metrics.py`; `scoring.py` does not own raw metric calculation.
 - Weighted medians use the exact boundary rule.
 - Quality uses `N_h / n_h`, not a simple sample average.
 - Zero-population metrics are null where specified and coverage is zero where specified.
@@ -939,10 +981,15 @@ Implement this sequence:
 
 Requirements:
 
+Primary implementation:
+
 - LREQ-ARCH-030
-- LREQ-ID-040
+- LREQ-ID-040 integration completion
 - LREQ-NFR-020
 - LREQ-NFR-030
+
+Supporting orchestration behavior for CLI requirements:
+
 - LREQ-CLI-010
 - LREQ-CLI-040
 
@@ -954,6 +1001,7 @@ Gate:
 - Runs with fewer than `MIN_CATEGORIES_PER_RUN` categories (configured as 8) are rejected before ranking.
 - Configuration or taxonomy failure causes no network request.
 - If identity preflight fails: persist `run.status = failed`, retain discovery/sample/preflight observations, issue no bulk-enrichment requests, skip metric/score/ranking computation, persist category limitations where possible, produce no rankable scores, allow the dashboard to display the failed run as an audit/diagnostic report, and return a non-zero CLI exit code.
+- Final sample-summary updates from Chunk 6B must complete before metric calculation; `category_scores` must use the same finalized per-stratum usable counts persisted in the sampling summaries.
 - Category-level failure is represented internally by a typed `CategoryStatus` (`healthy`, `degraded`, `failed`) and mapped to `discovery_status`, warnings, `evidence_grade`, and `rankability_status`; it is not a separate persisted enum unless the schema explicitly adds that field.
 - On preflight failure, the report read model uses one null-score `category_scores` row per requested category with persisted discovery/sample fields, `evidence_grade = insufficient`, `rankability_status = not_rankable`, and explicit preflight warnings. If implementation instead omits those rows, Chunk 11 must join runs, discovery, samples, and preflight observations to provide the same one-row-per-category view.
 - 8–20 category runs may compute provisional scores, but have no rankable candidate set and null sensitivity stability values.
@@ -1030,6 +1078,7 @@ Implement:
 - secret-handling checks
 - import-boundary checks
 - deterministic repeat-run checks
+- explicit scope-prohibition checks for retired features, including a maintained list of deferred legacy commands/tables and static searches that fail if historical scheduling, resume, or other retired behavior is reintroduced
 
 Requirements:
 
@@ -1045,8 +1094,9 @@ Gate:
 - Preflight failure produces a failed run and zero bulk-enrichment requests.
 - Partial GraphQL operation success and contradicted page-view semantics remain distinguishable.
 - Sensitivity is null when the fixed candidate set is empty and never changes that set.
-- Every analytical test contains an explicit LREQ marker, missing markers fail local test execution, and a machine-checkable bidirectional traceability check verifies that every required test maps to valid individual `LREQ-*` IDs and every individual `LREQ-*` has at least one required test reference.
-- No stale requirement from the retired SRS is accidentally implemented.
+- Every analytical test contains an explicit LREQ marker and a matching matrix entry; missing markers or entries fail local test execution, and a machine-checkable bidirectional traceability check verifies that every required test maps to valid individual `LREQ-*` IDs and every individual `LREQ-*` has at least one required test reference.
+- `python -m niche_scout.tools.validate_traceability` passes for `tests/traceability.json` and pytest markers.
+- The scope-prohibition check passes against the maintained retired-feature list; no stale requirement from the retired SRS is accidentally implemented.
 
 ---
 
@@ -1075,12 +1125,12 @@ Chunk 12 CLI commands and configuration precedence
 Chunk 13 Acceptance and quality gates
 ```
 
-After Chunk 0, Chunks 1, 2, 5, and the metric fixture interfaces can proceed in parallel. After Chunks 1 and 2, the Coveo adapter and GraphQL protocol adapter can proceed in parallel. Sampling is operationally downstream of persisted discovery: 4A computes the pure result and 4B materializes it; preflight is downstream of 4B and the GraphQL adapter; bulk enrichment is downstream of a successful preflight gate. Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
+After Chunk 0, Chunk 1, Chunk 2, and metric fixture/interface design can proceed in parallel. Chunk 5 may begin against frozen Chunk 1 interfaces, but its integration depends on Chunk 1; Chunk 3 depends on Chunks 1 and 2. After Chunks 1 and 2, Chunks 3 and 5 can proceed in parallel. Sampling remains downstream of persisted discovery: 4A computes the pure result and 4B materializes it; preflight is downstream of 4B and Chunk 5; bulk enrichment is downstream of a successful preflight gate. Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
 
 # 5. Important implementation constraints
 
 1. **Do not start with live network integration.** Build request builders and response parsers against fixtures first.
-2. **Keep pure scoring isolated.** `metrics` and `scoring` should not know SQLite, HTTP, CLI, report, or system-clock APIs exist.
+2. **Keep pure analysis isolated.** `metrics.py` and `scoring.py` should not know SQLite, HTTP, CLI, report, or system-clock APIs exist; `metrics.py` owns raw estimators and `scoring.py` owns relative scoring and decision logic.
 3. **Treat null, zero, invalid, and unavailable as different states.**
 4. **Persist audit information before computing scores.**
 5. **Build the base rankable candidate set before sensitivity analysis.**
@@ -1131,9 +1181,11 @@ typed `category_status` field rather than overloading discovery or rankability.
 ### 6.6 Test traceability contract
 
 Every analytical test must contain an explicit individual `LREQ-*` marker, for
-example `@pytest.mark.lreq("LREQ-SMP-060")`, or be listed in a machine-readable
-test-to-requirement matrix. Chunk 13 must verify both directions: every required
-test has at least one valid LREQ marker, and every individual LREQ has at least
-one required test reference.
+example `@pytest.mark.lreq("LREQ-SMP-060")`, and be listed in the machine-readable
+`tests/traceability.json` test-to-requirement matrix. Chunk 13 must verify both
+directions: every analytical test has at least one valid LREQ marker and matrix
+entry, every matrix reference names a known individual LREQ, and every individual
+LREQ has at least one required test reference. Parameterized tests are mapped by
+their base pytest node ID rather than each generated case ID.
 
 This plan exposes the primary hidden dependency: the difficult networked parts are downstream of deterministic taxonomy, identity, sampling, status, and persistence contracts. Implementing those foundational pieces first substantially reduces the risk of building a collector that produces data the scoring layer cannot safely interpret.
