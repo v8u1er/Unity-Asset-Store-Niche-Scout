@@ -20,9 +20,111 @@ The SRS contains **89 individually defined `LREQ-*` requirements**. The wildcard
 For the early ownership cases that otherwise look contradictory in the table:
 
 - Chunk 1 is the supporting contract chunk for identity, taxonomy, and value validation; Chunks 3 and 5 are the integration completion chunks for Coveo and GraphQL responses.
-- Chunk 2 is the supporting contract chunk for sampling summaries, unique enrichment persistence, streaming, and redaction; Chunks 3, 4, and 6 are the integration completion chunks.
+- Chunk 2 is the supporting contract chunk for sampling summaries, unique enrichment persistence, streaming, and redaction; Chunks 3, 4B, 6A, and 6B are the integration completion chunks.
 - Chunk 6A is the primary implementation chunk for preflight planning and gating; Chunk 6B completes unique enrichment and reuse behavior.
-- Chunk 7A supplies eligibility primitives; Chunk 7B completes the raw estimators. Chunk 9A freezes base candidates; Chunk 9B completes sensitivity and final rankability.
+- Chunk 7A supplies structural validation and metric-eligibility primitives; Chunk 7B completes the raw estimators. Chunk 9A produces pre-sensitivity evidence state and freezes base candidates; Chunk 9B completes sensitivity, final evidence, and final rankability.
+
+---
+
+## Ownership and test traceability matrix
+
+The dependency tables above describe logical prerequisites. The following
+machine-actionable matrix assigns every individual requirement a primary owner,
+supporting chunks, an integration/completion chunk, and the required test
+references. Ranges are intentionally not used in this matrix so that tooling
+can validate coverage one `LREQ-*` at a time.
+
+| REQ ID | Primary owner | Supporting chunks | Completion chunk | Required tests |
+|---|---|---|---|---|
+| LREQ-ARCH-010 | Chunk 0 | — | Chunk 0 | LREQ-TST-010, LREQ-NFR-040 |
+| LREQ-ARCH-020 | Chunk 0 | — | Chunk 0 | LREQ-TST-010, LREQ-NFR-040 |
+| LREQ-ARCH-030 | Chunk 10 | Chunk 0 | Chunk 10 | LREQ-TST-080, LREQ-TST-090 |
+| LREQ-EXT-010 | Chunk 3 | Chunk 0, Chunk 1 | Chunk 3 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-EXT-020 | Chunk 1 | Chunk 0 | Chunk 3 | LREQ-TST-080 |
+| LREQ-EXT-030 | Chunk 3 | Chunk 1 | Chunk 3 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-EXT-040 | Chunk 3 | Chunk 1 | Chunk 3 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-EXT-050 | Chunk 3 | Chunk 1, Chunk 2 | Chunk 3 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-EXT-060 | Chunk 3 | Chunk 1 | Chunk 3 | LREQ-TST-030, LREQ-TST-080 |
+| LREQ-EXT-070 | Chunk 1 | Chunk 2 | Chunk 3 | LREQ-TST-030, LREQ-TST-080 |
+| LREQ-EXT-080 | Chunk 3 | Chunk 1 | Chunk 3 | LREQ-TST-080 |
+| LREQ-EXT-090 | Chunk 3 | Chunk 1, Chunk 2 | Chunk 10 | LREQ-TST-080 |
+| LREQ-EXT-100 | Chunk 3 | Chunk 0 | Chunk 3 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-010 | Chunk 5 | Chunk 0, Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-020 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-030 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-040 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-050 | Chunk 5 | Chunk 1, Chunk 2 | Chunk 5 | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-GQL-060 | Chunk 7A | Chunk 1, Chunk 5 | Chunk 7A | LREQ-TST-040, LREQ-TST-050 |
+| LREQ-GQL-070 | Chunk 5 | Chunk 1 | Chunk 5 | LREQ-TST-030, LREQ-TST-040 |
+| LREQ-GQL-080 | Chunk 6B | Chunk 2, Chunk 5, Chunk 6A | Chunk 6B | LREQ-TST-030, LREQ-TST-040, LREQ-TST-080 |
+| LREQ-SEC-010 | Chunk 0 | Chunk 3, Chunk 5, Chunk 12 | Chunk 3, Chunk 5, Chunk 12 | LREQ-TST-080 |
+| LREQ-SEC-020 | Chunk 2 | Chunk 0, Chunk 3, Chunk 5 | Chunk 13 | LREQ-TST-080, LREQ-NFR-060 |
+| LREQ-ID-010 | Chunk 6A | Chunk 2, Chunk 4B, Chunk 5 | Chunk 6A | LREQ-TST-080 |
+| LREQ-ID-020 | Chunk 6A | Chunk 1, Chunk 2, Chunk 5 | Chunk 6A | LREQ-TST-040, LREQ-TST-080 |
+| LREQ-ID-030 | Chunk 6A | Chunk 0 | Chunk 6A | LREQ-TST-080 |
+| LREQ-ID-040 | Chunk 6A | Chunk 2, Chunk 5 | Chunk 10 | LREQ-TST-080 |
+| LREQ-SMP-010 | Chunk 4A | Chunk 1, Chunk 2, Chunk 3 | Chunk 4A | LREQ-TST-020, LREQ-TST-080 |
+| LREQ-SMP-020 | Chunk 4A | Chunk 3 | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-030 | Chunk 4A | Chunk 0 | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-040 | Chunk 4A | Chunk 0 | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-050 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-060 | Chunk 4A | Chunk 0 | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-070 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
+| LREQ-SMP-080 | Chunk 4B | Chunk 2, Chunk 4A | Chunk 4B | LREQ-TST-020, LREQ-TST-080 |
+| LREQ-SMP-090 | Chunk 4A | Chunk 4A | Chunk 4A | LREQ-TST-020 |
+| LREQ-MET-010 | Chunk 7A | Chunk 1, Chunk 5 | Chunk 7A | LREQ-TST-010, LREQ-TST-050 |
+| LREQ-MET-020 | Chunk 7A | Chunk 0 | Chunk 7A | LREQ-TST-010, LREQ-TST-050 |
+| LREQ-MET-030 | Chunk 7B | Chunk 4B, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-040 | Chunk 7B | Chunk 5, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-050 | Chunk 7B | Chunk 4B, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-060 | Chunk 7B | Chunk 4B, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-070 | Chunk 7B | Chunk 3, Chunk 4A, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-080 | Chunk 7B | Chunk 5, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-090 | Chunk 7B | Chunk 5, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-MET-100 | Chunk 7B | Chunk 5, Chunk 4B, Chunk 7A | Chunk 7B | LREQ-TST-050 |
+| LREQ-NRM-010 | Chunk 8 | Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-NRM-020 | Chunk 8 | Chunk 2 | Chunk 10 | LREQ-TST-060 |
+| LREQ-NRM-030 | Chunk 8 | Chunk 8 | Chunk 8 | LREQ-TST-060 |
+| LREQ-NRM-040 | Chunk 8 | Chunk 8 | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-010 | Chunk 8 | Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-020 | Chunk 8 | Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-030 | Chunk 8 | Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-040 | Chunk 8 | Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-050 | Chunk 8 | Chunk 5, Chunk 7B | Chunk 8 | LREQ-TST-060 |
+| LREQ-SCR-060 | Chunk 8 | Chunk 8 | Chunk 8 | LREQ-TST-060, LREQ-TST-090 |
+| LREQ-EVD-010 | Chunk 9A | Chunk 8 | Chunk 9A | LREQ-TST-060 |
+| LREQ-EVD-020 | Chunk 9A | Chunk 3, Chunk 5, Chunk 6A, Chunk 7B, Chunk 8 | Chunk 10 | LREQ-TST-060, LREQ-TST-080 |
+| LREQ-EVD-030 | Chunk 9A | Chunk 8, Chunk 9B | Chunk 9B | LREQ-TST-060, LREQ-TST-090 |
+| LREQ-EVD-040 | Chunk 9B | Chunk 9A, Chunk 8 | Chunk 9B | LREQ-TST-060, LREQ-TST-070 |
+| LREQ-EVD-050 | Chunk 9B | Chunk 9A, Chunk 8 | Chunk 9B | LREQ-TST-060, LREQ-TST-070 |
+| LREQ-SEN-010 | Chunk 9B | Chunk 8, Chunk 9A | Chunk 9B | LREQ-TST-070 |
+| LREQ-SEN-020 | Chunk 9B | Chunk 8, Chunk 9A | Chunk 10 | LREQ-TST-070 |
+| LREQ-SEN-030 | Chunk 9B | Chunk 9A | Chunk 9B | LREQ-TST-070 |
+| LREQ-SEN-040 | Chunk 9B | Chunk 8, Chunk 9A | Chunk 9B | LREQ-TST-070 |
+| LREQ-RPT-010 | Chunk 11 | Chunk 8, Chunk 9B, Chunk 10 | Chunk 12 | LREQ-TST-080 |
+| LREQ-RPT-020 | Chunk 11 | Chunk 4B, Chunk 8, Chunk 9B, Chunk 10 | Chunk 11 | LREQ-TST-080 |
+| LREQ-RPT-030 | Chunk 11 | Chunk 4B, Chunk 7B, Chunk 9B, Chunk 10 | Chunk 11 | LREQ-TST-080 |
+| LREQ-RPT-040 | Chunk 11 | Chunk 9A, Chunk 10 | Chunk 11 | LREQ-TST-080 |
+| LREQ-RPT-050 | Chunk 11 | Chunk 4B, Chunk 9B, Chunk 10 | Chunk 11 | LREQ-TST-080 |
+| LREQ-CLI-010 | Chunk 12 | Chunk 6A, Chunk 6B, Chunk 8, Chunk 10, Chunk 11 | Chunk 12 | LREQ-TST-080 |
+| LREQ-CLI-020 | Chunk 12 | Chunk 11 | Chunk 12 | LREQ-TST-080 |
+| LREQ-CLI-030 | Chunk 12 | Chunk 0 | Chunk 12 | LREQ-TST-080 |
+| LREQ-CLI-040 | Chunk 12 | Chunk 1, Chunk 8, Chunk 9A, Chunk 10 | Chunk 12 | LREQ-TST-080 |
+| LREQ-NFR-010 | Chunk 3 | Chunk 2 | Chunk 3 | LREQ-TST-080 |
+| LREQ-NFR-020 | Chunk 6B | Chunk 2, Chunk 6A | Chunk 10 | LREQ-TST-080 |
+| LREQ-NFR-030 | Chunk 10 | Chunk 3, Chunk 5, Chunk 6A, Chunk 6B | Chunk 10 | LREQ-TST-080 |
+| LREQ-NFR-040 | Chunk 0 | Chunk 7A, Chunk 8 | Chunk 13 | LREQ-TST-010, LREQ-NFR-060 |
+| LREQ-NFR-050 | Chunk 0 | — | Chunk 13 | LREQ-NFR-060 |
+| LREQ-NFR-060 | Chunk 13 | Chunk 0 | Chunk 13 | LREQ-NFR-060 |
+| LREQ-TST-010 | Chunk 13 | Chunk 0, Chunk 7A, Chunk 7B, Chunk 8 | Chunk 13 | LREQ-TST-010 |
+| LREQ-TST-020 | Chunk 13 | Chunk 4A, Chunk 4B | Chunk 13 | LREQ-TST-020 |
+| LREQ-TST-030 | Chunk 13 | Chunk 1, Chunk 5, Chunk 6B | Chunk 13 | LREQ-TST-030 |
+| LREQ-TST-040 | Chunk 13 | Chunk 3, Chunk 5, Chunk 6A | Chunk 13 | LREQ-TST-040 |
+| LREQ-TST-050 | Chunk 13 | Chunk 7A, Chunk 7B | Chunk 13 | LREQ-TST-050 |
+| LREQ-TST-060 | Chunk 13 | Chunk 8, Chunk 9A, Chunk 9B | Chunk 13 | LREQ-TST-060 |
+| LREQ-TST-070 | Chunk 13 | Chunk 9B | Chunk 13 | LREQ-TST-070 |
+| LREQ-TST-080 | Chunk 13 | All runtime chunks | Chunk 13 | LREQ-TST-080 |
+| LREQ-TST-090 | Chunk 13 | All analytical chunks | Chunk 13 | LREQ-TST-090 |
 
 ---
 
@@ -60,9 +162,9 @@ For the early ownership cases that otherwise look contradictory in the table:
 | LREQ-GQL-030 | `collector.py`, `validation.py` | LREQ-GQL-010 | Network I/O plus pure correlation logic | Correlation fixture test | Reversed response order; operation name or validated correlation key required |
 | LREQ-GQL-040 | `collector.py`, `validation.py` | LREQ-GQL-030 | Network I/O | Response-status fixture test | HTTP failures, GraphQL errors, null data, wrong types, missing or ambiguous operation association |
 | LREQ-GQL-050 | `collector.py` | LREQ-GQL-040 | Network I/O | Partial-success fixture test | Retain valid ProductDetail when page views fail, and vice versa |
-| LREQ-GQL-060 | `validation.py`, `collector.py` | LREQ-GQL-020, LREQ-GQL-040 | Pure validation over I/O result | Eligibility unit/fixture test | Only `published` assets eligible for demand, recent supply, and quality |
+| LREQ-GQL-060 | `validation.py`, `collector.py` | LREQ-GQL-020, LREQ-GQL-040 | Pure validation over I/O result | Eligibility unit/fixture test | Only `published` assets eligible for D, R, and Q; state-excluded and state-unknown assets remain in discovered breadth and persisted observations |
 | LREQ-GQL-070 | `validation.py` | LREQ-GQL-020, LREQ-GQL-030, LREQ-GQL-040 | Pure | Identity mismatch unit test | Returned aliases disagree with requested identity; mismatch must invalidate affected result |
-| LREQ-GQL-080 | `pipeline.py`, `collector.py`, `database.py` | LREQ-GQL-050, LREQ-GQL-070, LREQ-ID-040, LREQ-SMP-080 | Orchestration/I/O | Deduplication integration test | Cross-category overlap; one enrichment per unique identity; successful preflight response reuse; bulk enrichment is blocked until the preflight gate passes |
+| LREQ-GQL-080 | `pipeline.py`, `collector.py`, `database.py` | LREQ-GQL-050, LREQ-GQL-070, LREQ-ID-040, LREQ-SMP-080 | Orchestration/I/O | Deduplication integration test | Cross-category overlap; at most one enrichment execution per unique identity per run, including successful preflight reuse; bulk enrichment is blocked until the preflight gate passes |
 
 ## Security
 
@@ -76,7 +178,7 @@ For the early ownership cases that otherwise look contradictory in the table:
 | REQ ID | Module | Depends on LREQs | Pure/I/O | Test type | Edge cases |
 |---|---|---|---|---|---|
 | LREQ-ID-010 | `pipeline.py`, `sampling.py` | LREQ-SMP-060, LREQ-SMP-080, LREQ-GQL-010 | Orchestration plus network I/O | Identity-preflight fixture test | At least 2 assets from 5 categories where possible; reduced coverage; categories with fewer than 2 assets |
-| LREQ-ID-020 | `collector.py`, `validation.py` | LREQ-ID-010, LREQ-GQL-020, LREQ-GQL-030, LREQ-GQL-040, LREQ-GQL-050, LREQ-GQL-070 | Network I/O plus pure validation | Identity-preflight integration test | Request ID rejection, incompatible returned identity, page-view package mismatch, invalid correlation mode, and either-operation partial success |
+| LREQ-ID-020 | `collector.py`, `validation.py`, `pipeline.py` | LREQ-ID-010, LREQ-GQL-010, LREQ-GQL-020, LREQ-GQL-030, LREQ-GQL-040, LREQ-GQL-050, LREQ-GQL-070 | Network I/O plus pure validation | Identity-preflight integration test | Chunk 6A invokes the Chunk 5 adapter for every preflight identity and validates both operations; request ID rejection, incompatible returned identity, page-view package mismatch, invalid correlation mode, and either-operation partial success |
 | LREQ-ID-030 | `config.py`, `pipeline.py` | LREQ-ID-010 | Pure configuration policy | Configuration unit test | Minimum categories/assets, zero conflict rate, 90% minimum success rate |
 | LREQ-ID-040 | `pipeline.py`, `database.py` | LREQ-ID-020, LREQ-ID-030 | Orchestration/database I/O | Preflight pass/fail integration test | Zero attempted identities gives `insufficient`, failed preflight blocks bulk enrichment, successful results reused |
 
@@ -91,14 +193,14 @@ For the early ownership cases that otherwise look contradictory in the table:
 | LREQ-SMP-050 | `sampling.py` | LREQ-SMP-020, LREQ-SMP-030 | Pure | Four-stratum unit test | Population above 100; contiguous ordinal boundaries; remainder assigned to final stratum |
 | LREQ-SMP-060 | `sampling.py` | LREQ-SMP-020, LREQ-SMP-030 | Pure | SHA-256 golden test | NUL-delimited digest; tie-break by identity; no random generator; rule-version changes selection |
 | LREQ-SMP-070 | `sampling.py` | LREQ-SMP-050, LREQ-SMP-060 | Pure | Distribution assertion test | Early, middle, and late discovery positions must be represented |
-| LREQ-SMP-080 | `sampling.py`, `database.py` | LREQ-SMP-040, LREQ-SMP-050, LREQ-SMP-060, LREQ-SMP-070 | Pure calculation plus disk persistence | Persistence integration test | Census versus sample; overlap counts; per-stratum `N_h`, `n_h`, usable counts; sample fraction distinct from coverage |
+| LREQ-SMP-080 | `sampling.py`, `database.py` | LREQ-SMP-040, LREQ-SMP-050, LREQ-SMP-060, LREQ-SMP-070 | Pure calculation plus disk persistence | Persistence integration test | Chunk 4B materializes `sample_members`, summaries, per-stratum `N_h`, `n_h`, and usable-count fields/placeholders; census versus sample; overlap counts; sample fraction distinct from coverage |
 | LREQ-SMP-090 | `sampling.py` | LREQ-SMP-050 | Pure | Boundary unit test | Stratum below 25 selects every asset and records reduced count |
 
 ## Metrics
 
 | REQ ID | Module | Depends on LREQs | Pure/I/O | Test type | Edge cases |
 |---|---|---|---|---|---|
-| LREQ-MET-010 | `validation.py`, `scoring.py` | LREQ-GQL-060, LREQ-GQL-070 | Pure | Eligibility unit test | Null, malformed, wrong type, invalid range, future, naive, negative, non-finite, and excluded-state values |
+| LREQ-MET-010 | `validation.py`, `scoring.py` | LREQ-GQL-060, LREQ-GQL-070 | Pure | Eligibility unit test | Structural validation is supplied by Chunk 1; Chunk 7A owns metric eligibility semantics: null, malformed, wrong type, invalid range, future, naive, negative, non-finite, and excluded-state values |
 | LREQ-MET-020 | `scoring.py` | LREQ-ARCH-020 | Pure | Date unit/golden test | UTC normalization, naive dates, exact fractional age, future dates |
 | LREQ-MET-030 | `scoring.py` | LREQ-MET-010, LREQ-MET-040, LREQ-SMP-080 | Pure | Metric unit/golden test | No usable stratum; zero population; never divide by zero; denominator uses usable-stratum weights |
 | LREQ-MET-040 | `scoring.py` | LREQ-MET-010, LREQ-MET-020, LREQ-GQL-050, LREQ-GQL-060, LREQ-GQL-070 | Pure | Index unit/golden test | Zero page views are valid; negative/non-finite values invalid; age threshold; identity/state mismatch; ProductDetail may remain usable when PageViews is unavailable |
@@ -135,16 +237,16 @@ For the early ownership cases that otherwise look contradictory in the table:
 |---|---|---|---|---|---|
 | LREQ-EVD-010 | `scoring.py` | LREQ-SCR-060 | Pure | State-transition unit test | Only `not_rankable`, `provisional`, and `rankable` states |
 | LREQ-EVD-020 | `scoring.py`, `pipeline.py` | LREQ-EXT-090, LREQ-GQL-060, LREQ-GQL-070, LREQ-ID-040, LREQ-MET-070, LREQ-NRM-020, LREQ-SCR-050, LREQ-SCR-060 | Pure decision logic plus orchestration status | Rankability matrix test | Unresolved/conflicting identities, invalid discovery, missing required metrics, preflight failure, contradicted page views, no reference; run failure and category not-rankable status remain distinct |
-| LREQ-EVD-030 | `scoring.py` | LREQ-EVD-020, LREQ-SCR-060, LREQ-NRM-020 | Pure | Provisional-state golden test | 8–20 categories; incomplete breadth fallback; weak coverage; high sensitivity |
+| LREQ-EVD-030 | `scoring.py` | LREQ-EVD-020, LREQ-SCR-060, LREQ-NRM-020, LREQ-SEN-030 | Pure | Provisional-state golden test | Pre-sensitivity provisional decision plus sensitivity-driven provisional demotion; 8–20 categories; incomplete breadth fallback; weak coverage; high sensitivity |
 | LREQ-EVD-040 | `scoring.py` | LREQ-EVD-020, LREQ-EVD-030, LREQ-SEN-030 | Pure | Rankability integration/golden test | Minimum 8 categories; strong reference requirement; sensitivity demotion without changing candidate set or score |
-| LREQ-EVD-050 | `scoring.py` | LREQ-EVD-020, LREQ-EVD-030, LREQ-NRM-020, LREQ-SEN-030 | Pure | Evidence-grade golden test | Strong/moderate/weak/insufficient; census alternative; coverage and sensitivity affect grade |
+| LREQ-EVD-050 | `scoring.py` | LREQ-EVD-020, LREQ-EVD-030, LREQ-NRM-020, LREQ-SEN-030 | Pure | Evidence-grade golden test | Final grade is assigned after sensitivity; strong/moderate/weak/insufficient; census alternative; coverage and sensitivity affect grade |
 
 ## Ranking sensitivity
 
 | REQ ID | Module | Depends on LREQs | Pure/I/O | Test type | Edge cases |
 |---|---|---|---|---|---|
 | LREQ-SEN-010 | `scoring.py` | LREQ-SCR-060, LREQ-EVD-020 | Pure | Policy unit test | Balanced, demand-heavy, and competition-heavy weights |
-| LREQ-SEN-020 | `scoring.py`, `database.py` | LREQ-SEN-010, LREQ-EVD-020, LREQ-SCR-060 | Pure plus persistence | Sensitivity golden test | Ranks only the fixed `base_rankable_candidates`; top 3/top 5, deterministic tie-breaking, null when too few candidates, rank and score displacement |
+| LREQ-SEN-020 | `scoring.py`, `database.py` | LREQ-SEN-010, LREQ-EVD-020, LREQ-SCR-060 | Pure plus persistence | Sensitivity golden test | Chunk 9B returns a complete typed diagnostic; Chunk 10 persists it; ranks only the fixed `base_rankable_candidates`; top 3/top 5, deterministic tie-breaking, null when too few candidates, rank and score displacement |
 | LREQ-SEN-030 | `scoring.py` | LREQ-SEN-020, LREQ-NRM-020 | Pure | Threshold unit/golden test | `top_3_stability < 2/3`; rank displacement greater than `max(3, 25% of reference size)` |
 | LREQ-SEN-040 | `scoring.py` | LREQ-SEN-010, LREQ-SEN-020, LREQ-SEN-030 | Pure | Score-preservation test | Sensitivity qualifies the balanced score; it cannot replace or mutate it |
 
@@ -254,8 +356,10 @@ The Coveo and GraphQL adapters may be developed in parallel after the
 foundational contracts. Sampling is operationally downstream of persisted
 discovery; preflight is downstream of sampling and the GraphQL adapter; bulk
 enrichment is downstream of a successful preflight gate. Pure metric/scoring
-work and the report read model may also proceed against frozen fixtures.
-
+Pure metric/scoring work and the report template, view-model contract, and
+fixture renderer may proceed against frozen fixtures. Database-backed report
+integration begins only after the final score, sensitivity, and failed-run read
+models are frozen.
 ---
 
 # 3. Chunked implementation plan
@@ -279,14 +383,15 @@ Implement:
 - `.env.example`
 - `models.py`
 - `config.py`
-- typed result structures for the complete SRS data model
+- typed domain/result structures, enums, statuses, and serialization contracts for the complete SRS data model
 - constants and policy versions
 - `RunStatus`: `running`, `completed`, `failed`
 - discovery, identity-resolution, operation, score, evidence, and rankability statuses
 - warning-code, correlation-mode, and page-view-semantic-status types
 - `scoring_cutoff_utc` as an explicit pure-function input
-- SQLite logical schema definitions
+- SQLite schema specification and repository protocol only; no SQLite implementation
 - test fixture conventions
+- pytest `lreq` marker registration and the machine-readable test-to-requirement matrix format
 
 Requirements primarily covered:
 
@@ -304,6 +409,8 @@ Gate:
 - `metrics` and `scoring` do not import I/O modules.
 - Configuration precedence has a typed contract and fixture cases; behavioral CLI precedence tests are completed in Chunk 12.
 - All required status values and mandatory logical row fields are represented by typed structures.
+- The repository protocol and schema specification are defined without requiring SQLite behavior in this chunk.
+- Every analytical test fixture has a traceability marker or matrix entry; missing markers fail the local test command.
 - `.env` is ignored and `.env.example` contains no credentials.
 - No network code is required yet.
 
@@ -322,7 +429,7 @@ Implement:
 - URI identity fallback
 - conflict/unresolved status handling
 - GraphQL identity alias comparison
-- type/range/state/date validation primitives
+- structural validation primitives: malformed shape, wrong type, identity candidates, aliases, taxonomy shape, and redacted errors
 - redacted error summaries
 
 Requirements:
@@ -339,16 +446,17 @@ Tests:
 
 Gate:
 
-- All identity and taxonomy tests pass without network access.
+- All structural identity and taxonomy tests pass without network access.
 - Invalid data is represented explicitly, never silently converted to zero or an ordinary asset.
 - Validation functions accept typed data and return typed results.
+- This chunk owns structural validity only; metric eligibility rules such as published-state, UTC/date, future-date, finite/non-negative, age, and page-view eligibility are owned by Chunk 7A.
 - This chunk does not claim complete Coveo or GraphQL requirement behavior; those validators are applied to external responses in Chunks 3 and 5.
 
 ---
 
-## Chunk 2 — SQLite schema and persistence contracts
+## Chunk 2 — SQLite implementation and repository behavior
 
-**Goal:** Define the audit trail and persistence API before runtime discovery or sampling. This chunk supplies persistence contracts; complete sampling, enrichment, streaming, and redaction behavior is verified by the integration chunks that use them.
+**Goal:** Implement the audit trail and repository behavior before runtime discovery or sampling. Chunk 0 defines typed domain/schema contracts; this chunk owns the physical SQLite implementation.
 
 Implement tables:
 
@@ -360,15 +468,15 @@ Implement tables:
 
 Implement:
 
-- logical primary and uniqueness rules, including `(run_id, category, asset_identity_key)` for samples and `(run_id, category)` for scores
+- SQLite DDL, constraints, indexes, and logical primary/uniqueness rules, including `(run_id, category, asset_identity_key)` for samples and `(run_id, category)` for scores
 - nullable page-view fields and run-level preflight/correlation/semantic-status fields
 - structured JSON columns and redacted error summaries
-- streamed insertion APIs and transaction boundaries
+- repository implementation, streamed insertion APIs, transactions/savepoints, and category-isolated transaction boundaries
 - run/category status transitions that preserve unrelated category failures
 
 Supporting contracts:
 
-- persistence support for LREQ-SMP-080
+- persistence support for LREQ-SMP-080; physical sampling materialization is completed by Chunk 4B
 - persistence support for LREQ-GQL-080
 - persistence support for LREQ-NFR-010
 - persistence support for LREQ-SEC-020
@@ -380,8 +488,8 @@ Gate:
 - `(run_id, category)` is enforced for category scores.
 - Secrets cannot enter persisted records.
 - A failed category does not roll back unrelated category observations.
-- Streaming insertion APIs and category-isolated transactions/savepoints are available to Chunks 3, 4, and 6.
-- Behavioral verification of sampling summaries, unique enrichment, streamed discovery, and collector/error redaction remains in Chunks 3, 4, and 6.
+- Streaming insertion APIs and category-isolated transactions/savepoints are available to Chunks 3, 4B, 6A, and 6B.
+- Behavioral verification of sampling summaries, unique enrichment, streamed discovery, and collector/error redaction remains in Chunks 3, 4B, 6A, and 6B.
 
 ---
 
@@ -404,6 +512,7 @@ Implement:
 - terminal discovery statuses
 - streaming observation emission into the Chunk 2 persistence API
 - raw observation metadata and redacted error summaries
+- nullable/update lifecycle for post-discovery fields: `asset_identity_key` and `stratum_index` may be null during raw persistence; canonical identity, duplicate linkage, and stratum assignment are updated after canonicalization/sampling
 
 Requirements:
 
@@ -427,14 +536,15 @@ Gate:
 - No live endpoint is needed for normal tests.
 - Failed pages remain failures and are never interpreted as zero assets.
 - Raw observations are persisted before canonical populations or samples are constructed.
+- During discovery, persist every identity candidate, nullable canonical identity, identity-resolution status, nullable stratum index, and raw error metadata; after canonicalization/sampling, update canonical identity, duplicate linkage, and stratum index before inserting sample memberships.
 - Discovery can process one category without loading the complete result set into memory.
 - This chunk completes the Coveo-side integration of the validation primitives from Chunk 1; the primitive contracts alone do not satisfy LREQ-EXT-060 or LREQ-EXT-080.
 
 ---
 
-## Chunk 4 — Canonical populations and deterministic sampling engine
+## Chunk 4A — Canonical populations and deterministic sampling engine
 
-**Goal:** Produce stable sample membership from validated canonical discovery records.
+**Goal:** Produce stable sample membership from validated canonical discovery records as a pure, deterministic result.
 
 Implement:
 
@@ -444,12 +554,11 @@ Implement:
 - four-stratum behavior for `N > 100`
 - SHA-256 NUL-delimited selection digest
 - reduced final strata
-- cross-category overlap metadata after all category samples are selected
 - sample fraction and stratum summary structures
 
 Requirements:
 
-- LREQ-SMP-010 through LREQ-SMP-090
+- LREQ-SMP-010 through LREQ-SMP-070 and LREQ-SMP-090
 
 Tests:
 
@@ -463,6 +572,40 @@ Gate:
 - Populations 0, 1, 99, 100, and greater than 100 behave exactly as specified.
 - Early, middle, and late discovery positions are represented.
 - Sample fraction remains distinct from stratum eligibility coverage.
+- The pure result includes all values required for later persistence, but this chunk does not claim physical SQLite materialization.
+
+---
+
+## Chunk 4B — Sample persistence, overlap, and sampling summaries
+
+**Goal:** Materialize the pure sampling result into the audit trail and verify
+that persisted values match the deterministic calculation.
+
+Implement:
+
+- `sample_members` materialization with selected identity keys or selection digest
+- per-category sampling summaries and census status
+- per-stratum `N_h`, `n_h`, `u_demand_h`, `u_recent_h`, and `u_quality_h` values or explicit placeholders until enrichment eligibility is known
+- stratum boundaries, selected counts, sample fraction, and rule version persistence
+- cross-category overlap counts and percentages after all category samples are selected
+- persisted-value verification against the Chunk 4A pure sampling result
+
+Requirements:
+
+- primary implementation/completion for LREQ-SMP-080
+
+Tests:
+
+- `test_sampling_persistence.py`
+- SQLite round-trip and overlap fixtures
+
+Gate:
+
+- Every selected sample has a persisted membership or reproducible digest.
+- Per-category and per-stratum summaries survive a database round trip.
+- Overlap is calculated from unique canonical identities after all samples are selected.
+- Persisted sample fraction is distinct from per-stratum eligibility coverage.
+- A pure sampling test cannot pass this gate without a corresponding persistence verification.
 
 ---
 
@@ -479,7 +622,7 @@ Implement:
 - operation-level status
 - partial-success retention
 - page-view type/range validation
-- state filtering
+- state eligibility annotation; excluded and unknown-state assets remain in persisted observations and discovered breadth
 - identity mismatch handling
 - rate limiting and retry policy consistent with the collector
 
@@ -501,7 +644,7 @@ Gate:
 - Missing or ambiguous operation correlation fails safely.
 - Partial ProductDetail/PageViews success is persisted independently.
 - The adapter does not perform bulk enrichment or bypass the preflight gate.
-- This chunk completes GraphQL response validation and correlation using the primitives from Chunk 1; bulk identity/enrichment behavior remains in Chunk 6.
+- This chunk completes GraphQL response validation and correlation using the primitives from Chunk 1; it does not decide metric eligibility or bulk enrichment. Bulk identity/enrichment behavior remains in Chunks 6A and 6B.
 
 ---
 
@@ -514,6 +657,9 @@ Implement:
 - deterministic preflight selection
 - minimum category and asset policy
 - unique-identity denominator
+- invoke the Chunk 5 GraphQL adapter for the deterministic preflight set
+- validate both ProductDetail and ProductPageViews operations for every preflight identity
+- persist independent operation outcomes, selected correlation mode, and endpoint signature
 - success/conflict rate calculations
 - preflight persistence
 - preflight failure gate
@@ -539,6 +685,7 @@ Gate:
 - Zero attempted identities produces `insufficient`, not zero success.
 - A failed preflight marks the run failed and does not become an informational-only warning.
 - Preflight rates use unique identities, not category references.
+- Preflight executes the normal GraphQL request through the reusable Chunk 5 adapter; Chunk 5 supplies protocol behavior, while Chunk 6A supplies controlled execution and gate policy.
 - Preflight status, summary, and observations are persisted before the gate returns.
 
 ---
@@ -551,7 +698,7 @@ Implement:
 
 - successful preflight response reuse
 - unique sampled-identity union across categories
-- one enrichment request per unique identity
+- at most one enrichment execution per unique identity per run; a successful preflight observation counts as that identity's enrichment
 - bulk enrichment only after successful preflight
 - enrichment persistence coordination
 - projected minimum enrichment-time calculation and pre-enrichment logging
@@ -571,23 +718,23 @@ Tests:
 
 Gate:
 
-- Overlapping category samples cause one enrichment request per unique identity.
+- Overlapping category samples cause at most one enrichment execution per unique identity.
 - Successful preflight observations are not requested again.
 - A failed asset does not abort unrelated assets.
 - No bulk-enrichment request is issued when the preflight gate is failed or `insufficient`.
 
 ---
 
-## Chunk 7A — Eligibility, date, and page-view metric primitives
+## Chunk 7A — Metric eligibility, date, and page-view primitives
 
 **Goal:** Freeze the pure eligibility and time semantics used by every estimator.
 
-Implement:
+Implement the metric-eligibility layer over Chunk 1's structural validation primitives:
 
 - UTC normalization
 - exact fractional age calculation
 - page-view index
-- state, identity, date, and range eligibility
+- published-state, identity, date, age, finite/non-negative, and range eligibility
 - zero versus null versus invalid/unavailable behavior
 - component-eligibility and zero-population rules
 
@@ -611,6 +758,7 @@ Gate:
 - Exact fractional age is used.
 - Zero is distinguished from null, invalid, and unavailable.
 - Invalid values are excluded rather than converted to zero.
+- Structural malformed-shape/type/alias checks remain owned by Chunk 1; this chunk owns the semantic decision about whether a value contributes to a metric.
 
 ---
 
@@ -693,22 +841,24 @@ Gate:
 
 ---
 
-## Chunk 9A — Evidence, base candidates, and provisional states
+## Chunk 9A — Pre-sensitivity evidence checks and immutable base candidates
 
-**Goal:** Decide whether scores have sufficient evidence and construct the immutable candidate set before sensitivity is evaluated.
+**Goal:** Validate pre-sensitivity evidence, construct the immutable candidate set,
+and produce an internal preliminary decision object before sensitivity is evaluated.
 
 Implement:
 
 - score-state versus rankability-state handling
-- evidence grades
+- evidence input validation and pre-sensitivity evidence eligibility
 - field-specific support checks
 - fixed `base_rankable_candidates`
-- `not_rankable` and `provisional` decisions
+- preliminary `not_rankable` and `provisional` decisions
+- `pre_sensitivity_evidence_state` and preliminary rankability state; these are not silently treated as final persisted evidence fields
 - the rule that sensitivity cannot create candidates or mutate the balanced score
 
 Requirements:
 
-- LREQ-EVD-010 through LREQ-EVD-050, excluding sensitivity-only completion
+- LREQ-EVD-010 through LREQ-EVD-030 as pre-sensitivity decision work
 - supporting contract for LREQ-SEN-030
 
 Tests:
@@ -720,14 +870,16 @@ Tests:
 Gate:
 
 - The base candidate set is frozen before any alternate policy is ranked.
-- Score state, evidence grade, and rankability status remain distinct.
+- Score state, pre-sensitivity evidence state, and preliminary rankability status remain distinct.
 - Categories with insufficient support are excluded from the base candidate set without changing their stored score fields.
+- No final evidence grade is persisted by this chunk when sensitivity is an input to the final grade.
 
 ---
 
-## Chunk 9B — Sensitivity diagnostics and final rankability
+## Chunk 9B — Sensitivity, final evidence, and final rankability
 
-**Goal:** Evaluate alternate policies only over the fixed base candidate set and apply the SRS sensitivity policy.
+**Goal:** Evaluate alternate policies only over the fixed base candidate set, then
+assign final evidence and rankability states.
 
 Implement:
 
@@ -736,12 +888,13 @@ Implement:
 - top-3 and top-5 stability
 - score/rank displacement
 - warning thresholds
+- final `evidence_grade` using coverage, integrity, reference size, semantics, and sensitivity
 - final rankability after sensitivity
 
 Requirements:
 
 - LREQ-SEN-010 through LREQ-SEN-040
-- integration completion for LREQ-EVD-040 and LREQ-EVD-050
+- integration completion for LREQ-EVD-030, LREQ-EVD-040, and LREQ-EVD-050
 
 Tests:
 
@@ -755,6 +908,7 @@ Gate:
 - Sensitivity never modifies the balanced primary score.
 - A sensitivity warning demotes final rankability only as specified.
 - Insufficient candidate counts produce the explicitly defined null outputs.
+- `final_evidence_grade` and `final_rankability_status` are assigned here after sensitivity; Chunk 10 persists the complete result.
 - Final rankability is assigned only after sensitivity is computed.
 
 ---
@@ -779,7 +933,7 @@ Implement this sequence:
 12. Build LOO references.
 13. Compute scores and `base_rankable_candidates`.
 14. Compute sensitivity only over the fixed candidate set.
-15. Compute final evidence and rankability.
+15. Compute final evidence and rankability from the sensitivity result.
 16. Persist category scores and run-level status fields.
 17. Mark the run `completed` or `failed`.
 
@@ -800,7 +954,8 @@ Gate:
 - Runs with fewer than `MIN_CATEGORIES_PER_RUN` categories (configured as 8) are rejected before ranking.
 - Configuration or taxonomy failure causes no network request.
 - If identity preflight fails: persist `run.status = failed`, retain discovery/sample/preflight observations, issue no bulk-enrichment requests, skip metric/score/ranking computation, persist category limitations where possible, produce no rankable scores, allow the dashboard to display the failed run as an audit/diagnostic report, and return a non-zero CLI exit code.
-- Category-level failure is represented through `discovery_status`, warnings, `evidence_grade`, and `rankability_status`; it is not a separate persisted enum unless the schema explicitly adds a typed `category_status`.
+- Category-level failure is represented internally by a typed `CategoryStatus` (`healthy`, `degraded`, `failed`) and mapped to `discovery_status`, warnings, `evidence_grade`, and `rankability_status`; it is not a separate persisted enum unless the schema explicitly adds that field.
+- On preflight failure, the report read model uses one null-score `category_scores` row per requested category with persisted discovery/sample fields, `evidence_grade = insufficient`, `rankability_status = not_rankable`, and explicit preflight warnings. If implementation instead omits those rows, Chunk 11 must join runs, discovery, samples, and preflight observations to provide the same one-row-per-category view.
 - 8–20 category runs may compute provisional scores, but have no rankable candidate set and null sensitivity stability values.
 
 ---
@@ -818,6 +973,7 @@ Implement:
 - category detail panel
 - warnings and limitation vocabulary
 - display of non-rankable categories
+- failed-run read model: prefer one null-score row per requested category with discovery/sample fields, `insufficient` evidence, `not_rankable` status, and explicit preflight warnings; if rows are absent, provide an equivalent join over `runs`, discovery, sample, and preflight observations
 
 Requirements:
 
@@ -828,6 +984,7 @@ Gate:
 - `dashboard` performs database reads only.
 - Reports include every mandatory score, sample, coverage, evidence, and sensitivity field.
 - Non-rankable categories remain visible.
+- Failed preflight runs remain visible as audit/diagnostic reports even when no metric or score rows were computed.
 - Report fixtures assert the required distinctions between pagination completion and immutable snapshot completeness, page-view index and weekly traffic rate, midranks and inferential percentiles, sample fraction and stratum eligibility coverage, deterministic evidence and statistical confidence, and heuristic output versus sales/revenue/conversion/traffic-rate claims.
 - Report language does not imply sales forecasting, statistical confidence, or representative marketplace estimation.
 
@@ -888,7 +1045,7 @@ Gate:
 - Preflight failure produces a failed run and zero bulk-enrichment requests.
 - Partial GraphQL operation success and contradicted page-view semantics remain distinguishable.
 - Sensitivity is null when the fixed candidate set is empty and never changes that set.
-- Every analytical test contains an explicit LREQ marker, and a machine-checkable traceability check verifies that every individual `LREQ-*` has at least one required test reference.
+- Every analytical test contains an explicit LREQ marker, missing markers fail local test execution, and a machine-checkable bidirectional traceability check verifies that every required test maps to valid individual `LREQ-*` IDs and every individual `LREQ-*` has at least one required test reference.
 - No stale requirement from the retired SRS is accidentally implemented.
 
 ---
@@ -902,22 +1059,23 @@ Chunk 0  Foundation
 Chunk 1  Pure validation and identity
 Chunk 2  SQLite schema and persistence contracts
 Chunk 3  Coveo discovery
-Chunk 4  Canonical populations and deterministic sampling
+Chunk 4A Canonical populations and deterministic sampling
+Chunk 4B Sample persistence and overlap
 Chunk 5  GraphQL protocol adapter
 Chunk 6A Identity preflight planner and gate
 Chunk 6B Unique enrichment executor and persistence
 Chunk 7A Eligibility, date, and page-view primitives
 Chunk 7B Sample-aware raw estimators
 Chunk 8  Normalization and scoring
-Chunk 9A Evidence and base candidates
-Chunk 9B Sensitivity diagnostics and final rankability
+Chunk 9A Pre-sensitivity evidence and base candidates
+Chunk 9B Sensitivity, final evidence, and final rankability
 Chunk 10 Pipeline
 Chunk 11 Report renderer and read-only dashboard
 Chunk 12 CLI commands and configuration precedence
 Chunk 13 Acceptance and quality gates
 ```
 
-After Chunk 0, Chunks 1, 2, 5, and the metric fixture interfaces can proceed in parallel. After Chunks 1 and 2, the Coveo adapter and GraphQL protocol adapter can proceed in parallel. Sampling is operationally downstream of persisted discovery; preflight is downstream of sampling and the GraphQL adapter; bulk enrichment is downstream of a successful preflight gate. Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
+After Chunk 0, Chunks 1, 2, 5, and the metric fixture interfaces can proceed in parallel. After Chunks 1 and 2, the Coveo adapter and GraphQL protocol adapter can proceed in parallel. Sampling is operationally downstream of persisted discovery: 4A computes the pure result and 4B materializes it; preflight is downstream of 4B and the GraphQL adapter; bulk enrichment is downstream of a successful preflight gate. Chunks 7A and 7B may proceed against frozen fixtures while collection adapters are built. The networked collectors should not be the first implementation target: they depend on canonical identity rules, taxonomy validation, status modeling, persistence contracts, and fixture contracts.
 
 # 5. Important implementation constraints
 
