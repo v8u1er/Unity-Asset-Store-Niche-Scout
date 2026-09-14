@@ -1,0 +1,1 @@
+"""Coveo discovery adapter boundary."""

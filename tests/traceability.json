@@ -1,0 +1,10 @@
+{
+  "tests/test_contracts.py::test_contract_modules_import_and_status_values": ["LREQ-ARCH-010"],
+  "tests/test_contracts.py::test_serialization_normalizes_aware_timestamp_to_utc": ["LREQ-ARCH-020"],
+  "tests/test_contracts.py::test_unavailable_score_is_not_a_zero_sentinel": ["LREQ-ARCH-030"],
+  "tests/test_contracts.py::test_schema_spec_covers_typed_row_fields": ["LREQ-ARCH-010"],
+  "tests/test_contracts.py::test_configuration_precedence_and_credential_requirement": ["LREQ-SEC-010"],
+  "tests/test_contracts.py::test_scoring_cutoff_requires_timezone_awareness": ["LREQ-NFR-040"],
+  "tests/test_contracts.py::test_configuration_uses_pathlib_paths": ["LREQ-NFR-050"],
+  "tests/test_contracts.py::test_project_quality_artifacts_are_present_and_secret_free": ["LREQ-NFR-060"]
+}

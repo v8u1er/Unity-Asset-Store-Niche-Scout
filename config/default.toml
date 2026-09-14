@@ -1,0 +1,10 @@
+# Lean v1 defaults. Credentials are supplied through environment variables.
+max_discovery_results_per_category = 2000
+page_size = 96
+enrichment_sample_size_per_category = 100
+min_usable_samples_per_stratum = 5
+min_age_days_for_rate = 30
+max_taxonomy_age_days = 30
+endpoint_contract_version = "parent-srs-2.3.0"
+identity_mapping_rule_version = "identity-map-1"
+sampling_rule_version = "lean-stratified-v1"
