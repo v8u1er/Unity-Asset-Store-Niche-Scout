@@ -18,8 +18,17 @@ Check, and report PASS or FAIL for each with the specific section at fault:
    Documents/interfaces/chunk-XX.md file — no invented or assumed contract.
 6. Section 9's test plan covers every LREQ ID in section 3 with at least one
    pytest lreq marker.
+7. Section 12 has no entries that amount to an unresolved human decision (as
+   opposed to a note that's already been resolved in the plan body). A plan
+   with a genuine open question is not eligible for freezing yet — that
+   question needs a human answer first, not an assumption from you.
 
-If everything passes, change the plan's Status to FROZEN. If anything fails,
-fix only that specific issue directly in the plan file — do not rewrite
-unrelated sections — and leave Status as DRAFT. Only ever touch this one
-plan file. Return a short PASS/FAIL summary per check.
+If checks 1–6 pass and check 7 confirms section 12 is empty, change the
+plan's Status to FROZEN. If any of checks 1–6 fail, fix only that specific
+issue directly in the plan file — do not rewrite unrelated sections — and
+leave Status as DRAFT. If check 7 fails, do not attempt to resolve the open
+questions yourself and do not freeze — leave Status as DRAFT and report the
+open questions verbatim so a human can answer them. Only ever touch this one
+plan file. Return a short PASS/FAIL summary per check, and if Status stayed
+DRAFT, say clearly why: an audit failure and a pending human decision call
+for different next steps.

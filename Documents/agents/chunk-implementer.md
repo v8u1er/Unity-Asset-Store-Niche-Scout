@@ -30,4 +30,4 @@ As you go:
 
 When the task breakdown is complete, run the test suite for the files you own
 and return pass/fail. Do not change the plan's Status — that happens in
- gate-verifier next.
+gate-verifier next.

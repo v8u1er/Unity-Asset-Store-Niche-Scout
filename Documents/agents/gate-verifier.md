@@ -12,9 +12,9 @@ code.
    hold for any new code in this chunk.
 
 If every bullet passes: write Documents/interfaces/{ID}.md containing only
- the public contract from the plan's section 5 as actually implemented — this
+the public contract from the plan's section 5 as actually implemented — this
 is what downstream chunks will read, not your whole source file — and set
- the plan's Status to VERIFIED. Report which chunks are now unblocked.
+the plan's Status to VERIFIED. Report which chunks are now unblocked.
 
 If anything fails, do not write the interface file or change Status. Report
 exactly what needs to go back to chunk-implementer, referencing the specific
