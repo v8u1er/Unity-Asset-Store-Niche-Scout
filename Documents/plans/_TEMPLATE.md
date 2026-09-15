@@ -1,6 +1,6 @@
 # Chunk {ID} — {TITLE}
 
-Status: DRAFT | REVIEWED | FROZEN | IMPLEMENTED | VERIFIED
+Status: DRAFT | FROZEN | IMPLEMENTED | VERIFIED
 Depends on (frozen interfaces required before this plan can be trusted):
   {list of interfaces/chunk-XX.md, or "none"}
 Blocks (chunks whose plan/implementation needs this chunk's interface):
@@ -38,7 +38,7 @@ If a needed interface file doesn't exist yet, this is a blocking open question
 ## 5. Interface contract this chunk produces
 The public surface downstream chunks may depend on: function signatures,
 types, enums, DB tables/columns, status values. This becomes
-interfaces/chunk-{ID}.md verbatim once frozen (Prompt D).
+interfaces/chunk-{ID}.md verbatim once frozen (gate-verifier).
 
 ## 6. Files touched
 | File | New/modified | Purpose |
@@ -70,4 +70,4 @@ request before the preflight gate passes").
 
 ## 12. Open questions / assumptions
 Anything ambiguous in the source documents. Leave unresolved rather than
-guessing; flag for human decision before Prompt B freezes the plan.
+guessing; flag for human decision before plan-reviewer freezes the plan.
