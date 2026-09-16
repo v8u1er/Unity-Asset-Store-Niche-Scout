@@ -675,3 +675,132 @@ The gate bullets below are copied **verbatim** from `Documents/requirements-depe
 ## 12. Open questions / assumptions
 
 None
+
+## 13. Scope amendment (added after Status VERIFIED)
+
+**Instrument.** This is a **scope amendment**, not an open question: Chunk 0 is
+`Status: VERIFIED` (line 3), so there is no un-frozen plan for an open question
+to attach to and block. It has two clearly separate parts, and it does not
+re-open section 12 (which stays `None`) or change this chunk's Status.
+
+### 13.1 Part 1 — replacing a heuristic assertion with a decidable one
+
+**What is there now.** `tests/test_contracts.py:938` asserts
+`"sqlite3" not in (SRC / "niche_scout" / "database.py").read_text(encoding="utf-8")`
+(lines 938–940) — a substring probe over the module's source text.
+
+**The real requirement it stands for.** This chunk's section 11 prohibition
+(lines 666–667): "**No SQLite execution**: Must not create SQLite database files
+on disk, open database connections, or execute DDL/DML statements during Chunk
+0." The section 10 gate bullet it belongs to (line 657) is "The repository
+protocol and schema specification are defined without requiring SQLite behavior
+in this chunk."
+
+**Why the substring form is the wrong instrument.** Two reasons, both decidable
+from this plan. First, the prohibition is a **Chunk 0-era constraint, not a
+permanent property of the module.** Section 2 already assigns the physical
+implementation elsewhere: "Physical SQLite implementation, database connections,
+DDL execution, streamed insertions, savepoints, and transactions: Chunk 0
+defines the repository protocol and DDL schema specification; physical SQLite
+persistence behavior is owned by Chunk 2 (primary implementation chunk)" (line
+79), and section 6 describes `src/niche_scout/database.py` as "SQLite DDL schema
+specification, `Repository` protocol (no SQLite execution)" (line 548). A
+permanent `"sqlite3" not in source` rule would contradict that boundary rather
+than enforce it. Second, the assertion's subject is source *text* — formatting
+and comments included — not behavior, so `import sqlite3` as a side-effect-free
+name, a docstring mentioning the engine, or the module's own private
+`schema_metadata` metastore table (Chunk 2 plan §5.5, lines 577–582: not one of
+the five SRS tables) all trip it without any prohibition being violated.
+
+**The decidable replacement.** Assert the prohibition itself, not its spelling:
+(a) no `sqlite3.connect(` is *reached* at import time — i.e. importing
+`niche_scout.database` does not call `sqlite3.connect`, which is a property of
+the import path, checkable without reading source text; and (b) **importing
+`database` creates no file and executes no DDL** — no file appears at a
+`tmp_path` target as a result of the import, and no SQL is executed. The
+rationale label SHALL be re-worded to match: the original prohibition is a
+**Chunk 0-era constraint**, and the module's later, legitimate use of the engine
+is expected — Chunk 2 imports `sqlite3`, raises and catches
+`sqlite3.IntegrityError` for its constraint violations (Chunk 2 plan §5.2, lines
+461–465 and 475–479), and calls `sqlite3.connect` at *construction* time, i.e.
+inside `SqliteRepository.__init__`, which "opens the connection immediately"
+(Chunk 2 plan §5.3, lines 529–532). The persisted obligation is therefore
+"construction-time, never import-time", and the replacement assertion is the
+form of that obligation that a test can actually decide.
+
+### 13.2 Part 2 — document-consistency note (no Chunk 0-vs-Chunk 2 conflict)
+
+**This is a document-consistency note, NOT a "test staleness" fix.** The point
+is not that a test needs refreshing; it is that two of *this chunk's own*
+documents disagree with each other, and that the disagreement has been
+misread — including in an earlier draft of this amendment — as a Chunk 0-vs-
+Chunk 2 contract conflict. It was not one.
+
+**Where the divergence actually is: inside Chunk 0's own documents.**
+
+- **This chunk's PLAN §5.4 (lines 430–462)** lists the DDL only as prose
+  "contract strings": "DDL statements defined as contract strings in
+  `src/niche_scout/database.py`" followed by five bullets naming each
+  `CREATE TABLE ...` and its primary key (lines 457–462). It names **no
+  container** — never `DDL_STATEMENTS`, `CREATE_TABLE_STATEMENTS`,
+  `TABLE_COLUMNS`, `TABLE_PRIMARY_KEYS`, or `TABLE_INDEXES`.
+- **This chunk's PUBLISHED INTERFACE `Documents/interfaces/chunk-00.md` §6
+  (lines 336–344)** names **all four** containers with their exact shapes:
+  `DDL_STATEMENTS: tuple[str, ...]  # 5 CREATE TABLE + 1 CREATE INDEX`,
+  `CREATE_TABLE_STATEMENTS: dict[str, str]`,
+  `TABLE_COLUMNS: dict[str, tuple[str, ...]]`, and
+  `TABLE_PRIMARY_KEYS: dict[str, tuple[str, ...]]`.
+- **`src/niche_scout/database.py` matches the interface**, not the thinner plan:
+  Chunk 2's plan §4.1 reproduces the same four shapes from the interface file at
+  the same path (Chunk 2 plan §4.1, lines 192–198).
+
+**Conclusion, stated explicitly:** the divergence was **inside Chunk 0's own
+documents — its plan is thinner than its interface** — and **Chunk 2
+introduced no interface change.** No downstream chunk's contract is affected.
+Consequence, recorded so it is not re-litigated: the correct comparison for any
+future drift check is plan §5.4 → interface §6 → `database.py`, in that order of
+increasing specificity, and a mismatch between plan §5.4's prose and the
+interface is a *plan* gap, not evidence of an unauthorized contract change.
+
+**Evidence — the masked-node diagnostic.** The node
+`tests/test_contracts.py::test_repository_protocol_and_schema_specification`
+fails at its `:938` assertion, and pytest reports only the FIRST failure per
+node, so the assertions at `:918`, `:921`, `:922`, and `:930` are masked in any
+ordinary run. A diagnostic evaluated all 31 assertions in that node
+independently with this per-assertion result: **30 PASS, 1 FAIL, and the single
+failure is `:938` itself.** That result is the evidence for this note: the
+container-constant assertions (including `:921`,
+`assert TABLE_COLUMNS[table] == models.MANDATORY_ROW_FIELDS[table]`) PASS
+against the implementation as it stands, so there is no container-constant
+divergence to reconcile and nothing for Chunk 2 to correct.
+
+**`TABLE_INDEXES` contradiction — flagged for interface-document maintenance,
+not resolved here.** `Documents/interfaces/chunk-00.md:343` declares
+
+```python
+TABLE_INDEXES: dict[str, tuple[str, ...]]    # index name -> CREATE INDEX string
+```
+
+so the line's **own inline comment contradicts its annotation**: the annotation
+says the mapping's values are tuples of strings, the comment says each value is a
+single `CREATE INDEX` string. This is not a documentation cleanup, and it is not
+decidable from the interface file alone:
+
+- **The annotation is the binding side.** Downstream code binds to the type, not
+  to the comment, so `dict[str, tuple[str, ...]]` is the declaration six
+  downstream chunks are reading.
+- **There are two candidate repairs, with opposite effects.** Either change the
+  annotation to match the comment (`dict[str, str]`) or change the comment to
+  match the annotation (values are tuples, e.g. per-index column lists). The two
+  directions have **opposite effects on six downstream chunks' type
+  expectations** — the six chunks this plan's `Blocks` header lists as depending
+  on this interface (lines 6–15) plus Chunk 6B, which is named in Chunk 2's
+  `Blocks` set — so either direction is a **contract change requiring the
+  interface-document owner**, not a wording fix a plan amendment can make.
+
+**`Documents/interfaces/chunk-00.md` is NOT edited by this amendment.** It is a
+published, `Status: VERIFIED` interface that six downstream chunks cite as a
+frozen dependency; amending it is a different and heavier act than this
+amendment. It is flagged for interface-document maintenance instead, with the
+specific shape above (file, line, which side binds, and both candidate
+directions with their downstream effect) so the owner has enough to act on.

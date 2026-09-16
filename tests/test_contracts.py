@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib
 import json
+import sqlite3
 import sys
 from dataclasses import fields
 from datetime import datetime, timedelta, timezone
@@ -877,8 +879,10 @@ def test_status_values_and_mandatory_fields_are_typed() -> None:
 
 
 @pytest.mark.lreq("LREQ-ARCH-010")
-def test_repository_protocol_and_schema_specification() -> None:
-    """The repository protocol and DDL specification exist without any SQLite implementation."""
+def test_repository_protocol_and_schema_specification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The repository protocol and DDL specification exist; importing database opens no connection and creates no files."""
     protocol_methods = {
         "insert_run",
         "update_run_status",
@@ -935,8 +939,36 @@ def test_repository_protocol_and_schema_specification() -> None:
         "quality_usable_count",
     ):
         assert alias not in scores_ddl, f"alias column {alias} must not exist"
-    assert "sqlite3" not in (SRC / "niche_scout" / "database.py").read_text(
-        encoding="utf-8"
+
+    # The Chunk 0 prohibition is a construction-time, never import-time
+    # constraint: the engine may be used later, but merely importing this
+    # module must neither open a connection nor touch the filesystem.
+    module_name = "niche_scout.database"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(sys.modules, module_name, raising=False)
+    assert module_name not in sys.modules, "the module under test must be importable"
+
+    observed_connections: list[tuple[object, ...]] = []
+
+    def record_connect(*args: object, **kwargs: object) -> object:
+        observed_connections.append(args)
+        raise AssertionError(
+            "importing niche_scout.database must not open a database connection"
+        )
+
+    monkeypatch.setattr(sqlite3, "connect", record_connect)
+    try:
+        importlib.import_module(module_name)
+    except AssertionError:
+        pass
+    finally:
+        monkeypatch.undo()
+
+    assert not observed_connections, (
+        "importing niche_scout.database must not open a database connection"
+    )
+    assert not list(tmp_path.iterdir()), (
+        "importing niche_scout.database must not create any file"
     )
 
 
