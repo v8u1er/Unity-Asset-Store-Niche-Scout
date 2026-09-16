@@ -16,10 +16,16 @@ from .models import PageViewSemanticsStatus
 @dataclass(frozen=True, slots=True)
 class MetricInput:
     scoring_cutoff_utc: datetime
-    page_view_semantics_status: PageViewSemanticsStatus = PageViewSemanticsStatus.UNVALIDATED
+    page_view_semantics_status: PageViewSemanticsStatus = (
+        PageViewSemanticsStatus.UNVALIDATED
+    )
 
     def __post_init__(self) -> None:
-        if self.scoring_cutoff_utc.tzinfo is None or self.scoring_cutoff_utc.utcoffset() != timezone.utc.utcoffset(self.scoring_cutoff_utc):
+        if (
+            self.scoring_cutoff_utc.tzinfo is None
+            or self.scoring_cutoff_utc.utcoffset()
+            != timezone.utc.utcoffset(self.scoring_cutoff_utc)
+        ):
             raise ValueError("scoring_cutoff_utc must be timezone-aware UTC")
 
 

@@ -1,7 +1,12 @@
 .env
 .env.*
 !.env.example
+.venv
+.venv/
+venv/
 runtime/
+*.db
+*.sqlite
 *.sqlite3
 __pycache__/
 .pytest_cache/

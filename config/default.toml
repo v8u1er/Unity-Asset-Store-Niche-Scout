@@ -1,10 +1,30 @@
-# Lean v1 defaults. Credentials are supplied through environment variables.
+# Lean v1 defaults.
+#
+# Precedence contract: CLI options override this file, which overrides the
+# documented in-code defaults in src/niche_scout/config.py.
+#
+# Credentials are supplied only through environment variables
+# (NICHESCOUT_COVEO_BEARER_TOKEN, NICHESCOUT_UNITY_CSRF_TOKEN) and never
+# appear here. Policy versions, sampling constants, and composite scoring
+# weights are frozen for v1 and are deliberately NOT configurable. See
+# src/niche_scout/models.py for the authoritative constant values.
+
+categories_path = "config/categories.json"
+taxonomy_path = "config/category_taxonomy.json"
+db_path = "runtime/niche_scout.sqlite3"
+
 max_discovery_results_per_category = 2000
 page_size = 96
-enrichment_sample_size_per_category = 100
+min_categories_per_run = 8
+strong_reference_category_count = 21
+max_taxonomy_age_days = 30
+
 min_usable_samples_per_stratum = 5
 min_age_days_for_rate = 30
-max_taxonomy_age_days = 30
-endpoint_contract_version = "parent-srs-2.3.0"
-identity_mapping_rule_version = "identity-map-1"
-sampling_rule_version = "lean-stratified-v1"
+recent_window_days = 365
+quality_min_rating_count = 5
+quality_min_eligible_assets = 5
+
+identity_preflight_min_categories = 5
+identity_preflight_assets_per_category = 2
+identity_preflight_min_success_rate = 0.90

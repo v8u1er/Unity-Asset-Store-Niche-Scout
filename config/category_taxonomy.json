@@ -1,7 +1,72 @@
 {
-  "schema_version": "taxonomy-1",
-  "captured_at_utc": "2026-01-01T00:00:00Z",
-  "source_url": "fixture://category-taxonomy",
-  "template_sha256": "fixture-template",
-  "categories": []
+  "schema_version": "1.0.0",
+  "captured_at_utc": "2026-01-05T00:00:00Z",
+  "source_url": "https://assetstore.unity.com/categories",
+  "template_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "canonical_category_paths": [
+    "2D",
+    "2D/Textures & Materials",
+    "2D/Textures & Materials/Stone",
+    "3D",
+    "3D/Characters",
+    "3D/Characters/Humanoids",
+    "3D/Environments",
+    "3D/Environments/Forests",
+    "Audio",
+    "Audio/Music",
+    "Audio/Music/Ambient",
+    "GUI",
+    "GUI/GUI Skins",
+    "GUI/GUI Skins/Icons",
+    "Tools",
+    "Tools/Level Design",
+    "Tools/Level Design/Tilemap",
+    "Tools/Utilities",
+    "Tools/Utilities/Editor Extensions",
+    "VFX",
+    "VFX/Particle Systems",
+    "VFX/Particle Systems/Fire"
+  ],
+  "categories": [
+    {
+      "path": "2D/Textures & Materials/Stone",
+      "label": "Stone Textures & Materials",
+      "parent": "2D/Textures & Materials"
+    },
+    {
+      "path": "3D/Characters/Humanoids",
+      "label": "Humanoid Characters",
+      "parent": "3D/Characters"
+    },
+    {
+      "path": "3D/Environments/Forests",
+      "label": "Forest Environments",
+      "parent": "3D/Environments"
+    },
+    {
+      "path": "Audio/Music/Ambient",
+      "label": "Ambient Music",
+      "parent": "Audio/Music"
+    },
+    {
+      "path": "GUI/GUI Skins/Icons",
+      "label": "GUI Icon Skins",
+      "parent": "GUI/GUI Skins"
+    },
+    {
+      "path": "Tools/Level Design/Tilemap",
+      "label": "Tilemap Level Design Tools",
+      "parent": "Tools/Level Design"
+    },
+    {
+      "path": "Tools/Utilities/Editor Extensions",
+      "label": "Editor Extension Utilities",
+      "parent": "Tools/Utilities"
+    },
+    {
+      "path": "VFX/Particle Systems/Fire",
+      "label": "Fire Particle Systems",
+      "parent": "VFX/Particle Systems"
+    }
+  ]
 }
