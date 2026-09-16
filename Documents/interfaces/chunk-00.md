@@ -340,7 +340,7 @@ DDL_STATEMENTS: tuple[str, ...]              # 5 CREATE TABLE + 1 CREATE INDEX
 CREATE_TABLE_STATEMENTS: dict[str, str]      # table name -> CREATE TABLE string
 TABLE_COLUMNS: dict[str, tuple[str, ...]]    # table name -> column names, in order
 TABLE_PRIMARY_KEYS: dict[str, tuple[str, ...]]
-TABLE_INDEXES: dict[str, tuple[str, ...]]    # index name -> CREATE INDEX string
+TABLE_INDEXES: dict[str, str]                # index name -> CREATE INDEX string
 ```
 
 ### Table primary keys (invariants)
