@@ -23,3 +23,7 @@ The following items from `Documents/SRS-lean.md` §1.3 are explicitly forbidden:
 ## Source of truth
 
 Read `Documents/SRS-lean.md` and `Documents/requirements-dependency-map.md` directly before making requirement-driven changes. Do not paraphrase either document into new requirements documentation.
+
+## Scratch space
+
+Throwaway scripts and probes belong in the repo-root `.scratch/` directory. Never request access to a temporary path outside this repository. See `.scratch/README.md` for naming, header, and cleanup conventions.

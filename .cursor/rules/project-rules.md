@@ -54,6 +54,25 @@ define its scope.
   If you believe another file must change, stop and flag it instead of
   editing it.
 
+## Temporary scripts and scratch space
+- The ONLY sanctioned location for throwaway scripts, probes, and temporary
+  output is `.scratch/` at the repository root. Never write to `%TEMP%`,
+  `$env:TEMP`, `AppData`, `C:\Windows\Temp`, or any other path outside this
+  repository, and never ask the user for permission to do so — use `.scratch/`.
+- Prefer `python -c` or an inline run for a one-liner. If a file is genuinely
+  needed, create `.scratch/<task-or-chunk>-<purpose>.py` (see
+  `.scratch/README.md` for naming and header conventions).
+- Scratch scripts import the package by running from the repository root
+  (`python .scratch/<name>.py`) with `src` on `PYTHONPATH` (e.g.
+  `$env:PYTHONPATH = "src"; python .scratch/<name>.py`). Do not add new
+  packaging or path shims for scratch code.
+- `.scratch/*` is git-ignored and is not part of any deliverable. Scratch code
+  is never referenced by `src/`, `tests/`, or `Documents/`.
+- Delete each scratch file in the same task that created it, unless the user
+  explicitly asks for it to be kept.
+- Never place product databases, fixtures used by `tests/`, or copies of
+  frozen plan/interface/SRS text in `.scratch/`.
+
 ## Chunk pipeline auto-chaining
 When Project mode runs a chunk's pipeline (plan-writer → plan-reviewer →
 chunk-implementer → gate-verifier) as one wave, chain automatically between
