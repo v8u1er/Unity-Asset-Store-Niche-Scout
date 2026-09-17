@@ -24,10 +24,17 @@ As you go:
 - If you find yourself wanting to touch a file not listed in section 6, or to
   implement something the plan marks as another chunk's ownership, stop and
   report that instead of proceeding.
+- If a file you touched crosses the thresholds in the project rule's "File size
+  and concern boundaries" section, say so in your closing report and propose a
+  split along that section's stated boundaries. Do not perform the split: it is a
+  change to the plan's "Files touched" list and therefore a scope decision, not a
+  step you may add to section 7.
 - If a requirement's exact behavior is ambiguous even after reading the cited
   SRS section, stop and report the ambiguity rather than choosing an
   interpretation silently.
 
 When the task breakdown is complete, run the test suite for the files you own
-and return pass/fail. Do not change the plan's Status — that happens in
-gate-verifier next.
+and return pass/fail, plus any file-size/split observation from the project
+rule's "File size and concern boundaries" section (state "none" explicitly if
+there is none — an omitted observation is indistinguishable from an unchecked
+one). Do not change the plan's Status — that happens in gate-verifier next.
