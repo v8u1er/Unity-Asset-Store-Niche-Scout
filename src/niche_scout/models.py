@@ -23,7 +23,7 @@ from typing import Any, ClassVar, TypeVar, get_args, get_origin, get_type_hints
 # --------------------------------------------------------------------------
 
 ENDPOINT_CONTRACT_VERSION: str = "1.0.0"
-IDENTITY_MAPPING_RULE_VERSION: str = "1.0.0"
+IDENTITY_MAPPING_RULE_VERSION: str = "1.0.1"
 SAMPLING_RULE_VERSION: str = "1.0.0"
 
 # --------------------------------------------------------------------------

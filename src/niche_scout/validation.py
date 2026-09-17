@@ -1246,7 +1246,7 @@ def _usable_candidate(raw_value: object) -> str | None:
 def _canonicalize_product_id(raw_value: str) -> tuple[str | None, str | None]:
     """Canonicalize an already-canonical product identifier.
 
-    Mapping rule 1.0.0 treats ``ec_product_id`` and ``permanentid`` as canonical
+    Mapping rule 1.0.1 treats ``ec_product_id`` and ``permanentid`` as canonical
     as-supplied: the value is trimmed and otherwise passed through unchanged, with
     no transformation. A value that is empty after trimming contributes no
     candidate.
@@ -1260,10 +1260,15 @@ def _canonicalize_product_id(raw_value: str) -> tuple[str | None, str | None]:
 def _canonicalize_uri(raw_value: str) -> tuple[str | None, str | None]:
     """Extract the trailing numeric identifier from a URL's final path segment.
 
-    Mapping rule 1.0.0 reads the identifier after the final ``-`` in the URL's
+    Mapping rule 1.0.1 reads the identifier after the final ``-`` in the URL's
     last path segment, ignoring any query string or fragment. A value that does
     not fit that pattern contributes **nothing** — it never yields a guessed or
     partial identifier.
+
+    The extraction rule itself is *inferred*, not verified against a real
+    captured response (``interfaces/chunk-01.md`` §4.1 caveat; 1.0.1 corrects the
+    candidate *comparison* rule only and deliberately leaves extraction
+    untouched).
     """
     text = raw_value.strip()
     if text == "":
@@ -1286,7 +1291,7 @@ def canonicalize_identity_candidate(
 ) -> str | None:
     """Canonicalize a raw identity candidate under a versioned mapping rule.
 
-    Under mapping rule ``1.0.0``:
+    Under mapping rule ``1.0.1``:
 
     * any non-empty value — including an ``ec_product_id`` or ``permanentid`` — is
       accepted as already canonical after whitespace trimming, with no
@@ -1305,9 +1310,11 @@ def canonicalize_identity_candidate(
 
     ``mapping_rule_version`` selects the rule and is required to be a version this
     implementation knows; an unknown version raises ``ValueError`` instead of
-    silently applying ``1.0.0`` semantics. A consumer decides behavior from
+    silently applying ``1.0.1`` semantics. A consumer decides behavior from
     :attr:`IdentityResolutionResult.mapping_rule_version`, never by assuming a
-    version.
+    version. ``1.0.1`` differs from ``1.0.0`` only in the candidate comparison:
+    ``1.0.0`` also accepted a URI-derived identifier that was a *suffix* of an
+    explicit product id, which rescued genuine ``LREQ-EXT-070`` disagreements.
     """
     if mapping_rule_version != IDENTITY_MAPPING_RULE_VERSION:
         raise ValueError(
@@ -1334,7 +1341,7 @@ def collect_identity_candidates(record: Mapping[str, object]) -> tuple[IdentityC
     visible as a missing candidate rather than as an empty string.
 
     Each candidate records the source field it came from and its canonical form
-    under mapping rule 1.0.0; a candidate that cannot be canonicalized keeps
+    under mapping rule 1.0.1; a candidate that cannot be canonicalized keeps
     ``canonical_value = None`` plus a typed ``parse_failure_reason``. Candidate
     order is input order, so the result is deterministic for equal inputs.
     """
@@ -1361,7 +1368,7 @@ def collect_identity_candidates(record: Mapping[str, object]) -> tuple[IdentityC
 def _comparable_identity(canonical_value: str) -> str:
     """Return the comparison form of a canonical candidate.
 
-    Mapping rule 1.0.0 compares ``ec_product_id``/``permanentid`` numerically when
+    Mapping rule 1.0.1 compares ``ec_product_id``/``permanentid`` numerically when
     both sides parse as integers, else as strings. Since canonical candidates are
     digits-only strings here, comparing their integer value (falling back to the
     literal text when the integer is unparsable) gives numerically-equal forms
@@ -1397,7 +1404,10 @@ def resolve_canonical_identity(
     ``unresolved`` rather than conflict-free by omission.
 
     ``mapping_rule_version`` is recorded on the result so consumers branch on the
-    rule that produced it instead of assuming one version's semantics.
+    rule that produced it instead of assuming one version's semantics. ``1.0.1``
+    differs from ``1.0.0`` only in the candidate comparison: ``1.0.0`` also
+    accepted a URI-derived identifier that was a *suffix* of an explicit product
+    id, which rescued genuine ``LREQ-EXT-070`` disagreements.
     """
     if mapping_rule_version != IDENTITY_MAPPING_RULE_VERSION:
         raise ValueError(

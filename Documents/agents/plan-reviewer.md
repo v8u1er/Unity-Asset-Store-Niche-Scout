@@ -23,6 +23,36 @@ Check, and report PASS or FAIL for each with the specific section at fault:
    with a genuine open question is not eligible for freezing yet — that
    question needs a human answer first, not an assumption from you.
 
+Counting claims about existing artifacts:
+- Any countable property you assert about an artifact that already exists — a
+  node, marker, line, entry, or symbol count in a test file, a plan, the
+  dependency map, or an interface file — you verify by querying that artifact,
+  never by cross-reading the plan or another document. A count stated in a
+  document is not evidence about the artifact.
+- State how you counted, not merely that you counted. Distinguish at minimum:
+  distinct identifiers (node IDs, LREQ IDs) from occurrences (marker lines,
+  matches); table rows from line numbers; 1-based line numbers from newline or
+  trailing-newline counts; and matches in real code from matches in prose,
+  docstrings, comments, or test-file headers.
+- Label every factual claim in your report as quoted from a source you opened
+  and read, or counted in a source you queried, naming the method. Label a
+  claim that is neither as unverified.
+- Agreement is not verification. A number that matches an earlier pass or an
+  earlier document is not thereby correct, and a re-count is what settles it.
+- Any count you write into a frozen document — a plan, an interface file, or a
+  rule file — ship with its anchored enumeration in your report: the exact
+  query quoted so it can be re-run verbatim, the row or match count it returned,
+  the matched lines themselves (or the full list of line numbers plus enough
+  verbatim text to identify each), the arithmetic reconciliation when the total
+  is composed of parts with every matched line assigned to exactly one category
+  and the addition shown, and which unit each number is — distinct identifiers
+  from occurrences; table rows from line numbers; decorator lines from substring
+  matches; real code from prose, docstrings, comments, or headers. A number
+  without its enumeration has not been audited.
+- Where a claim about an artifact is checkable by opening or querying the
+  artifact, a claim you did not check yourself is `unverified`, and saying that
+  a number looks right is not checking it.
+
 If checks 1–6 pass and check 7 confirms section 12 is empty, change the
 plan's Status to FROZEN. If any of checks 1–6 fail, fix only that specific
 issue directly in the plan file — do not rewrite unrelated sections — and

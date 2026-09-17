@@ -2,7 +2,8 @@
 
 Every test here carries an explicit ``@pytest.mark.lreq`` marker and a matching
 entry in ``tests/traceability.json``. The suite exercises the pure identity half of
-``niche_scout.validation`` under mapping rule 1.0.0 (resolved decision R-2): which
+``niche_scout.validation`` under mapping rule 1.0.1 (resolved decision R-2, plus
+the 1.0.1 candidate-comparison correction): which
 candidates a discovery record retains, how a candidate is canonicalized, how
 agreement/disagreement is classified, how a conflict or unresolved identity is kept
 out of the canonical denominator and enrichment set, how GraphQL identity aliases
@@ -229,7 +230,7 @@ def test_canonicalization_is_versioned() -> None:
     """Canonicalization records its rule version and rejects an unknown one."""
     default_result = v.resolve_canonical_identity(fx.AGREEING_IDENTITY_RECORD)
     assert default_result.mapping_rule_version == IDENTITY_MAPPING_RULE_VERSION
-    assert default_result.mapping_rule_version == "1.0.0"
+    assert default_result.mapping_rule_version == "1.0.1"
 
     explicit_result = v.resolve_canonical_identity(
         fx.AGREEING_IDENTITY_RECORD, mapping_rule_version=IDENTITY_MAPPING_RULE_VERSION
@@ -709,7 +710,7 @@ def test_unparseable_alias_is_mismatch_with_reason() -> None:
 
     # The reason names the alias keys that could not be canonicalized, but not their
     # raw values: an unusable alias value is reported structurally. Only
-    # ``clickUri``/``uri`` can fail to canonicalize under mapping rule 1.0.0 —
+    # ``clickUri``/``uri`` can fail to canonicalize under mapping rule 1.0.1 —
     # ``product_id`` is canonical as-supplied (see the fixture's own note), so it is
     # non-agreeing rather than unparseable and is correctly absent from the reason.
     unparseable_alias = "clickUri"

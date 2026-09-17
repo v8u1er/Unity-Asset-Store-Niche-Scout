@@ -260,7 +260,7 @@ MULTI_VALUED_NO_MATCH: list[str] = ["Nonexistent/Category", "Another/Missing/Pat
 WRONG_TYPED_CATEGORY_VALUES: tuple[Any, ...] = (7, [7, 8], {"path": DEFAULT_CATEGORIES[0]}, True)
 
 # --------------------------------------------------------------------------
-# Identity fixtures (mapping rule 1.0.0, R-2)
+# Identity fixtures (mapping rule 1.0.1, R-2)
 # --------------------------------------------------------------------------
 
 #: The canonical asset identifier every agreeing fixture resolves to.
@@ -391,7 +391,7 @@ GQL_ALIAS_MAPS: dict[str, dict[str, Any]] = {
     # Alias present but null.
     "null_alias": {"graphql_id": None, "product_id": None},
     # Alias present but not canonicalizable. Only ``clickUri``/``uri`` can fail to
-    # canonicalize: under mapping rule 1.0.0 `ec_product_id`/`permanentid`-style
+    # canonicalize: under mapping rule 1.0.1 `ec_product_id`/`permanentid`-style
     # aliases are already canonical and pass through unchanged (R-2), so they are
     # merely *non-agreeing*, never unparseable.
     "unparseable": {"clickUri": "not-an-identifier", "product_id": "also-bad"},

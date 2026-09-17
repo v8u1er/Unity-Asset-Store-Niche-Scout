@@ -7,6 +7,6 @@ existing modules for convenience only; they add no symbols of their own.
 
 from __future__ import annotations
 
-from fixtures import config_fixtures, validation_fixtures
+from fixtures import config_fixtures, coveo_discovery, graphql_fixtures, validation_fixtures
 
-__all__ = ["config_fixtures", "validation_fixtures"]
+__all__ = ["config_fixtures", "coveo_discovery", "graphql_fixtures", "validation_fixtures"]
