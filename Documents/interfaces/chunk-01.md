@@ -363,6 +363,40 @@ concerns owned by Chunk 5), and `LREQ-EXT-010`, `LREQ-EXT-030`, `LREQ-EXT-040`,
 decision R-1 and was verified two-directionally at the gate.
 
 Test modules: `tests/test_validation.py` (22 marked tests), `tests/test_identity.py`
-(25 marked tests), fixtures in `tests/fixtures/validation_fixtures.py`
-(`tests/fixtures/__init__.py` re-exports it). All 47 base node IDs have exactly
+(26 marked tests), fixtures in `tests/fixtures/validation_fixtures.py`
+(`tests/fixtures/__init__.py` re-exports it). All 48 base node IDs have exactly
 matching `tests/traceability.json` entries.
+
+> **Dated correction (2026-09-18).** The figures in this paragraph were
+> `test_identity.py` **25** and the pair total **47**. Both were measured and
+> found wrong; they are superseded by **26** and **48** above. Nothing is
+> deleted — the superseded figures are retained here in this note.
+>
+> Method. `python -m pytest tests/test_identity.py tests/test_validation.py
+> --collect-only -q` returns **48 collected node lines**; python `-m pytest
+> --collect-only` (via `subprocess`, `-p no:cacheprovider`) plus AST parsing of
+> the two modules yields **26** distinct base node IDs in `tests/test_identity.py`
+> and **22** in `tests/test_validation.py`; `48 = 26 + 22`. `tests/traceability.json`
+> has a matching entry for all 48 (0 missing).
+>
+> Unit discipline — three different units live in this module and the original
+> figures did not distinguish them. In `tests/test_identity.py`: **26** marker
+> decorator lines, **26** distinct base node IDs, **26** `test_` functions, plus
+> **1** further occurrence of the literal string `@pytest.mark.lreq` inside the
+> module docstring at line 3 (which is not a marker and is excluded from the
+> count above). In `tests/test_validation.py`: **23** marker decorator lines,
+> **22** distinct base node IDs, **22** `test_` functions, plus **1** further
+> docstring occurrence at line 3, and additionally lines 1187–1188 form a
+> two-marker stack on a single `test_` function, which is the sole cause of the
+> 23-vs-22 gap. The `22` already written in this file refers to distinct base
+> node IDs and remains correct.
+
+> **Dated correction (2026-09-18), provenance note.** The `test_identity.py`
+> marker counted at `tests/test_identity.py:354`
+> (`test_uri_derived_proper_suffix_of_anchor_is_conflict`, `LREQ-EXT-070`) is the
+> boundary-case test added when the suffix-tolerance branch in
+> `collector_coveo.py::_identity_candidates_agree` was removed and
+> `identity_mapping_rule_version` advanced to `1.0.1`. It is the delta that
+> carried `test_identity.py` from 25 to 26 and the pair total from 47 to 48; it
+> asserts the strict-equality reading of `LREQ-EXT-070` that this file's
+> identity-mapping-rule section states at lines 222–224.
