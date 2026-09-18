@@ -1,9 +1,50 @@
 # Chunk 3 — Coveo discovery adapter and streamed raw persistence
 
 Status: VERIFIED
+Status footnote (added 2026-09-18, by operator ruling, after empirical
+re-derivation; corrected 2026-09-18 to make its first sentence self-contained and
+to label each test total by the run that produced it): what changed on
+2026-09-18 is this footnote and nothing else — the verification text at the end
+of it now carries the run-by-run totals and a superseded-figure note in place of
+the bare `119` line that this edit replaced. `Status: VERIFIED` on the line
+above is retained deliberately and is unchanged; the suite it was awarded over
+is **not** green at this record's working-tree state: `python -m pytest tests/ -q`
+reports **6 failed / 140 passed**, and `tests/test_collector.py` reports
+**6 failed / 47 passed** (both counts re-derived by three independently shaped
+pytest invocations). All six failing node IDs belong to **Chunk 5's
+still-in-development test family** and live in `tests/test_collector.py`:
+`test_adapter_cannot_bulk_enrich_or_consult_preflight_state` (`LREQ-GQL-010`),
+`test_null_required_data_and_wrong_data_shape_are_operation_errors`
+(`LREQ-GQL-040`), `test_invalid_state_value_and_missing_identity_are_operation_errors`
+(`LREQ-GQL-040`), `test_failed_operation_fields_are_none_never_zero`
+(`LREQ-GQL-050`), `test_state_excluded_and_unknown_assets_remain_recorded`
+(`LREQ-GQL-060`), and `test_request_metadata_json_carries_required_fields_without_secrets`
+(`LREQ-SEC-020`). None of the six documents a defect in a file this chunk owns
+(`collector_coveo.py`, `validation.py`, `models.py`); all six defects and all six
+fix sites are in Chunk 5's file set (`collector_graphql.py`,
+`tests/fixtures/graphql_fixtures.py`). One disclosure so this record is not
+overstated: three of the six nodes *execute* Chunk 1/3-owned primitives — the
+`validation.py` identity-group rule and `models.py` `OperationStatus` — while
+their defects remain Chunk 5's classification logic, and the Chunk 5 plan's §6
+lists `validation.py` and `models.py` as deliberately not touched. Chunk 3's own
+gate bullets remain satisfied, so this Status is **not** flipped. This footnote
+is a record correction, not a re-verification; it does not re-open §10's bullets.
+The six failures are named here rather than omitted: six tests do fail.
 Verified at: working tree state 2026-09-17; `python -m pytest tests/ -q`
 (119 passed, exit 0), `python -m niche_scout.tools.validate_traceability`
 (exit 0), `python -m niche_scout.tools.check_import_boundaries` (exit 0).
+That same `119 passed, exit 0` sentence is **superseded by the footnote above**:
+it was not re-checked in the 2026-09-18 re-derivation and it is **not** the tree
+that reports 6 failed / 140 passed. The totals actually observed are
+`python -m pytest tests -q` → **6 failed, 140 passed** (146 collected node IDs)
+and `python -m pytest tests/test_collector.py -q` → **6 failed, 47 passed**,
+both run 2026-09-18 against the working tree that has front-matter and
+append-only changes from this record's correction pass only; the **6 failed,
+139 passed** recorded in `Documents/plans/tooling-p0-2-traceability-blind-spot.md`
+(its §12.1) is the earlier run this one supersedes. The `119 passed, exit 0` in
+the line above is kept as the historically recorded figure for the 2026-09-17
+state and is not reconciled here: it is stale, and no artifact in this repository
+documents the exact suite composition that produced it.
 Published contract: `Documents/interfaces/chunk-03.md`.
 Depends on (frozen interfaces required before this plan can be trusted):
   - `Documents/interfaces/chunk-00.md` (VERIFIED — models, constants, `config.py`
@@ -97,7 +138,10 @@ page into zero assets.
   only (with `asset_identity_key` nullable).
 - **GraphQL enrichment, correlation, and operation-level status** —
   Chunk 5 (`collector_graphql.py`), running in parallel. Chunk 3 plans **no**
-  edit to that module and does not call it.
+  edit to that module and does not call it. Chunk 5's GraphQL protocol test
+  family is also appended to `tests/test_collector.py` — the module §6 lists as
+  *this* chunk's new test file — so that file currently holds both chunks'
+  nodes; see the Status footnote at `:4-27`.
 - **Identity-preflight planning and gating** — Chunk 6A. **Unique enrichment
   and reuse** — Chunk 6B.
 - **`LREQ-EXT-090`'s warning emission and rankability suppression** — Chunk 10
@@ -181,6 +225,8 @@ MAX_DISCOVERY_RESULTS_PER_CATEGORY = 2000
 PAGE_SIZE = 96
 ENDPOINT_CONTRACT_VERSION = "1.0.0"
 IDENTITY_MAPPING_RULE_VERSION = "1.0.1"   # adapter-side suffix tolerance dropped; chunk-01.md §4.1 already required exact equality
+                                          # A Chunk 0 / interface value restated here for context, not a Chunk 3 edit — §6 does not list models.py.
+                                          # `state` moved out of the structural required set on 2026-09-18; that change is Chunk 5's, not this chunk's (see §12.13).
 def to_json(instance: Any) -> str: ...
 def to_json_dict(instance: Any) -> dict[str, Any]: ...
 def ensure_utc(value: datetime) -> datetime: ...
@@ -429,6 +475,15 @@ verbatim and never computes or rewrites them (§12.11).
 
 ## 7. Task breakdown
 
+Three boxes in this list — `:590`, `:603`, and `:626` — carry open `- [ ]`
+openers but declare work **Chunk 5 owns**, not this chunk: the first records
+interface values consumed rather than edited, and the other two declare test
+obligations in Chunk 5's files. They are left as they stand in this pass and are
+not a second instruction to edit `collector_graphql.py`; see the Status footnote
+at `:4-27` and the dated correction at `:1676-1709`, which record that their
+conversion into this plan's §12 obligation/§6 "Not touched" convention is a
+deferred, separately-committed change.
+
 - [ ] Declare the module's frozen constants: endpoint + organization id,
   `COVEO_TEMPLATE_PATH`, `COVEO_VISITOR_ID_PLACEHOLDER`, the required header set
   (`COVEO_REQUIRED_HEADERS`, which excludes `sec-ch-ua*`, `sec-fetch-*`,
@@ -549,6 +604,54 @@ verbatim and never computes or rewrites them (§12.11).
   `config/coveo_search_template.json` plus the §12.6 edits and the
   credential-normalization test of §12.8 — then add the matching
   `tests/traceability.json` entries (`LREQ-TST-040`).
+- [ ] **Interface values consumed, not edited — do NOT change the code for the
+  two entries below.** Both were consumed from frozen interfaces and both match
+  `src/` today; they are listed here only so a reader does not mistake them for
+  this chunk's own decisions:
+
+  - `IDENTITY_MAPPING_RULE_VERSION = "1.0.1"` (`models.py`, Chunk 0's frozen
+    value, §4). §12.13 records that the value pre-dates this chunk.
+  - `PRODUCT_DETAIL_REQUIRED_MEMBERS` (`collector_graphql.py`, Chunk 5, §4) —
+    when the node-5 ruling of §12.13 lands, its member list loses `state`
+    (Chunk 5 drops the member from the constant *and* the validator call, so
+    `state` lives only in the semantic state group). This bullet is **not** a
+    second instruction to edit that file: §6 does not list
+    `collector_graphql.py`, and Chunk 5 owns the change.
+- [ ] **Declare the paired boundary tests for the `collector_graphql.py:1148`
+  guard (Chunk 5's file, named here because the correction is ruled in this
+  plan's §12.13).** The pair pins *both* halves so the benign half is not
+  "fixed" by re-adding `state` to the required set:
+
+  - missing `state` → benign: `state_unknown = True`, no `invalid_state_value`
+    issue, and the operation's outcome is decided by the remaining required
+    members (the payload is `WRONG_DATA_SHAPE` when another required member is
+    missing, and otherwise validates with `state_unknown` recorded);
+  - null `state` → the same benign path, and specifically **no**
+    `response_null_required_member` for `state`;
+  - present-but-UNUSABLE `state` (a non-string) → still
+    `invalid_state_value` → `INVALID_STATE_VALUE`. **This half must not
+    regress**, which is why it is declared here beside the other two.
+
+  Node names and markers: the three cases are new nodes of the existing
+  **`test_invalid_state_value_and_missing_identity_are_operation_errors`**
+  family (`LREQ-GQL-040`; declared in the Chunk 5 plan's §9 node list, which
+  maps base node IDs and does not name per-case nodes), registered under
+  `LREQ-GQL-040` per the existing
+  `tests/traceability.json` convention of **one entry per base node ID**, so no
+  new node ID and no new LREQ marker is invented here. No LREQ ID is invented
+  because none is needed: `LREQ-GQL-040` already owns this node.
+- [ ] **Declare the node-6 metadata test (Chunk 5's file, §12.13).**
+  `operation_names` and `correlation_keys` must actually appear as the two
+  operation names and the caller-supplied keys in `request_metadata_json`, and
+  must **not** be replaced by redaction placeholders
+  (`"<value redacted: str of length N>"`) — i.e. the values
+  `build_request_metadata_json` receives are the values it persists for these
+  two keys. Registered under the existing
+  **`test_request_metadata_json_carries_required_fields_without_secrets`** node
+  (`LREQ-SEC-020`; Chunk 5 plan §9), asserted as a strengthening of that node,
+  not as a new marker. The redaction *guarantee* it must not weaken is the
+  signature property recorded in Chunk 5 plan §5.10: the function accepts no
+  credential, header-value, cookie, or body parameter at all.
 - [ ] Run `python -m pytest tests/test_collector.py -q` and
   `python -m niche_scout.tools.validate_traceability` before declaring the
   chunk done.
@@ -642,6 +745,37 @@ Drawn from the dependency map's "Edge cases" column for this chunk's LREQs
 `tests/fixtures/__init__.py`. No live network, no credentials from the real
 environment, no clock reads: the opener, sleeper, and clock are injected.
 
+**Ruled-in tests for the identity rule version, and the one ruled out because it
+already exists (recorded 2026-09-18).** Two test shapes were proposed against
+`IDENTITY_MAPPING_RULE_VERSION = "1.0.1"`; reading the artifacts settled both, so
+the fix wave inherits decisions rather than questions:
+
+- **Already present — do not duplicate.** The suffix-as-conflict boundary is
+  covered today: `tests/test_identity.py:403-446`
+  `test_uri_derived_proper_suffix_of_anchor_is_conflict`
+  (`@pytest.mark.lreq("LREQ-EXT-070")`) asserts `CONFLICT` at `:433` for a
+  URI-derived identifier that is a proper suffix of the explicit anchor, and
+  `tests/traceability.json` already carries its entry. The authoritative
+  boundary for consumers is `interfaces/chunk-01.md` §4.1 ("What `1.0.1` is").
+  Adding a second copy of it to `tests/test_collector.py` would duplicate a
+  frozen node ID's coverage, so it is **not** in this chunk's test list.
+- **Uncovered — the adapter side must be named before any removal.** No node in
+  `tests/test_collector.py` exercises a *proper suffix* through
+  `collector_coveo.resolve_observation_identity`, so a source-only deletion of a
+  suffix-acceptance branch would be invisible to this chunk's suite: a
+  contributor could change `resolve_observation_identity`'s return statement
+  from `all(anchor == key for key in uri_keys)` to
+  `all(anchor.endswith(key) or key.endswith(anchor) ...)` and every node here
+  would still pass. When the adapter-side change lands (§12.13), the node it
+  lands with is
+  **`test_adapter_uri_candidate_that_is_a_proper_suffix_of_the_anchor_is_conflict`**
+  under `@pytest.mark.lreq("LREQ-EXT-070")` with its own
+  `tests/traceability.json` entry, and its assertion is
+  `resolve_observation_identity(record).status is IdentityResolutionStatus.CONFLICT`
+  — not "not RESOLVED" — because the third state (`UNRESOLVED`) is the
+  unparseable-URI abstention and asserting only "not resolved" would pass for an
+  abstention as well as for a conflict.
+
 **Fixture inventory (request side anchored to the capture; response side
 hand-derived from the redacted recorded response shapes described in the parent
 SRS — no live call):**
@@ -727,6 +861,15 @@ Copied verbatim from `requirements-dependency-map.md` §Chunk 3 Gate:
 - Discovery can process one category without loading the complete result set into memory.
 - This chunk completes the Coveo-side integration of the validation primitives from Chunk 1; the primitive contracts alone do not satisfy LREQ-EXT-060 or LREQ-EXT-080.
 
+The six bullets are copied verbatim and are not re-scored here. What this
+section does not say, and what the Status footnote at `:4-27` now states
+instead, is that the suite that was green when this gate was first recorded is
+**not** green at the current working-tree state (6 failed / 140 passed overall;
+6 failed / 47 passed in `tests/test_collector.py`) because six Chunk 5-family
+tests in `tests/test_collector.py` fail. Those failures are not gate bullets
+above, and no bullet above was re-checked for them; the footnote is a record
+correction and does not re-open this section.
+
 ## 11. Explicit prohibitions
 
 - Must not issue any network request before taxonomy validation and credential
@@ -803,6 +946,14 @@ where an entry says otherwise; no entry below is an open human decision *about
 this chunk's scope, requirements, or gate*. Entries are numbered as the draft
 numbered them so earlier reviews remain traceable.
 
+**A second entry likewise records an obligation rather than a closed scope
+question: §12.13, which records the node-5 ruling and corrects the refuted
+premise it rested on.** Unlike §12.9 the ruling itself *is* closed — the
+decision is made and recorded — but the change it describes lands in **Chunk
+5's** file (`collector_graphql.py`), which §6 does not list, so no part of it is
+this chunk's implementation work. A reader of §12 must not read §12.13 as an
+authorization to edit that module.
+
 **One entry records an obligation that is UNMET and OPEN rather than resolved:
 §12.9, where `interfaces/chunk-01.md` §4.1's URI trailing-identifier extraction
 rule stays inferred and unverified for this chunk and no real captured Coveo
@@ -812,6 +963,16 @@ open *provenance/ownership* findings rather than closed questions are §12.1's
 "OPEN — how the file came to be in its trimmed form" bullet (§12.12) and
 §12.11's `runs.taxonomy_sha256` ownership gap; both were already stated as
 non-blocking findings and neither is resolved here.
+
+**The Status region is not a §12 entry and is not numbered as one.** One
+correction in this section's own record — the 2026-09-18 amendment of the
+front-matter `Status:` line to carry a footnote, so that `VERIFIED` beside six
+failing tests in `tests/test_collector.py` stops reading as a green-suite claim
+— is recorded at the end of §12 as an **unnumbered dated correction** rather
+than as a §12.15. It closes no numbered scope question, resolves nothing in
+§12.1–§12.14, and touches no gate bullet; the front matter it corrects sits
+above §1 and outside this section's numbering. No §12.15 exists and none is
+implied by it.
 
 **12.1 RESOLVED — the captured request template is `config/coveo_search_template.json`.**
 `LREQ-EXT-010` ("Discovery SHALL use the parent SRS Coveo endpoint, required
@@ -1310,3 +1471,268 @@ What the commit actually did, verified by reading both revisions with
 this project does not rewrite history: the correction is recorded here instead, so
 that a reader who finds the commit message also finds what actually landed. This
 note changes no requirement, no scope, and no gate.
+
+**12.13 RULED — `state` moves out of the structural required-member group into
+the semantic state group; and this entry also corrects the refuted premise that
+the node-5 ruling originally rested on (recorded 2026-09-18).** Two things are
+recorded here and they must not be read as one. The **ruling** (§12.13(i)–(iv))
+is a decision about Chunk 5's code and about the frozen documents this plan
+depends on; the **correction** (§12.13(v)) records an error this plan's earlier
+node-5 reasoning made and then withdrew. Neither is Chunk 3 implementation work:
+§6 does not list `collector_graphql.py`, and every code change below is Chunk
+5's.
+
+**(i) The ruling — what moves, and where to.** `state` leaves the structural
+required-member group and joins the semantic state group
+(`StateEligibilityAnnotation`, whose `state_unknown` is the
+`missing/null/unparsable` state). Concretely: `PRODUCT_DETAIL_REQUIRED_MEMBERS`
+(`src/niche_scout/collector_graphql.py:876-885`) loses `state`, and the
+`validate_response_shape(..., required_members=...)` call
+(`collector_graphql.py:1050-1055`) therefore stops asking Chunk 1 for a
+`response_missing_required_member`/`response_null_required_member` verdict on
+it. The Chunk 5 plan's E7 (`Documents/plans/chunk-05-graphql-protocol-adapter-and-response-correlation.md:1311-1315`),
+which reads "`product` present but not an object, a required member missing, and
+`state` present but not a string are each an operation error for `ProductDetail`",
+is corrected **as one unit with the constant** to match the same plan's §5.8
+(`:914-923`, "keeps the raw `state` string in `ProductDetailFields.state`
+(verbatim, including a `None` for a missing state)") and E10 (`:1328-1332`, "a
+missing, null, or wrong-typed value is `state_unknown`"). Splitting the two —
+moving the constant without correcting E7 — is what this entry forbids: it would
+leave Chunk 5's frozen plan asserting a check that no longer exists. Note the
+wording that must survive the correction: E10's "missing, null, or wrong-typed
+value is `state_unknown`" is a rule about the *annotation*, not about the
+operation outcome, so correcting E7 does not mean that every missing-null-wrong-
+typed `state` is benign — only `missing` and `null` are.
+
+**(ii) The correction — the tie-break source was misattributed.** The node-5
+reasoning claimed a frozen interface said something it does not say. The
+sentence "Absent, null, and wrong-typed members each produce their own issue
+code, stay `None` in the returned fields, and are never substituted with a
+default" is at
+**`src/niche_scout/collector_graphql.py:1022-1027`, inside the docstring of
+`_validate_product_detail_payload`** — it is a **Chunk 5 docstring describing
+Chunk 1's behavior**, not text in `interfaces/chunk-01.md`. The interface's
+entire prose for its own state function is this two-sentence contract, quoted
+verbatim in full:
+
+`Documents/interfaces/chunk-01.md:315-317`
+> - **`annotate_state_eligibility`** is an annotation, not a decision:
+>   `remains_in_discovered_breadth` is always `True` and the result exposes no
+>   D/R/Q eligibility attribute.
+
+That is the *entire* prose contract for the function. It is SILENT on whether a
+missing, null, or wrong-typed `state` is an operation error or a benign
+annotation, so it cannot be the tie-break source it was said to be, and it does
+not outrank the code on that question.
+
+**(iii) Why the ruling is the right one anyway — the mechanical proof, so a
+future reader does not have to re-derive it.** The interface is silent, the SRS
+is silent on the producing side, and the plan split resolves 2–1 with code
+agreement, as follows.
+
+- `Documents/interfaces/chunk-01.md:133-139` defines the annotation's fields:
+  `state_value: str | None`, `is_published: bool`, `state_excluded: bool  #
+  present but not "published"`, `state_unknown: bool  # missing/null/unparsable`,
+  `remains_in_discovered_breadth: bool  # always True (annotation only)`.
+- `interfaces/chunk-01.md:272-282` (§4.2) lists `response_missing_required_member`
+  and `response_null_required_member` as two distinct codes and states **no
+  condition** for either and **no** generic-versus-specific rule, and
+  `interfaces/chunk-01.md:284-286` is the only ordering statement in that
+  section — it governs issue **sort** order, not check order. (`:3` reads
+  `Status: VERIFIED`; `:10-15` declares the body frozen.)
+- The condition semantics exist only in
+  `src/niche_scout/validation.py:1760-1779`: absent → 
+  `response_missing_required_member`; present-but-null →
+  `response_null_required_member`; and `:1781-1796` → wrong type →
+  `response_wrong_scalar_type`. There is **no state-specific code in Chunk 1**,
+  so the codes fire only for members a caller declares as required.
+- **The only `state_unknown` mention in the SRS is
+  `Documents/SRS-lean.md:329-330` (LREQ-GQL-060)**: "Only `state = \"published\"`
+  assets are eligible for D, R, and Q. State-excluded and state-unknown assets
+  remain part of discovered breadth." It describes RETENTION of assets that
+  already are state-unknown and never what PRODUCES that state.
+- The plan splits **2–1**: §5.8 (`chunk-05` `:914-923`, raw state kept
+  verbatim, including `None` for a missing state) and E10 (`:1328-1332`) agree
+  with the ruling; E7 (`:1311-1315`) contradicts them.
+- **Mechanical proof, by reading:** `collector_graphql.py:1050-1055` calls
+  `validate_response_shape` with `required_members=PRODUCT_DETAIL_REQUIRED_MEMBERS`
+  and does not short-circuit. For `state` absent: `:1137` yields
+  `state_value = None`, `:1138` yields `state_unknown = True`, and `:1148`'s
+  guard is `state_annotation.state_unknown and state_value is not None` →
+  `True and False` → `False`, so **no** `invalid_state_value` fires;
+  `:1199-1200` maps that code to `INVALID_STATE_VALUE`, and `:1182-1189` returns
+  the class with `product_detail=None` unless the class is `NONE`. So a *state*
+  value alone never makes the operation an error on the missing/null path, and
+  the fully-built `fields` object carrying `state_unknown=True` is discarded
+  when another member fails — no caller can observe a `SUCCESS` operation with
+  `state_unknown == True` for a *state* reason. The guard's two sides only
+  diverge for a present-but-unusable value: a present non-string yields
+  `state_value` non-`None` and `state_unknown=True`, so `:1148` fires and
+  `:1154-1157` records `invalid_state_value`, which `:1199-1200` maps to
+  `INVALID_STATE_VALUE` — exactly the half that must not regress.
+
+**(iv) The node-5 change is NOT chunk-3-local.** It changes Chunk 5's
+observable behavior (`ProductDetail` payloads with a missing or null `state`
+stop being operation errors and start validating with the state annotated
+unknown), which is why **Chunk 5 gets a retroactive plan and interface first**
+and this chunk's fix wave runs after that contract is published rather than
+against a document that does not exist yet. This plan records the ruling and
+the mechanical proof; it does not build against a Chunk 5 contract that is not
+yet published.
+
+**(v) What this plan does NOT do, and why.** No file under `src/` was touched
+for this entry, `collector_graphql.py` is not in §6, and the `state` move is
+Chunk 5's to land. The tests that pin the change are declared, not written
+(§7), because this wave is documentation-only. `interfaces/chunk-03.md` is
+**not** edited for this ruling: it contains no claim the ruling falsifies — it
+says nothing about `ProductDetail`, `state`, or GraphQL operation outcomes; its
+own `mapping_rule_version` discussion is about `LREQ-EXT-060`/`070`/`080`
+identity candidates, a different subject. The 2–1 plan split is evidenced above
+by reading two separate sections of the Chunk 5 plan, which is permitted as
+context; this plan does not edit that file.
+
+**12.14 RULED — the enforced response-side exclusion set and the allowed request
+set are different artifacts, and a reader must not collapse them (recorded
+2026-09-18).** This entry exists because three artifacts appear to publish
+"the forbidden fields of `LREQ-EXT-040`" and only one of them is enforced. All
+three were opened and read; the counts are member counts from the AST or from
+the literal, not line counts, and each query is stated so it can be re-run.
+
+| Artifact | What it is | Members | Where |
+|---|---|---|---|
+| `SAMPLE_OUT_OF_SCOPE_FIELDS` | the **test-only** sample set used to walk assertions | **8** | `tests/test_collector.py:85-94` (`tests/` is outside this wave's scope) |
+| `COVEO_DISCOVERY_FIELD_SET` | the **allowed request** set — never a prohibition list | **5** | `src/niche_scout/collector_coveo.py:161-167` |
+| `COVEO_DROPPED_FACET_IDS` | a **facet-drop** vocabulary, not a field blocklist | **5** | `src/niche_scout/collector_coveo.py:175-181` |
+
+- **The 8.** `("ec_rating", "ec_rating_count", "ec_price", "ec_price_filter",
+  "ec_sale", "ec_thumbnails", "first_published_at", "ec_popularity")` — counted
+  by `ast.parse` over `tests/test_collector.py` and reading the tuple's `elts`:
+  8 (`python -c` AST, unit: tuple elements). It is a *sample* the tests walk; the
+  file's own comment says so ("It is not a list the SRS defines") and points at
+  the read of the enforcement mechanism.
+- **The 5 allowed.** `("permanentid", "ec_product_id", "ec_name", "ec_category",
+  "publisher_name")` — counted the same way over
+  `src/niche_scout/collector_coveo.py`: 5 (unit: tuple elements). This is the
+  set `LREQ-EXT-040` names, and it is the **request** set.
+- **The 5 dropped.** `("ec_sale_filters", "ec_price_filter", "ec_rating",
+  "first_published_at", "publisher_name")` — counted: 5 (unit: tuple elements).
+  These are the capture's facets the adapter drops, not response fields. The
+  overlap with the allowed-5 is exactly one member, `publisher_name`.
+- **Overlap between the 8 and the 5 allowed is zero**, counted as a set
+  intersection over the two tuples above (unit: members). So adopting the 5 as a
+  blocklist would not narrow the rule, it would **invert** it: the 5 are the
+  members the adapter *requires*.
+- **`ec_rating_count` has no `LREQ-EXT-040` authority.** Its own comment
+  (`tests/test_collector.py:79-84`) derives it from §4.2's source-separation rule
+  ("GraphQL is authoritative for rating, rating count, review count, first
+  publication date, page views, publisher, category, state, and product identity
+  confirmation. Neither source SHALL provide duplicate scoring fields for the
+  same metric.") — rating count has a GraphQL owner, so Coveo sourcing it would
+  be a duplicate source rather than an unlisted member. Authority: §4.2, not
+  `LREQ-EXT-040`.
+- **Nothing in `src/` enforces a member blocklist at all.** Counted by grep over
+  `src/`: the only occurrences of the members `ec_rating`, `ec_price`,
+  `ec_thumbnail*`, `ec_sale*`, `first_published_at`, or `ec_popularity` are
+  `collector_coveo.py:176-179`, inside `COVEO_DROPPED_FACET_IDS` — the
+  *facet-id* vocabulary (unit: matching lines in `src/`, 4). A narrower query
+  for the substring `ec_rating_count` anywhere in `src/` returns **zero** rows
+  (unit: matching lines). So the response-side rule has no blocklist to narrow
+  or widen: it is the **allow-list complement** at
+  `collector_coveo.py:1123-1130` (`if any(key not in
+  _DISCOVERY_RESPONSE_FIELD_SET for key in item)`), which records presence by
+  count and record index only. **The 8 is a sample the tests walk, not the
+  enforced list** — and a future reader who wants the enforced set should read
+  `COVEO_DISCOVERY_FIELD_SET`, not any blocklist.
+- **`interfaces/chunk-03.md` carried a prose list here and it was wrong on three
+  counts** (misspelled `ec_thumbnails` as `ec_thumbnail`, named an invented
+  "popularity" member, and omitted `ec_rating_count`, `ec_price_filter`,
+  `ec_sale`, and `first_published_at`); it has been corrected in this wave to
+  the allowed-request/complement story above, and its `CoveoPageResponse`
+  annotation now states what a `forbidden_field_presence` entry actually is.
+  `COVEO_DISCOVERY_FIELD_SET`'s own module comment
+  (`collector_coveo.py:153-160`) repeats the capture's "23 entries" figure
+  verbatim in `_redacted_request_metadata` (`:774-778`), so that figure is
+  persisted into every observation's `request_metadata_json`; it is a restated
+  open discrepancy (§12.1, §12.12), not a Chunk 3 measurement, and it is
+  recorded here rather than changed, because `collector_coveo.py` is not in §6.
+- **What this wave changed, and where.** Exactly one of the three artifacts is
+  inside this wave's scope: `interfaces/chunk-03.md`. Its §2 bullet and its
+  `CoveoPageResponse` annotation were corrected;
+  `tests/test_collector.py:85-94` has no residual defect and was not touched,
+  and `collector_coveo.py` is not in §6.
+
+**Dated correction — the framing that produced §12.14 (recorded 2026-09-18).**
+An earlier review framed this material as "§12.1 names 8 forbidden fields; §11
+names 5" and asked which list was correct. That framing is withdrawn: §12.1
+names no 8-member list and §11 names no 5-member list. The real artifacts are
+the three rows of §12.14's table, and the "8" and the "5" are different units
+(8 members of a test sample; 5 members of the allowed request set), not two
+versions of one list. No count in this correction is asserted from the earlier
+framing.
+
+**Dated corrections — two locant/name errors in this plan's own review
+reasoning (recorded 2026-09-18; the earlier text is quoted, not deleted).**
+
+- **`ProductDetailFields` construction locant.** The review cited the
+  construction as `collector_graphql.py:1178`. Read on current HEAD, `:1178` is
+  the **`state_annotation=` argument line inside that constructor call**, and
+  the constructor call itself begins at `:1160`
+  (`fields = ProductDetailFields(`), with `:1177` the `state=` argument line.
+  The correction is `:1178 → :1160` for the construction, `:1178` for the
+  `state_annotation` argument. Re-runnable read: lines `1160-1189` of
+  `src/niche_scout/collector_graphql.py`.
+- **The Chunk 5 plan's filename.** The review referred to it as
+  `chunk-05.md`. **No such file exists.** The filename is
+  `Documents/plans/chunk-05-graphql-protocol-adapter-and-response-correlation.md`
+  (verified by listing `Documents/plans/`: `_TEMPLATE.md`,
+  `chunk-00-project-skeleton-and-contracts.md`,
+  `chunk-01-pure-taxonomy-identity-and-response-validation.md`,
+  `chunk-02-sqlite-implementation-and-repository.md`,
+  `chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`,
+  `chunk-05-graphql-protocol-adapter-and-response-correlation.md`,
+  `tooling-p0-2-traceability-blind-spot.md` — unit: files listed, 7). Every
+  reference to the file in this entry uses the full name.
+
+**(vi) One self-correction inside this entry, recorded rather than removed.** An
+earlier draft of this entry asserted that `interfaces/chunk-01.md:272-282`
+"states no generic-vs-specific rule" — that is correct — but also that a
+*false* sentence about the Chunk 5 docstring's location had been corrected by
+this author. It had not: this entry **is** that correction, and it was written
+after the misattribution was found by reading both locations
+(`collector_graphql.py:1022-1027` and `interfaces/chunk-01.md:315-317`) rather
+than by trusting a search result.
+
+**Dated correction — the Status region was amended to carry a footnote, so that
+`VERIFIED` stops reading as a green-suite claim (recorded 2026-09-18).** The
+plan's `Status:` line read `VERIFIED` with no annotation, beside six failing
+tests in `tests/test_collector.py`; read together, that juxtaposition stated a
+claim this chunk's own gate had passed a green suite, and it did not qualify
+which chunk the red tests belonged to. The line now carries a footnote naming
+those six nodes and their counts, and the footnote — not this entry — is the
+correction; this entry records that it was made and why.
+
+- **`Status: VERIFIED` was retained deliberately, not by inattention.** The six
+  failures are another chunk's: they belong to Chunk 5's still-in-development
+  test family, they live in `tests/test_collector.py`, and none of them
+  documents a defect in a file this chunk owns. Correcting the record was
+  therefore the right move and flipping the Status was not.
+- **This entry does not re-open §10's gate bullets.** No bullet in §10 was
+  re-checked, re-scored, or re-litigated here, and none that the footnote's
+  addition touches changes state; the §10 bullets are unchanged and re-read
+  after this edit as six verbatim gate bullets followed by a four-line
+  non-scoring note recording that they were not re-scored.
+- **What is recorded, and where.** This entry is the kind §12's preamble
+  describes at `:920-946`: an entry that adds notation to the record without
+  closing a scope question. The §7 defect flagged alongside this correction —
+  three `- [ ]` boxes at `:590`, `:603`, and `:626` describing work in Chunk 5's
+  files, which this plan's own convention would put in §12 and §6 instead — is
+  **not** part of this correction, by the same ruling: it is deferred and
+  travels in its own commit. No source file, test, fixture, `traceability.json`
+  entry, or §10 bullet is touched by this entry; the only file this correction
+  edits is this plan.
+
+**Placement, and why this entry is unnumbered.** It follows §12.14 and the
+corrections that post-date it, at the end of §12, because it closes no numbered
+scope question and resolves nothing in §12.1–§12.14: it records a change to the
+front-matter Status region, which is the one region §12's numbered entries do
+not cover. No §12.15 exists and none is implied.
