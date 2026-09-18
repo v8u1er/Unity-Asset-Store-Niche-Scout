@@ -8,10 +8,10 @@
 
 ## Decisions already made (rationale)
 
-- **Folder name/placement:** `.scratch/` at the repo root, alongside the existing dot-directories (`.plans/`, `.cursor/`, `.clinerules/`). It reads as agent-only tooling space, it is not a Python package (no `__init__.py`), and it is not collected by pytest or built by setuptools.
+- **Folder name/placement:** `.scratch/` at the repo root, alongside the existing dot-directories (`.plans/`, `.cursor/`). It reads as agent-only tooling space, it is not a Python package (no `__init__.py`), and it is not collected by pytest or built by setuptools.
 - **Why not `runtime/`:** `runtime/` is already git-ignored for the *product*, and `tests/test_database.py` contains an autouse guard (`database_paths_stay_under_pytest_temp_base`, lines 132–176) plus module docstrings that assert product databases live under pytest `tmp_path` and never inside the tree. Putting scratch artifacts in `runtime/` would blur that boundary and invite confusion with the product data path. A distinct `.scratch/` keeps the agent artifact store separate from product output.
 - **Git:** ignored, so scratch scripts never enter history, never trip `ruff`/pytest collection on commit, and never get mistaken for deliverables.
-- **Boundary compliance:** the rule text lives in `.cursor/rules/` (and the mirrored `.clinerules/`), which are agent-instruction files, not one of the modules named in the project's fixed module boundary (`models.py`, `validation.py`, `sampling.py`, `metrics.py`, `scoring.py`, and the I/O/orchestration modules). No analytical code, no requirement text, and no frozen interface changes. `src/niche_scout/tools/check_import_boundaries.py` is untouched: `metrics.py`/`scoring.py` still never import `tempfile`, `pathlib`, etc. The scratch folder is a *convention*, not a runtime dependency of any module.
+- **Boundary compliance:** the rule text lives in `.cursor/rules/`, which is an agent-instruction file, not one of the modules named in the project's fixed module boundary (`models.py`, `validation.py`, `sampling.py`, `metrics.py`, `scoring.py`, and the I/O/orchestration modules). No analytical code, no requirement text, and no frozen interface changes. `src/niche_scout/tools/check_import_boundaries.py` is untouched: `metrics.py`/`scoring.py` still never import `tempfile`, `pathlib`, etc. The scratch folder is a *convention*, not a runtime dependency of any module.
 - **Cleanup:** two-sided. A `README.md` in the folder states ownership/expiry rules, and the rule file instructs agents to delete their own scripts when done.
 
 ---
@@ -67,9 +67,21 @@ Insert a new `## Temporary scripts and scratch space` section between `## File d
 
 This also softens the interaction with `## File discipline` above it: `.scratch/` files are explicitly exempt from the "only touch files listed in the plan" rule, which is why the exemption must be stated here explicitly.
 
-### 4. Add the same section to `.clinerules/project-rules.md`
+### 4. Add the same section to the second rule source — SUPERSEDED
 
-The `.clinerules` copy is a near-identical mirror (49 lines, same section headings, differing only in wording of the architecture bullets). Append the same `## Temporary scripts and scratch space` section after `## File discipline` (end of file, line 49) with identical text so both rule sources agree. Do not restructure or "sync" the rest of the mirror — that is out of scope.
+> **Correction, 2026-09-18:** this step is superseded and must not be performed.
+> The `.clinerules/` directory no longer exists — `.clinerules/project-rules.md`
+> and `.clinerules/windows.md` were deleted in commit `36da5f7`, and Cline is no
+> longer used on this project. `.cursor/rules/project-rules.md` is now the single
+> authority for project rules. Do not create `.clinerules/`, do not restore
+> anything into it from git history, and do not mirror rule text into it.
+
+> **Correction, 2026-09-18:** the paragraph below describes the former
+> `.clinerules` mirror as a live second rule source. It is retained as a record
+> of the original plan, but it no longer describes this repository: the mirror
+> no longer exists and this step is not to be performed.
+>
+> ~~The `.clinerules` copy is a near-identical mirror (49 lines, same section headings, differing only in wording of the architecture bullets). Append the same `## Temporary scripts and scratch space` section after `## File discipline` (end of file, line 49) with identical text so both rule sources agree. Do not restructure or "sync" the rest of the mirror — that is out of scope.~~
 
 ### 5. Point `AGENTS.md` at the rule
 
@@ -100,12 +112,12 @@ No change needed to `pyproject.toml`: setuptools `packages.find where = ["src"]`
 
 - The rule explicitly contradicts a common agent habit ("write to `%TEMP%`"), so it must be stated as a hard prohibition, not a preference — hence the "never ask the user for permission" clause in step 3.
 - `.scratch/` is a new top-level dot-directory; a future `globais`/tooling file that enumerates repo dirs (e.g. a docs index) may need a one-line addition. No such file exists today.
-- The `.cursor` and `.clinerules` copies must not drift. Keep the pasted text byte-identical in both.
+- There is only one rule source to keep in sync: `.cursor/rules/project-rules.md`. The second copy named in the original plan was removed (see the correction on step 4), so no cross-file drift check applies.
 - `Documents/requirements-dependency-map.md` §A.1 and `Documents/SRS-lean.md` are untouched: this change introduces no requirement, no LREQ, and no test, so no traceability entry is needed.
 
 ## Verification
 
-1. `git status --short` → should show `.scratch/README.md`, `.gitignore`, `.cursor/rules/project-rules.md`, `.clinerules/project-rules.md`, `AGENTS.md`, and the deletions.
+1. `git status --short` → should show `.scratch/README.md`, `.gitignore`, `.cursor/rules/project-rules.md`, `AGENTS.md`, and the deletions. (The former plan also listed `.clinerules/project-rules.md` here; that file was later removed and is not part of the expected output.)
 2. `git check-ignore -v .scratch/foo.py` → confirms the ignore rule matches.
 3. `New-Item .scratch/smoke.py; git status --short` → `smoke.py` must NOT appear; `Remove-Item .scratch/smoke.py` afterwards.
 4. `python -m pytest -q` → unchanged pass/fail set (no collection of `.scratch/`).
