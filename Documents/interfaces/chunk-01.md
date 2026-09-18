@@ -210,7 +210,7 @@ def validate_response_shape(
 ) -> StructuralValidationResult: ...
 ```
 
-### 4.1 Identity mapping rule `1.0.0` (normative for LREQ-EXT-060 canonicalization)
+### 4.1 Identity mapping rule `1.0.1` (normative for LREQ-EXT-060 canonicalization)
 
 - `ec_product_id` and `permanentid`, if non-empty: trim whitespace, then compare
   directly — numerically when both parse as integers, else as strings. Both are
@@ -232,6 +232,42 @@ treating it as final; `IDENTITY_MAPPING_RULE_VERSION = "1.0.1"` exists precisely
 so a correction is cheap. Consumers SHALL branch on
 `IdentityResolutionResult.mapping_rule_version` rather than assuming `1.0.0`
 semantics silently.
+
+**Satisfaction condition of the caveat above — explicitly RELAXED by human
+ruling (supersedes the unconditional "SHALL sanity-check … before treating it as
+final" obligation as written above).** That obligation was previously
+unconditional and is now discharged by **scope declaration**: the rule remains
+*unverified* and the verification is **deferred to a future capture**, rather
+than performed. Accepting deferral as discharge means "before treating it as
+final" is read as a bar on **asserting the rule is verified**, not as a bar on
+publishing it as an explicitly-unverified inference — the sentence names no
+verifying artifact and sets no deadline. The consequence is recorded precisely:
+the extraction half of rule `1.0.1` is **UNVERIFIED**, and no artifact in this
+repository — this contract, an adapter interface, a plan, a docstring, a
+`mapping_rule_version` stamp, or a test name — may state or imply that it was
+verified against a real Coveo response.
+
+**The exposure deferral leaves open.** "Before treating it as final" protects
+against an inferred extraction pattern silently producing wrong
+`asset_identity_key` values for every record. Deferral does **not** remove that
+exposure — it accepts it for the present rule version. A wrong pattern is
+currently surfaced only by whatever causes *disagreement* among the candidate
+sources: an extraction that yields a plausible but incorrect identifier
+agreeing across the URI fields while the explicit `ec_product_id`/`permanentid`
+agree with each other only *rescues* the record into `resolved` under
+`LREQ-EXT-070`'s all-equal branch, and is not detected. This exposure remains
+open until the deferred verification is performed; the relaxation does not
+assert it away.
+
+**What `1.0.1` is.** Its only substantive change from `1.0.0` is the removal of
+an adapter-side suffix-tolerant comparison that was never part of this contract
+at any version: a URI-derived identifier was once accepted whenever it was a
+*suffix* of (or otherwise loosely matched) the explicit anchor. Under `1.0.1`
+such a case is a **`conflict`**, not an agreement. The extraction rule itself is
+**unchanged** by `1.0.1` — not strengthened, not weakened, and **not verified**.
+Consumers SHALL branch on `IdentityResolutionResult.mapping_rule_version` rather
+than assume the older tolerant comparison. Nothing above blesses the inferred
+extraction rule.
 
 ### 4.2 Structural issue codes emitted
 

@@ -11,7 +11,13 @@ Depends on (frozen interfaces required before this plan can be trusted):
     `WarningCode`/`IdentityResolutionStatus`/`CategoryFilterValidationStatus`
     enums, `to_json`/`to_json_dict`/`ensure_utc`)
   - `Documents/interfaces/chunk-01.md` (VERIFIED — taxonomy, identity,
-    exact-category-match, structural-validation, and redaction primitives)
+    exact-category-match, structural-validation, and redaction primitives;
+    **one obligation this file places on Chunk 3 remains UNMET and OPEN** — the
+    §4.1 URI trailing-identifier extraction rule is inferred and
+    **unverified**, and its verification is deferred to a future capture. This
+    chunk did not perform it and does not claim to have discharged it; see §8,
+    §12.9, and `interfaces/chunk-03.md` §8. No real captured Coveo response
+    exists anywhere in the repository)
   - `Documents/interfaces/chunk-02.md` (VERIFIED — `SqliteRepository`,
     `category_transaction`, `insert_raw_discovery_observations` (the page sink,
     §4/§7), `append_raw_discovery_observations`, `update_raw_discovery_identity`,
@@ -174,7 +180,7 @@ RawDiscoveryObservationRecord  # 16 fields; asset_identity_key: Optional[str],
 MAX_DISCOVERY_RESULTS_PER_CATEGORY = 2000
 PAGE_SIZE = 96
 ENDPOINT_CONTRACT_VERSION = "1.0.0"
-IDENTITY_MAPPING_RULE_VERSION = "1.0.0"   # "1.0.1" reserved (chunk-01.md §4.1 caveat)
+IDENTITY_MAPPING_RULE_VERSION = "1.0.1"   # adapter-side suffix tolerance dropped; chunk-01.md §4.1 already required exact equality
 def to_json(instance: Any) -> str: ...
 def to_json_dict(instance: Any) -> dict[str, Any]: ...
 def ensure_utc(value: datetime) -> datetime: ...
@@ -443,8 +449,9 @@ verbatim and never computes or rewrites them (§12.11).
   credential stripped before re-prefixing — `Content-Type: application/json`,
   `Accept: application/json`, and `Referer: https://assetstore.unity.com/`; no
   `Origin`), and `build_coveo_request_body` (template replay carrying the
-  capture's sole `ec_category` facet with the target category's `currentValues`
-  entry set to `"selected"` and every other captured value `"idle"`;
+  committed capture's single `ec_category` facet with the target category's
+  `currentValues` entry set to `"selected"` and every other captured value
+  `"idle"`;
   `fieldsToInclude` forced to the five-field set as the single deliberate
   divergence from "replayed as captured"; `actionsHistory` emptied and
   `analytics` dropped; `firstResult = page_index * PAGE_SIZE`; `visitorId`
@@ -504,6 +511,16 @@ verbatim and never computes or rewrites them (§12.11).
   canonical key; `conflict` and `unresolved` records are persisted, excluded
   from the canonical count, and never counted as ordinary assets
   (`LREQ-EXT-060`, `LREQ-EXT-070`).
+- [ ] **Record, without claiming to discharge, the extraction obligation this
+  chunk inherits.** Implement and test the equality step only; the URI
+  trailing-identifier *extraction* rule stays the inferred, **unverified**
+  rule of `interfaces/chunk-01.md` §4.1 ("Caveat Chunk 3 must verify (plan
+  RN-1, not a defect in this chunk)"). Chunk 3 did not sanity-check it against
+  real redacted fixtures and SHALL NOT state or imply anywhere — code comment,
+  docstring, test name, `mapping_rule_version` stamp, or metadata — that it did,
+  and SHALL NOT re-derive or "improve" the extraction pattern to compensate
+  (§12.9; `interfaces/chunk-03.md` §8). The obligation is open, currently owes
+  **no chunk**, and is recorded in `requirements-dependency-map.md` §6.4.
 - [ ] Implement `discovery_status` selection: compute every applicable condition
   from `DiscoveryStatus` values (including
   `discovery_status_for_category_status(filter_status)`), keep the full
@@ -547,8 +564,10 @@ Drawn from the dependency map's "Edge cases" column for this chunk's LREQs
 - **`LREQ-EXT-040`** — Missing identity fields must be tolerated as *missing*
   (never fabricated), a forbidden scoring field appearing in a response must not
   be used, and extra response fields must be ignored without error. The
-  capture's own `fieldsToInclude` list is discarded in favor of the
-  five-field set (§12.1, R-C).
+  committed capture's `fieldsToInclude` is a five-field list and its single
+  `ec_category` facet stands in place of the original capture's 23 fields and
+  six facets; §7 forces that five-field set at build time, so the committed
+  file and the request the adapter sends agree on it (§12.1, R-C).
 - **`LREQ-EXT-050`** — Verified `totalCount`; natural terminal page; truncation
   at the cap; failed page; filter uncertainty; category mismatch; zero results.
   A failed or truncated page is **never** interpreted as zero assets.
@@ -559,7 +578,21 @@ Drawn from the dependency map's "Edge cases" column for this chunk's LREQs
 - **`LREQ-EXT-060`** — Multiple identity aliases, URI fallback, empty candidate
   sets, and a corrected `IDENTITY_MAPPING_RULE_VERSION` mapping must all be
   tolerated; the adapter branches on `IdentityResolutionResult.mapping_rule_version`
-  rather than assuming `1.0.0` semantics (`interfaces/chunk-01.md` §4.1 caveat).
+  rather than assuming `1.0.0` semantics (`interfaces/chunk-01.md` §4.1,
+  "Caveat Chunk 3 must verify (plan RN-1, not a defect in this chunk)" — the
+  caveat paragraph in §4.1, cited by title because §4.1 now continues past it
+  with three further paragraphs and line numbers there are not stable).
+  That correction has now landed: at `1.0.1` a URI-derived candidate must *equal*
+  the explicit anchor, with no suffix, prefix, or substring tolerance, because the
+  `1.0.0` suffix tolerance rescued genuine `LREQ-EXT-070` conflicts
+  (`Documents/SRS-lean.md:270-271`) that `interfaces/chunk-01.md` §4.1 fixes as
+  `conflict`. Unparseable-URI abstention is unchanged, so a derivation that
+  cannot be canonicalized still contributes nothing rather than a guessed key.
+  **`1.0.1`'s equality correction is a different matter from the extraction
+  rule, which is unaddressed here:** `1.0.1` changed only how a derived candidate
+  is compared, never how it is extracted, so the extraction half of the rule
+  stays inferred and **unverified** for this chunk (§12.9; the obligation is
+  recorded in `requirements-dependency-map.md` §6.4).
 - **`LREQ-EXT-070`** — Conflicting candidates, unresolved candidates, and
   exclusion from the denominator and enrichment set; unresolved/conflict records
   stay in audit data.
@@ -618,7 +651,9 @@ SRS — no live call):**
   capture-derived — §12.9): recorded-shape page of 96 records with `permanentid`
   (+ `ec_product_id` agreeing); `clickUri`/`uri` variants for the URI-identifier
   candidate cases (an identifier that **equals** the explicit id, and one that
-  does not).
+  does not). These exercise the *equality* step only; they do not and cannot
+  certify the extraction rule, which stays inferred and unverified (§12.9,
+  `interfaces/chunk-01.md` §4.1).
 - Terminal page shorter than `PAGE_SIZE`; a page whose `totalCount` is reached
   exactly; a `totalCount` larger than the cap (truncation); a page with 0
   results; a malformed page (missing records container); a page missing the
@@ -736,6 +771,11 @@ Copied verbatim from `requirements-dependency-map.md` §Chunk 3 Gate:
   ordinal is retained and the duplicate is recorded as its own row.
 - Must not synthesize a category, an identity, or a value that the endpoint did
   not return; unresolved and conflict records are never ordinary assets.
+- Must not state or imply that the URI trailing-identifier extraction rule was
+  verified, sanity-checked against real redacted fixtures, or discharged: that
+  obligation is unmet and open, owes no chunk, and is recorded in §12.9 and
+  `requirements-dependency-map.md` §6.4. Extraction itself stays as
+  `interfaces/chunk-01.md` §4.1 defines it — inferred and unverified.
 - Must not modify `models.py`, `collector_graphql.py`,
   `config/category_taxonomy.json` (byte-identical — the all-zero
   `template_sha256` is a name-only placeholder), `metrics.py`, or `scoring.py`.
@@ -752,9 +792,20 @@ Copied verbatim from `requirements-dependency-map.md` §Chunk 3 Gate:
 
 ## 12. Resolutions, assumptions, and out-of-scope findings
 
-Every question raised in this section's earlier draft is now **resolved**; no
-entry below is an open human decision. Entries are numbered as the draft numbered
-them so earlier reviews remain traceable.
+Every question raised in this section's earlier draft is **resolved** except
+where an entry says otherwise; no entry below is an open human decision *about
+this chunk's scope, requirements, or gate*. Entries are numbered as the draft
+numbered them so earlier reviews remain traceable.
+
+**One entry records an obligation that is UNMET and OPEN rather than resolved:
+§12.9, where `interfaces/chunk-01.md` §4.1's URI trailing-identifier extraction
+rule stays inferred and unverified for this chunk and no real captured Coveo
+response exists anywhere in the repository. A reader of §12 alone must not come
+away thinking that verification is settled.** The two entries that record
+open *provenance/ownership* findings rather than closed questions are §12.1's
+"OPEN — how the file came to be in its trimmed form" bullet (§12.12) and
+§12.11's `runs.taxonomy_sha256` ownership gap; both were already stated as
+non-blocking findings and neither is resolved here.
 
 **12.1 RESOLVED — the captured request template is `config/coveo_search_template.json`.**
 `LREQ-EXT-010` ("Discovery SHALL use the parent SRS Coveo endpoint, required
@@ -792,24 +843,85 @@ template:
   states — that the taxonomy inventory was captured from the same artifact as
   this request. The finding is recorded in §12.11 and in the dependency map's
   open-items list.
-- **One deliberate exception to "replayed as captured":** `fieldsToInclude`.
-  The capture's 23-entry list includes `ec_price`, `ec_price_filter`, `ec_rating`,
-  `ec_rating_count`, `ec_sale`, `ec_thumbnails`, `ec_flash_teaser_starts_at`,
-  and `ec_flash_promo_starts_at`, all of which §11 and `LREQ-EXT-040` forbid.
-  §7 forces the five-field set (`permanentid`, `ec_product_id`, `ec_name`,
-  `ec_category`, `publisher_name`); this divergence is required by
-  `LREQ-EXT-040` and is not a defect.
-- **The facet block ships exactly one facet.** `ec_category`, `type: "specific"`,
-  `resultsMustMatch: "atLeastOneValue"`, `numberOfValues: 150`, and
-  `currentValues` carrying every captured idle `ec_category` value with the
-  target category marked `"selected"` and the rest `"idle"` — the
-  selected-category facet mechanism of `LREQ-EXT-010`. The capture's other four
-  facets (`ec_sale_filters`, `ec_price_filter`, `ec_rating`,
-  `first_published_at`) and its `publisher_name` facet are dropped, and the drop
-  is recorded in `request_metadata_json` with its rationale. For
-  `publisher_name` specifically: `fieldsToInclude` is what makes a field present
-  on a returned record, while a facet returns a separate aggregation that no
-  requirement consumes, and §4.1 never scopes discovery by publisher.
+- **One deliberate exception to "replayed as captured": `fieldsToInclude`, and
+  it has two states — the original capture and the committed trim.** This entry
+  records both, because the committed artifact no longer carries the shape the
+  original capture had and a reader must not mistake the first description below
+  for a claim about the file on disk.
+  - **The original capture.** The operator's browser capture of the Coveo
+    discovery request carried a **23-entry** `fieldsToInclude` list. That list
+    included `ec_price`, `ec_price_filter`, `ec_rating`, `ec_rating_count`,
+    `ec_sale`, `ec_thumbnails`, `ec_flash_teaser_starts_at`, and
+    `ec_flash_promo_starts_at`, and it carried **six** facets: `ec_category`,
+    `ec_sale_filters`, `ec_price_filter`, `ec_rating`, `first_published_at`,
+    and `publisher_name`. Every scoring-relevant member above is one that this
+    adapter must never source.
+  - **The committed artifact is the trimmed form, and it is what ships.**
+    `config/coveo_search_template.json` today carries a **5-entry**
+    `fieldsToInclude` — `permanentid`, `ec_product_id`, `ec_name`,
+    `ec_category`, `publisher_name` — and **1** facet, the `ec_category` facet
+    alone. These are measured properties of the committed file, not a
+    restatement of intent (counted: `python -c` reading the file through
+    `json.loads` then `len(body["fieldsToInclude"])` → 5, with the five members
+    enumerated in that order, and `len(body["facets"])` → 1, whose only entry
+    is `facetId`/`field` `ec_category`, `type: "specific"`,
+    `resultsMustMatch: "atLeastOneValue"`, `numberOfValues: 150`; the file also
+    carries `schema_version` `"1.0.0"` and a `template_sha256` provenance hash).
+  - **Why the trim is required, not optional.** `LREQ-EXT-040`
+    (`Documents/SRS-lean.md:254-257`) fixes the discovery-only field set
+    verbatim: "Discovery SHALL use the parent SRS discovery-only field set:
+    `permanentid`, `ec_product_id`, `ec_name`, `ec_category`, and
+    `publisher_name`. Product rating, page views, publication date, and price
+    SHALL NOT be sourced from Coveo for scoring." Those two sentences are
+    exactly the 5-member set measured above and exactly the members the
+    23-entry list carried; the trim is the requirement being met, and §7 forces
+    the same five-field set when the adapter builds a request. §11 carries the
+    matching prohibition. This is required by `LREQ-EXT-040` and is not a
+    defect; it is also the **single** deliberate divergence from "replayed as
+    captured" (`superseded 2026-09-17: this bullet previously said
+    "§7 forces the five-field set ... this divergence"`).
+  - **The facet half of the trim.** The **1** facet the committed file ships is
+    `ec_category`, `type: "specific"`, `resultsMustMatch: "atLeastOneValue"`,
+    `numberOfValues: 150`, with `currentValues` carrying every captured idle
+    `ec_category` value, the target category marked `"selected"` and the rest
+    `"idle"` — the selected-category facet mechanism of `LREQ-EXT-010`. The
+    other five facets of the original six (the four listed above plus
+    `publisher_name`) are dropped, and the drop is recorded in
+    `request_metadata_json` with its rationale. For `publisher_name`
+    specifically: `fieldsToInclude` is what makes a field present on a returned
+    record, while a facet returns a separate aggregation that no requirement
+    consumes, and §4.1 never scopes discovery by publisher. The drop list is
+    computed against the capture actually replayed, so a committed file that
+    ships only `ec_category` reports **no** drops rather than a fabricated list
+    (`collector_coveo.py` `request_metadata_json`).
+  - **OPEN — how the file came to be in its trimmed form, and which artifact
+    §12.1 was originally written against, is not established by any evidence in
+    the repository.** The capture is committed, but the repository's history
+    does not record its evolution: counted, `git log --oneline --
+    config/coveo_search_template.json` returns exactly **one** commit
+    (`36da5f7 chore: snapshot working tree as Chunk 5 verification baseline`,
+    the snapshot commit), and `git diff HEAD -- config/coveo_search_template.json`
+    is empty, so there is no pre-snapshot revision to inspect. Two readings are
+    consistent with everything counted and quoted above, and this plan does
+    **not** choose between them:
+    1. the operator's capture was itself already in the 5-field / 1-facet form,
+      and the 23-field / 6-facet description in this entry's earlier draft was
+      written against a *different* artifact (an earlier or unredacted capture,
+      or a pre-trim working copy) that is no longer in the workspace; or
+    2. the file on disk was trimmed after capture and before this snapshot, and
+      the 23-field / 6-facet description was accurate at the time it was
+      written.
+    The consequence for this chunk is the same either way and is therefore
+    recorded rather than resolved here: the adapter replays the **committed**
+    file, §7 forces the five-field set and the single-facet rule at build time,
+    and the code-side constants deliberately assert no count at all
+    (`COVEO_DISCOVERY_FIELD_SET` and `COVEO_DROPPED_FACET_IDS` in
+    `collector_coveo.py` carry the members, not a length, precisely so no
+    number is frozen in code). What is **not** established, and SHALL NOT be
+    asserted: whether the trim happened after capture or the narrative was
+    written against a different artifact. This open item is a provenance
+    question, not a scope question — it does not block this chunk's freeze and
+    it is not a decision this plan can clear on its own.
 
 **12.2 RESOLVED — `LREQ-EXT-090` stays detection + persistence only.** The SRS
 text requires *both* effects: "A failed page, unverified filter, category
@@ -938,7 +1050,12 @@ test injects a fake opener.
 CSRF stays out of the Coveo adapter: the capture carries no `X-CSRF-Token` and
 no cookie, and the Unity CSRF token remains Chunk 5's.
 
-**12.9 RESOLVED on the request side; response-side text stands as written.**
+**12.9 REQUEST SIDE SETTLED; RESPONSE SIDE AND THE EXTRACTION VERIFICATION
+OBLIGATION REMAIN OPEN (corrected 2026-09-18 — this entry's heading previously
+read "RESOLVED on the request side; response-side text stands as written.",
+which read as a clean bill of health for the whole entry and is a framing this
+plan no longer carries; no substantive text below was deleted, and the
+request-side finding it recorded is unchanged and still stands).**
 Request-side fixtures anchor to `config/coveo_search_template.json` plus the four
 mechanical edits of §12.6; they no longer depend on a hand-derived template. The
 response-side fixtures (`totalCount` shape, `ec_category` scalar-vs-array,
@@ -947,6 +1064,40 @@ live contract**, because the SRS forbids live calls in tests and the capture
 covers the request only. So `LREQ-EXT-050`'s "verified `totalCount`" and
 `LREQ-EXT-080`'s scalar-vs-array handling are still validated against fixtures
 that encode assumptions, not against the live contract itself.
+
+**The extraction obligation is UNMET and OPEN, and §12.9 does not discharge it.**
+`interfaces/chunk-01.md` §4.1's caveat places an obligation on Chunk 3 —
+sanity-check the inferred URI trailing-identifier extraction rule against real
+redacted fixtures "before treating it as final" (`interfaces/chunk-01.md`
+§4.1 "Caveat Chunk 3 must verify (plan RN-1, not a defect in this chunk)". The
+file's §4.1 caveat paragraph is no longer the last word on this obligation:
+`interfaces/chunk-01.md` §4.1 now carries three further paragraphs after it —
+"Satisfaction condition of the caveat above — explicitly RELAXED by human
+ruling", "The exposure deferral leaves open", and "What `1.0.1` is" (the same
+dotted section, after the bolded caveat; cited by paragraph title rather than by
+line number, which is not stable across edits). The relaxation changes *who may
+treat the deferral as satisfying the obligation*; it does not convert the rule
+into a verified one, and it does not make the extraction rule verified here.)
+**This chunk did not perform that check and does not claim to have discharged
+it.** Declaring extraction out of scope for this chunk does not discharge it
+either — the obligation is a different document's imposition. The extraction
+half of mapping rule `1.0.1` therefore stays **inferred and unverified**, and
+**no real captured Coveo response exists anywhere in this repository** to
+discharge it against: this chunk's own capture is a **request** capture, so it
+could not settle a response-side extraction question even if it had been
+examined for that purpose, and `1.0.1` deliberately left extraction untouched
+(`interfaces/chunk-01.md` §4.1, "What `1.0.1` is"). The obligation currently
+owns **no chunk** and is recorded in
+`requirements-dependency-map.md` §6.4 so it survives into a later chunk's brief.
+Verified here by reading `interfaces/chunk-01.md` §4.1 in full (its caveat
+paragraph through its "What `1.0.1` is" paragraph), not by a search result.
+
+What *is* settled, and is the only part of this entry that ever was: the
+**request**-side capture question (§12.1, §12.6) — the adapter replays the
+committed `config/coveo_search_template.json` rather than a hand-derived
+template. If a real redacted Coveo response capture ever lands, the extraction
+rule must be re-examined before this plan's response-side fixtures are treated
+as more than assumptions.
 
 **12.10 CONSUMPTION, NOT AMENDMENT — the page sink is
 `insert_raw_discovery_observations` inside `category_transaction`.** This chunk
@@ -986,7 +1137,58 @@ not `""` (`database.py`, `taxonomy_sha256 TEXT NOT NULL`), so an empty hash woul
 persist silently and `LREQ-NFR-020`'s provenance chain could complete with an
 empty `taxonomy_sha256` value. Owner: **Chunk 10**, the only chunk that
 constructs a `RunRecord`. The finding is recorded in
-`requirements-dependency-map.md`'s open-items list so it survives into Chunk 10's
-brief. Chunk 3 must **not** implement it: it propagates the placeholder value
+`requirements-dependency-map.md`'s open-items list (§7) so it survives into
+Chunk 10's brief. **Chunk 10 remains the owner; the new
+`requirements-dependency-map.md` §6.4 entry is a different, ownerless item — the
+deferred URI extraction verification of §12.9 — not a second recording of this
+one.** Chunk 3 must **not** implement it: it propagates the placeholder value
 verbatim (§12.1, §8, §11). This is an out-of-scope finding, not an open
 question: no human decision is pending on it, and it does not block the freeze.
+
+**12.12 RESOLVED — the second numbered resolution entry in §12.1: the committed
+capture is 5 fields / 1 facet, and the original capture's 23 fields / 6 facets
+are recorded as superseded history, not as a description of the file on disk.**
+This entry exists because §12.1 previously described only one state — the
+23-field / 6-facet capture — while the artifact it names has carried the trimmed
+5-field / 1-facet shape for the whole history the repository records, and a
+reader could not tell which was a claim about the file on disk. The two states,
+what each one is, and the requirement the trim comes from are set out in §12.1;
+this entry records **why the number is where it is** and **what is deliberately
+left open**, again numbered so the earlier reviews' numbering is untouched.
+
+- **Both states are now described, and only one of them describes the
+  artifact.** §12.1's "the original capture" bullet is the historical state; its
+  "the committed artifact is the trimmed form, and it is what ships" bullet is
+  the measured current state (counted: `json.loads` over
+  `config/coveo_search_template.json`, then `len(request_body["fieldsToInclude"])`
+  → 5 and `len(request_body["facets"])` → 1). The 23/6 description is preserved
+  because it is the record of what the operator's capture contained and of why
+  the adapter must not replay it; it is **not** a claim about the committed file.
+- **The trim is attributed, not invented.** `LREQ-EXT-040`
+  (`Documents/SRS-lean.md:254-257`) names the five members verbatim and forbids
+  sourcing rating, page views, publication date, and price from Coveo for
+  scoring; §7 forces the same set at build time and §11 carries the matching
+  prohibition. No new normative text is added by this entry.
+- **The provenance question stays visibly open.** The repository cannot
+  establish whether the file was trimmed after capture or §12.1's narrative was
+  written against a different artifact: counted, `git log --oneline --
+  config/coveo_search_template.json` returns one commit (the working-tree
+  snapshot) and `git diff HEAD` on that path is empty, so there is no earlier
+  revision to inspect. §12.1 records both readings and chooses neither. This is
+  a provenance finding, not a scope question: it does not block this chunk's
+  freeze, and it is deliberately left for a human, because clearing it would
+  require asserting a cause that no artifact in the repository evidences.
+- **No product behavior depends on the open half.** The adapter replays the
+  committed file, forces the five-field set and the single-facet rule at build
+  time, and its constants carry members rather than lengths
+  (`COVEO_DISCOVERY_FIELD_SET`, `COVEO_DROPPED_FACET_IDS`,
+  `COVEO_FACET_ID` in `collector_coveo.py`). The `LREQ-EXT-040` /
+  `LREQ-EXT-010` assertions in `tests/test_collector.py` are stated against the
+  constants and against the capture's own facet values — not against a length —
+  so neither a 5/1 nor a 23/6 committed file changes a tested behavior. This is
+  a shape claim about the assertions' subject; the assertion count is not
+  asserted here (unverified), and the code-side observation the implementer
+  recorded is the strongest available support for it
+  (`collector_coveo.py` `COVEO_DISCOVERY_FIELD_SET` /
+  `COVEO_DROPPED_FACET_IDS` docstrings, which state that they assert the members
+  and not a length).

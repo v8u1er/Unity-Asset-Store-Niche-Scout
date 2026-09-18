@@ -51,3 +51,15 @@ explicitly asks for it to be kept.
 - Frozen plan, interface, or SRS documents.
 - Anything under `src/`, or any file referenced by `src/`, `tests/`, or
   `Documents/`.
+- Cross-task evidence. A scratch file belongs to one task; a file that mixes
+  two tasks' material (e.g. a Chunk-5 verification written to a Chunk-3-named
+  file) cannot be attributed confidently and tends to outlive both.
+
+## Cleanup
+
+Cleaning up is the last step of the writing task that created the file, not a
+separate follow-up task. A separate cleanup pass gets interrupted, skipped, or
+deferred exactly when it matters — that is how `d1-regen-check-tmp.txt` survived
+as the residue of a cleanup that believed it had finished. So: each writing
+dispatch deletes its own `.scratch/` files before it reports, and re-lists the
+directory to verify the final state before declaring done.

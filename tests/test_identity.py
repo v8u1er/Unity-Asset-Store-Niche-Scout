@@ -401,6 +401,52 @@ def test_no_canonicalizable_candidate_becomes_unresolved() -> None:
 
 
 @pytest.mark.lreq("LREQ-EXT-070")
+def test_uri_derived_proper_suffix_of_anchor_is_conflict() -> None:
+    """A URI identifier that is only a *suffix* of the explicit anchor is a conflict.
+
+    The comparison is exact equality, so ``product-1234567`` and the URI-derived
+    ``1234567`` are two distinct canonical identities and ``LREQ-EXT-070`` makes
+    the record ``conflict``. A suffix-tolerant comparison would have accepted
+    ``anchor.endswith(key)`` here and wrongly resolved the record, so this node
+    is what makes that behavior observable — the pre-existing
+    ``DISAGREEING_URI_RECORD`` cannot, because its URI identifier ``9999999`` is
+    neither equal to nor a suffix of the ``1234567`` anchor.
+
+    What this proves is narrow, and it is stated rather than implied: it fixes
+    the *comparison* policy for a proper-suffix pair. It does **not** verify the
+    URI trailing-identifier extraction rule against a real captured Coveo
+    response — that rule remains inferred and capture-unverified
+    (``interfaces/chunk-01.md`` §4.1 caveat, ``interfaces/chunk-03.md`` §8).
+    """
+    anchor = fx.EXPLICIT_ANCHOR_WITH_SUFFIX_URI_IDENTIFIER
+    derived = v.canonicalize_identity_candidate(fx.URI_CARRYING_RECORD_SUFFIX_OF_ANCHOR)
+
+    # The fixture's whole point is the relationship between the two values; assert
+    # the relationship itself rather than trusting the fixture's shape.
+    assert derived == fx.CANONICAL_ASSET_ID
+    assert anchor == f"product-{fx.CANONICAL_ASSET_ID}"
+    assert anchor != derived
+    assert anchor.endswith(derived)
+
+    result = v.resolve_canonical_identity(fx.DISAGREEING_SUFFIX_URI_RECORD)
+
+    assert result.status is IdentityResolutionStatus.CONFLICT
+    assert result.canonical_identity_key is None
+    assert result.reason is not None
+    assert result.included_in_canonical_denominator is False
+    assert result.included_in_enrichment_set is False
+
+    # Every candidate is retained verbatim: the record is excluded for audit, not
+    # discarded, and the suffix relationship survives in the evidence.
+    assert [candidate.source_field for candidate in result.candidates] == [
+        "ec_product_id",
+        "permanentid",
+        "clickUri",
+    ]
+    assert result.candidates[2].canonical_value == fx.CANONICAL_ASSET_ID
+
+
+@pytest.mark.lreq("LREQ-EXT-070")
 def test_conflict_excluded_from_denominator_and_enrichment() -> None:
     """A conflict is explicitly excluded from both populations."""
     for name in ("disagreeing_product_ids", "disagreeing_uri"):

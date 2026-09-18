@@ -32,6 +32,7 @@ __all__ = [
     "AGREEING_IDENTITY_RECORD",
     "CANONICAL_ASSET_ID",
     "CHILD_PATH_OF_INVENTORY_PATH",
+    "DISAGREEING_SUFFIX_URI_RECORD",
     "FRESH_AGE_DAYS_EXACT",
     "FRESH_CAPTURE_PAYLOAD",
     "GQL_ALIAS_MAPS",
@@ -317,6 +318,35 @@ DISAGREEING_URI_RECORD: dict[str, Any] = {
     "uri": "https://assetstore.unity.com/packages/tools/level-design/other-9999999",
 }
 
+#: A URI whose last path segment itself carries a hyphenated numeric group before
+#: the final ``-<digits>`` identifier (``level-design-toolkit-234-1234567``). A
+#: multi-hyphen last segment is what makes the equality step observable at all:
+#: the extracted identifier is ``1234567``, not a longer tail.
+URI_CARRYING_RECORD_SUFFIX_OF_ANCHOR: str = (
+    "https://assetstore.unity.com/packages/tools/level-design/"
+    "level-design-toolkit-234-1234567"
+)
+
+#: An explicit anchor of which the URI-derived identifier is a *proper* suffix:
+#: ``product-1234567`` ends with ``1234567`` but is not equal to it. This is the
+#: anchored shape ``interfaces/chunk-03.md`` §8 records (``product-0001`` for
+#: ``.../fixture-1-0001``). ``DISAGREEING_URI_RECORD`` cannot stand in for it:
+#: ``"1234567".endswith("9999999")`` is ``False``, so that fixture yields
+#: ``conflict`` under a suffix-tolerant comparison *and* under exact equality.
+EXPLICIT_ANCHOR_WITH_SUFFIX_URI_IDENTIFIER: str = "product-1234567"
+
+#: A record whose URI-derived identifier is a proper suffix of the explicit
+#: anchor. The derived key really is ``1234567`` (extraction takes the trailing
+#: ``-<digits>`` group of the last path segment); the anchor is compared as the
+#: already-canonical string it is under §4.1, so ``product-1234567`` and
+#: ``1234567`` are distinct canonical values and ``LREQ-EXT-070`` makes this a
+#: ``conflict``.
+DISAGREEING_SUFFIX_URI_RECORD: dict[str, Any] = {
+    "ec_product_id": EXPLICIT_ANCHOR_WITH_SUFFIX_URI_IDENTIFIER,
+    "permanentid": EXPLICIT_ANCHOR_WITH_SUFFIX_URI_IDENTIFIER,
+    "clickUri": URI_CARRYING_RECORD_SUFFIX_OF_ANCHOR,
+}
+
 #: A record whose only candidates are empty, whitespace-only, or unusable.
 EMPTY_CANDIDATES_RECORD: dict[str, Any] = {
     "ec_product_id": "",
@@ -361,6 +391,7 @@ IDENTITY_RECORDS: dict[str, dict[str, Any]] = {
     "uri_only": URI_ONLY_RECORD,
     "disagreeing_product_ids": DISAGREEING_PRODUCT_IDS_RECORD,
     "disagreeing_uri": DISAGREEING_URI_RECORD,
+    "disagreeing_suffix_uri": DISAGREEING_SUFFIX_URI_RECORD,
     "empty_candidates": EMPTY_CANDIDATES_RECORD,
     "non_string_candidates": NON_STRING_CANDIDATES_RECORD,
     "unparseable_uri": UNPARSEABLE_URI_RECORD,

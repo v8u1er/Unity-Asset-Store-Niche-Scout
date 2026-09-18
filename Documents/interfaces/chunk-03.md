@@ -352,14 +352,18 @@ class CoveoObservationSink:
 
 ---
 
-## 8. Adapter-internal behavior explicitly NOT part of this contract
+## 8. Adapter-internal behavior this contract does not specify, and the URI-extraction verification obligation it leaves open
 
-The section records the *implementation shape* of the adapter's identity step.
-The requirement-level outcome it produces is the frozen one —
+This section records the *implementation shape* of the adapter's identity step,
+including the parts of that step that are **open or unverified rather than
+settled**. The requirement-level outcome it produces is the frozen one —
 `LREQ-EXT-070`'s three-way `resolved`/`conflict`/`unresolved` plus the
-`mapping_rule_version` stamp are guaranteed; the internal `endswith`-era
-"contribute nothing" tolerance once described here is **removed** as of mapping
-rule `1.0.1` and SHALL NOT be relied on.
+`mapping_rule_version` stamp are guaranteed. Suffix tolerance was never part of
+this contract at **any** version: the adapter used to accept a URI-derived
+identifier that was merely a *suffix* of the explicit anchor, which
+`interfaces/chunk-01.md` §4.1 and `LREQ-EXT-060`/`LREQ-EXT-070`/`LREQ-EXT-080`
+never authorized, so mapping rule `1.0.1` corrects that adapter-side divergence.
+Consumers SHALL NOT rely on any adapter-internal tolerance in the equality step.
 
 `resolve_observation_identity` delegates to
 `validation.resolve_canonical_identity` and adopts its verdict whenever that
@@ -375,32 +379,55 @@ is a `conflict`, exactly as two disagreeing explicit ids are. Equality is
 evaluated on the mapping rule's normalized comparison form, so `"0081"` and
 `"81"` are one identity.
 
-**Rule `1.0.1` correction.** Under rule `1.0.0` this step accepted a URI-derived
-identifier whenever it was a *suffix* of the explicit anchor
-(`anchor.endswith(key)`, e.g. `product-0001` for `.../fixture-1-0001`), and
-otherwise contributed nothing. That tolerance had no basis in normative text and
-it **rescued genuine `LREQ-EXT-070` disagreements into `resolved`**, so
-`1.0.1` — the value `interfaces/chunk-01.md` §4.1 line 231 already reserved for
-this correction — removes it. `"1.0.1"` is not a *loosening* of a sample size;
-it is a correction whose effect is strictly more `conflict` verdicts, because a
-URI-derived identifier now has to match the explicit id exactly.
+**Rule `1.0.1` is a bug fix, not a contract change.** The adapter's equality step
+once accepted a URI-derived identifier whenever it was a *suffix* of the explicit
+anchor (`anchor.endswith(key)`, e.g. `product-0001` for `.../fixture-1-0001`) and
+otherwise contributed nothing. That tolerance was an adapter-side divergence, not
+a frozen behavior that was later revoked and not a separate tier of the mapping
+rule: `interfaces/chunk-01.md` §4.1's `1.0.0` text already mandated exact
+equality on disagreement ("all equal → `resolved`; any disagreement →
+`conflict`"), and the SRS's `LREQ-EXT-060` peer-candidate rule plus
+`LREQ-EXT-080`'s prefix-strictness point the same way. Because the divergence
+**rescued genuine `LREQ-EXT-070` disagreements into `resolved`**, `1.0.1` — the
+value `interfaces/chunk-01.md` §4.1 already reserved for a mapping-rule
+correction — makes a URI-derived identifier match the explicit id exactly.
+`"1.0.1"` is not a *loosening*, not a relaxation of a sample size or threshold,
+and not a change to any contract: its effect is strictly **more `conflict`
+verdicts**, which is what `LREQ-EXT-070` required all along. No adapter-internal
+tolerance in this equality step was ever part of the contract at any version.
 
-The one part of the earlier policy that **is** backed by normative text and is
-unchanged: a URI-shaped value that does not fit the trailing-identifier pattern
-contributes **nothing** and can never vote —
+The one part of the earlier adapter behavior that **is** backed by normative text
+and is unchanged: a URI-shaped value that does not fit the trailing-identifier
+pattern contributes **nothing** and can never vote —
 `interfaces/chunk-01.md` §4.1 ("A value that does not fit that pattern
 contributes nothing").
 
-Two consequences consumers must not treat as frozen:
+Three consequences consumers must not treat as frozen:
 
-- **The URI trailing-identifier rule itself is inferred, not capture-verified.**
-  `interfaces/chunk-01.md` §4.1 already flags this (the extraction half of the
-  rule is inferred; `"1.0.1"` is reserved for a correction). The capture this
-  chunk replays is a **request** capture, not a response capture, so it does not
-  settle the rule either, and `1.0.1` deliberately left extraction untouched.
-  Consumers SHALL branch on
-  `IdentityResolutionResult.mapping_rule_version` rather than assuming `1.0.0`
-  or `1.0.1` semantics silently.
+- **The URI trailing-identifier rule itself is inferred, not capture-verified,
+  and the obligation to verify it is UNMET and OPEN.** `interfaces/chunk-01.md`
+  §4.1 already flags this (the extraction half of the rule is inferred;
+  `"1.0.1"` is reserved for a correction) and places the obligation on this
+  chunk in its bolded caveat: Chunk 3 "SHALL sanity-check this rule against
+  real redacted fixtures before treating it as final"
+  (`interfaces/chunk-01.md`:229-231). **This chunk did not perform that check
+  and does not claim to have discharged it.** The capture this chunk replays is
+  a **request** capture, not a response capture, so it could not have settled
+  the rule even if it had been examined for this purpose, and `1.0.1`
+  deliberately left extraction untouched. Declaring extraction **out of scope**
+  for this chunk does **not** discharge that obligation, and it is not a
+  relaxation of it: the obligation is a different document's imposition, and it
+  stays **owed** until either it is performed or `interfaces/chunk-01.md`
+  explicitly relaxes it, stating there why "still unverified, deferred to a
+  future capture" satisfies "before treating it as final."
+  **No `interfaces/chunk-01.md` edit relaxing it exists at the time of
+  writing**, so the obligation is open and **no real captured Coveo response
+  exists anywhere in this repository** to discharge it against. Consumers SHALL
+  treat the extraction rule as inferred and unverified, and SHALL branch on
+  `IdentityResolutionResult.mapping_rule_version` rather than assuming a rule
+  version's semantics silently. The relaxation decision itself is *not* made
+  here: whether deferral is an acceptable discharge is recorded in
+  `interfaces/chunk-01.md`, not in this file.
 - **The adapter's cross-field agreement step is still adapter policy, not a
   Chunk 1 primitive guarantee.** It exists because
   `validation.resolve_canonical_identity` compares the four fields'
@@ -410,3 +437,14 @@ Two consequences consumers must not treat as frozen:
   *existence* as a certified invariant: they rely on the requirement-level
   outcome (`LREQ-EXT-070`'s three-way `resolved`/`conflict`/`unresolved` plus the
   `mapping_rule_version` stamp).
+- **The peer-candidate agreement step is tested only against the hand-derived
+  response fixtures of plan §12.9, not against a captured response.** The
+  fixtures that exercise `resolved`, `conflict`, and the equality forms are
+  hand-derived assumptions about the live contract (plan §9, §12.9), so
+  `LREQ-EXT-070`'s three-way verdict is a tested outcome against assumed
+  response shapes, not a capture-verified one.
+  **This is the same unmet obligation as the bullet above, not a second one**:
+  §12.9's response-side fixtures are the *only* place a URI-derived candidate is
+  exercised at all, so the extraction rule's unverified status and these
+  fixtures' assumed status are one gap, recorded once in plan §12.9 and again in
+  this file's §8 for downstream consumers.

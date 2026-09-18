@@ -63,16 +63,32 @@ FIXED_NOW = datetime(2026, 9, 17, 4, 30, 0, tzinfo=timezone.utc)
 #: The capture's committed body, read once and treated as read-only.
 CAPTURE_BODY: Mapping[str, Any] = fx.template_body()
 
-#: Fields LREQ-EXT-040 forbids this adapter from requesting or persisting.
-FORBIDDEN_SCORING_FIELDS = (
+#: An illustrative, **non-normative** sample of fields outside this adapter's
+#: discovery-only scope, used by this module's tests as sample data. It is not a
+#: list the SRS defines: ``LREQ-EXT-040`` ("Discovery SHALL use the parent SRS
+#: discovery-only field set: ``permanentid``, ``ec_product_id``, ``ec_name``,
+#: ``ec_category``, and ``publisher_name``. Product rating, page views,
+#: publication date, and price SHALL NOT be sourced from Coveo for scoring.")
+#: names the *allowed* five fields and then forbids rating, page views,
+#: publication date, and price by category — it never enumerates a blocklist of
+#: member names, so no reader may treat this tuple as normative. Enforcement
+#: lives in the adapter as an allow-list complement
+#: (``collector_coveo.COVEO_DISCOVERY_FIELD_SET``); see
+#: ``test_response_carrying_a_novel_member_records_forbidden_presence``.
+#:
+#: ``ec_rating_count`` is governed less by ``LREQ-EXT-040`` than by the §4.2
+#: source-separation rule ("GraphQL is authoritative for rating, rating count,
+#: review count, first publication date, page views, publisher, category, state,
+#: and product identity confirmation. Neither source SHALL provide duplicate
+#: scoring fields for the same metric."): rating count has a GraphQL owner, so
+#: Coveo sourcing it would be a duplicate source, not merely an unlisted field.
+SAMPLE_OUT_OF_SCOPE_FIELDS = (
     "ec_rating",
     "ec_rating_count",
     "ec_price",
     "ec_price_filter",
     "ec_sale",
     "ec_thumbnails",
-    "ec_flash_teaser_starts_at",
-    "ec_flash_promo_starts_at",
     "first_published_at",
     "ec_popularity",
 )
@@ -502,10 +518,10 @@ def test_request_uses_discovery_only_field_set(repository: SqliteRepository) -> 
     body = fx.request_body()
     assert body["fieldsToInclude"] == list(collector_coveo.COVEO_DISCOVERY_FIELD_SET)
     serialized = fx.canonical_text(body)
-    for forbidden in FORBIDDEN_SCORING_FIELDS:
+    for forbidden in SAMPLE_OUT_OF_SCOPE_FIELDS:
         assert f'"{forbidden}"' not in serialized
 
-    for forbidden in FORBIDDEN_SCORING_FIELDS:
+    for forbidden in SAMPLE_OUT_OF_SCOPE_FIELDS:
         assert not any(forbidden == name for name in body["fieldsToInclude"])
 
     opener = paging_opener(PAGE_SIZE, 1)
@@ -554,7 +570,7 @@ def test_response_reader_never_sources_forbidden_scoring_fields(
             ),
         )
     )
-    for forbidden in FORBIDDEN_SCORING_FIELDS:
+    for forbidden in SAMPLE_OUT_OF_SCOPE_FIELDS:
         assert forbidden not in persisted
     assert "4.75" not in persisted
     assert "9001" not in persisted
@@ -580,6 +596,21 @@ def test_extra_response_fields_are_ignored_and_missing_identity_fields_stay_miss
     assert result.unresolved_identity_count == 1
     assert result.canonical_identity_count == 1
 
+    # The extra member's *value* is never carried into anything persisted.
+    persisted_extra = " ".join(
+        filter(
+            None,
+            (
+                rows[0].request_metadata_json,
+                rows[0].error_summary_json,
+                rows[0].identity_candidates_json,
+                rows[0].identity_resolution_reason,
+            ),
+        )
+    )
+    assert "ec_some_future_field" not in persisted_extra
+    assert "nested" not in persisted_extra
+
     # The response-side member set is required: a page that omits it is not read
     # as though it declared it.
     without_members = fx.make_page([{"ec_name": "Nameless"}], total_count=1)
@@ -592,6 +623,44 @@ def test_extra_response_fields_are_ignored_and_missing_identity_fields_stay_miss
         issue.code == "response_missing_required_member"
         for issue in result_missing.issues
     )
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+def test_response_carrying_a_novel_member_records_forbidden_presence(
+    repository: SqliteRepository,
+) -> None:
+    """The allow-list *complement* records presence of a field no list names.
+
+    The two field-set tests above *walk* a list, so any under-inclusive list
+    passes them. This test exercises the mechanism itself
+    (``collector_coveo``'s ``if any(key not in _DISCOVERY_RESPONSE_FIELD_SET ...)``
+    branch) with a member name that appears in no vocabulary anywhere in the
+    repository: the record must still be read, and the presence of the
+    out-of-scope member must be *recorded* — the fact and the count only, never
+    the member name or its value, because a scoring field's name has no business
+    in the persisted metadata (LREQ-EXT-040).
+    """
+    novel_member = "ec_some_future_scoring_field"
+    record = dict(fx.record(0))
+    record[novel_member] = {"secret_payload": "must-not-be-persisted"}
+    opener = RecordingOpener(lambda index: page_response([record], total_count=1))
+    result = discover(repository, opener)
+
+    # The record is still an ordinary, readable asset: an extra member is a
+    # recorded condition, not a structural failure and not a dropped record.
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    rows = rows_by_ordinal(repository)
+    assert len(rows) == 1
+    assert rows[0].identity_resolution_status == IdentityResolutionStatus.RESOLVED.value
+
+    metadata = json.loads(rows[0].request_metadata_json)
+    assert metadata["forbidden_field_presence"] == [
+        {"record_index": 0, "extra_member_count": 1}
+    ]
+    # The record-level page metadata carries the *fact*; the novel name and its
+    # value are deliberately absent from every persisted column.
+    assert novel_member not in rows[0].request_metadata_json
+    assert "must-not-be-persisted" not in rows[0].request_metadata_json
 
 
 # ---------------------------------------------------------------------------
@@ -728,13 +797,13 @@ def test_every_non_empty_identity_candidate_is_retained(
 ) -> None:
     """Every non-empty candidate from all four source fields reaches the row."""
     record = {
-        "permanentid": "P-1",
-        "ec_product_id": "P-1",
+        "permanentid": "1234567",
+        "ec_product_id": "1234567",
         "ec_name": "Fixture Asset",
         "ec_category": CATEGORY,
         "publisher_name": "Fixture Publisher",
-        "clickUri": "https://assetstore.unity.com/packages/fixture-1-P-1",
-        "uri": "https://assetstore.unity.com/packages/fixture-1-P-1",
+        "clickUri": "https://assetstore.unity.com/packages/fixture-1-1234567",
+        "uri": "https://assetstore.unity.com/packages/fixture-1-1234567",
     }
     opener = RecordingOpener(lambda index: page_response([record], total_count=1))
     result = discover(repository, opener)
@@ -751,7 +820,7 @@ def test_every_non_empty_identity_candidate_is_retained(
     ]
     assert all(item["canonical_value"] is not None for item in candidates)
     assert rows[0].identity_resolution_status == IdentityResolutionStatus.RESOLVED.value
-    assert rows[0].asset_identity_key == "P-1"
+    assert rows[0].asset_identity_key == "1234567"
     assert json.loads(
         json.dumps(candidates, sort_keys=True)
     ) == json.loads(rows[0].identity_candidates_json)
@@ -761,7 +830,15 @@ def test_every_non_empty_identity_candidate_is_retained(
 def test_uri_fallback_and_unparseable_candidates_contribute_nothing(
     repository: SqliteRepository,
 ) -> None:
-    """A URI fallback resolves; a candidate that cannot be parsed contributes none."""
+    """A URI fallback resolves; a candidate that cannot be parsed contributes none.
+
+    "Contributes nothing" is a per-*candidate* property, not a per-record one:
+    the second record below resolves through its ``uri`` even though its
+    ``clickUri`` abstains. Abstention means the unparseable member yields no
+    canonical value (``canonical_value is None`` with a reason), never a guessed
+    or partial identifier, so the record is classified from the candidates that
+    *did* canonicalize — here a single agreeing key, i.e. ``resolved``.
+    """
     fallback = fx.URI_FALLBACK_RECORD
     unparseable = {
         "permanentid": "",
@@ -790,12 +867,20 @@ def test_uri_fallback_and_unparseable_candidates_contribute_nothing(
     ]
     assert rows[0].asset_identity_key == "999999"
 
+    # The abstaining member is retained as a candidate with no canonical value
+    # and a reason; it takes part in no verdict.
     second = json.loads(rows[1].identity_candidates_json)
     by_source = {item["source_field"]: item for item in second}
     assert by_source["clickUri"]["canonical_value"] is None
     assert by_source["clickUri"]["parse_failure_reason"]
     assert by_source["uri"]["canonical_value"] == "654321"
+    # Only the one member that could be canonicalized is the record's identity;
+    # the abstaining member neither votes nor blocks the genuine resolution.
     assert rows[1].asset_identity_key == "654321"
+    assert rows[1].identity_resolution_status == IdentityResolutionStatus.RESOLVED.value
+    assert result.canonical_identity_count == 2
+    assert result.unresolved_identity_count == 0
+    assert result.conflict_identity_count == 0
 
 
 # ---------------------------------------------------------------------------
