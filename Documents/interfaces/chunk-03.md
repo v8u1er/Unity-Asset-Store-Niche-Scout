@@ -6,6 +6,21 @@ Verified at: working tree state 2026-09-17; gates `python -m pytest tests/ -q`
 (119 passed, exit 0), `python -m niche_scout.tools.validate_traceability` (exit 0),
 `python -m niche_scout.tools.check_import_boundaries` (exit 0).
 
+> **Dated correction (2026-09-18).** The test figure on the line above,
+> `(119 passed, exit 0)`, is **superseded** and is retained above rather than
+> deleted. It was the gate run at the 2026-09-17 verification. The current
+> full-suite reproduction is **6 failed, 140 passed** with **146 collected**.
+> Only the test count is superseded; the two tool gates
+> (`validate_traceability`, `check_import_boundaries`) are unaffected by this
+> correction. The six failures belong to Chunk 5's still-in-development test
+> family and are not Chunk 3 scope (see the Status footnote below).
+>
+> Provenance of the current figures: **carried from this chunk's own plan
+> record**, not measured by the agent applying this note — the dispatch for
+> this correction forbade running the test suite. They are labeled as carried,
+> not as a fresh measurement, and SHALL be re-measured by the next run that
+> exercises the suite.
+
 This file is the **public contract** other chunks build against. It is not the
 full source; read `src/niche_scout/collector_coveo.py` for implementation
 detail. Everything below is frozen: downstream chunks may consume these names
@@ -80,9 +95,19 @@ COVEO_DROPPED_FACET_IDS: tuple[str, ...] = (
   `Authorization` is appended at call time by `build_coveo_headers`. Browser
   fingerprint headers (`sec-ch-ua*`, `sec-fetch-*`, `priority`, `pragma`,
   `cache-control`) and `Origin` are **not** sent.
-- `COVEO_DISCOVERY_FIELD_SET` is the discovery-only field set. `ec_rating`,
-  `ec_price`, `ec_thumbnail`, popularity, and publication-date fields are never
-  requested and never read (LREQ-EXT-040).
+- `COVEO_DISCOVERY_FIELD_SET` is the discovery-only field set **and it is the
+  allowed-request set, not a prohibition list**: it names the five fields the
+  adapter requests (`LREQ-EXT-040`), and the request is rejected/recorded
+  against it as an allow-list whose *complement* is the enforced rule.
+  `COVEO_DISCOVERY_FIELD_SET` and `COVEO_DROPPED_FACET_IDS` (a facet-drop
+  vocabulary, not a response-side field list) are the only field/facet
+  vocabularies this module ships. **No member blocklist is enforced anywhere in
+  `src/`**: `ec_rating`, `ec_rating_count`, `ec_price`, `ec_price_filter`,
+  `ec_sale`, `ec_thumbnails`, `first_published_at`, and `ec_popularity` are
+  never requested and never read, and the response-side rule is the allow-list
+  complement itself — a response member outside the five-field set is recorded
+  as `forbidden_field_presence` by *count and record index only*, never by
+  member name (`LREQ-EXT-040`).
 - `COVEO_FACET_ID` is the single facet the adapter ships. The capture's other
   facets and its `publisher_name` facet are dropped; the drop list is
   computed from the capture actually replayed, so a capture shipping only
@@ -102,6 +127,10 @@ class CoveoPageResponse:
     request_metadata: Mapping[str, object]   # redacted; never headers or tokens
     issues: tuple[ValidationIssue, ...] = ()
     filtered_count: int | None = None
+    #: Member names outside the five-field discovery set, per record index. The
+    #: values themselves are never read or stored (LREQ-EXT-040). Each entry is
+    #: a count and a record index — never a member name, because a scoring
+    #: field's name has no business in persisted metadata.
     forbidden_field_presence: tuple[Mapping[str, object], ...] = ()
     @property
     def is_structural_failure(self) -> bool: ...
