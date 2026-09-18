@@ -223,3 +223,46 @@ These are deliberate human checkpoints, not implementation gaps.
      identical. The disagreement did not exist; it had been inferred from the
      shape of the two outputs, and it propagated into a later report because it
      sat in a dispatch brief.
+
+## Extracting git objects for comparison
+- Any extraction of a git object — a blob, a tree, or a file revision — for the
+  purpose of comparing it against a working-tree file SHALL use a byte-exact
+  method. An extractor that is not byte-exact does not produce a copy of the
+  artifact; it produces a new document that differs from the artifact in ways
+  that have nothing to do with the question being asked.
+- Forbidden extraction methods. Each is forbidden because it rewrites the
+  bytes, not because it is merely unfashionable:
+  - Text-mode redirection of git output in PowerShell — `git show ... > file`,
+    `Out-File -Encoding utf8`, `Set-Content`, and any `| Out-File` pipeline —
+    is FORBIDDEN. It is LOSSY: it rewrites LF line endings to CRLF and
+    prepends a UTF-8 BOM. MEASURED on this repository: a 118,618-byte blob
+    became 121,865 bytes under `Out-File -Encoding utf8`, and the
+    transformation MANUFACTURED a non-empty diff between HEAD and the working
+    tree where the two were in fact identical.
+  - PowerShell's `>` redirection operator, which in some configurations
+    defaults to UTF-16, mangles non-ASCII content outright rather than merely
+    changing its line endings.
+- Consequence. A diff produced from a lossily-extracted copy is not evidence
+  about the artifact, because part of the diff is an artifact of the extractor.
+  A phantom diff of this shape can invent a divergence between two copies of a
+  document that does not exist — the same failure the section above prohibits:
+  recording a discrepancy that was inferred from tooling rather than read from
+  the artifact. A phantom diff is worse than no comparison, because it arrives
+  as a finding and is then cited as one.
+- Required discipline. Use a byte-exact extraction: `git hash-object` for an
+  identity comparison, `git diff --no-index` between two real paths, or a
+  byte-exact write. Where identity is the actual question, compare object IDs
+  or hashes rather than file text — a hash answers the identity question
+  directly and cannot be perturbed by encoding, line-ending, or BOM drift.
+- Declaring the extraction method. Any dispatch brief that asks a member to
+  diff a git object against a working-tree file SHALL state which extraction
+  method is to be used, and the resulting report SHALL state which method was
+  actually used. This puts a phantom-diff cause in the report, where it can be
+  seen, instead of leaving it to surface as an unexplained disagreement between
+  two numbers.
+- Same class as the isolated-index defect. A stale index entry that produced
+  the appearance of a three-way document disagreement and a lossy extraction
+  that produced a phantom diff are the same defect: a tooling artifact
+  masquerading as a content finding. Both were fixed permanently rather than
+  by a remembered caution, and this section is the permanent fix for the
+  second.
