@@ -1206,7 +1206,20 @@ em-dash form is retained because the clause sits inside a sentence that began
 "whereas it means". The clause's meaning is unchanged.) Two further bare `§8`
 pointers in §7 and §11 meant the same thing and were disambiguated in the same
 pass; each carried a "Caveat Chunk 3 must verify (plan RN-1, not a defect in this
-chunk)" citation that already identified the target. Unqualified `§9` and `§11`
+chunk)" citation that already identified the target. (corrected 2026-09-18: this
+sentence previously read "Two further bare `§8` pointers in §7 and §11 meant the
+same thing and were disambiguated in the same pass", and its premise is false.
+Read of the parent revision `c839f4d^` — re-runnable as
+`git show c839f4d^:Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+— shows §7's pointer was **already qualified** at the parent, reading
+"`interfaces/chunk-03.md` §8" (`c839f4d^`:522), and `c839f4d` did not change that
+line at all; §11 carried **no `§8` pointer at all**, its parenthesis reading
+"…recorded in §12.9 and `requirements-dependency-map.md` §6.4"
+(`c839f4d^`:776-777), and `c839f4d` **added** the qualified
+"`interfaces/chunk-03.md` §8" pointer there. No bare `§8` was disambiguated in
+either section; `c839f4d` added one pointer to §11 and left §7 unchanged. The
+operative claim below — that the §7 and §11 pointers now name their target
+explicitly — is **not** withdrawn and remains true.) Unqualified `§9` and `§11`
 pointers were left as they are: both are this plan's own sections when read in
 context, and §9/§11 are the plan's own section numbers.
 
@@ -1257,3 +1270,43 @@ left open**, again numbered so the earlier reviews' numbering is untouched.
   (`collector_coveo.py` `COVEO_DISCOVERY_FIELD_SET` /
   `COVEO_DROPPED_FACET_IDS` docstrings, which state that they assert the members
   and not a length).
+
+**Commit-message correction — `c839f4d`'s message misdescribes two of the
+changes it landed (recorded 2026-09-18; the commit is NOT amended).** The message
+of `c839f4db152a2b1b8865ecbafb3a8cd1d3e1bb46` contains two clauses that do not
+describe the landed change, quoted verbatim:
+
+- "retitle and disambiguate the chunk-03 plan's two pointer notes"
+- "disambiguate … the bare section-8 pointer"
+
+What the commit actually did, verified by reading both revisions with
+`git show c839f4d^:<path>` and `git show c839f4d:<path>` on
+`Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`:
+
+- **The two `Pointer note` blocks are new, not retitled.** Both file revisions
+  were read in full: `git show c839f4d^:<path>` contains **zero** occurrences of
+  the string `Pointer note`, while `git show c839f4d:<path>` contains **two**
+  (counted in Python with `str.count` over the decoded blob, unit: occurrences of
+  that substring in the whole file, 0 → 2). Independently, scanning the commit's
+  own diff for lines that were *added* and contain the same substring yields
+  exactly **2** (unit: added diff lines containing `Pointer note`, 2), against
+  **63** added lines for that path in total. Nothing was renamed: there was no
+  prior block to rename.
+- **The authorship is established by pickaxe, re-runnable verbatim:**
+  `git log --oneline -S "Pointer note" -- Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+  returns exactly **one** commit — `c839f4db152a2b1b8865ecbafb3a8cd1d3e1bb46
+  docs: add verification-discipline rule section and land
+  chunk-01/chunk-03/RN-1 corrections` (unit: commits returned, 1). The blocks
+  originate with `c839f4d`.
+- **Only one bare section-8 pointer ever existed, and it was the §12.11 one.**
+  §11 had no `§8` pointer at the parent and gained a **qualified**
+  `` `interfaces/chunk-03.md` §8 `` pointer; §7's pointer was already qualified
+  and was **left unchanged**. So beyond the §12.11 parenthetical that the pointer
+  note above addresses, the commit clarified no bare section-8 pointer, and
+  "disambiguate" implies a third such pointer that did not exist. The pointer note
+  above carries the same finding with its line citations.
+
+**The commit is deliberately not amended or rebased.** It is stated history, and
+this project does not rewrite history: the correction is recorded here instead, so
+that a reader who finds the commit message also finds what actually landed. This
+note changes no requirement, no scope, and no gate.
