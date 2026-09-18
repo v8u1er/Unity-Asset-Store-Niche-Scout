@@ -416,18 +416,34 @@ Three consequences consumers must not treat as frozen:
   the rule even if it had been examined for this purpose, and `1.0.1`
   deliberately left extraction untouched. Declaring extraction **out of scope**
   for this chunk does **not** discharge that obligation, and it is not a
-  relaxation of it: the obligation is a different document's imposition, and it
-  stays **owed** until either it is performed or `interfaces/chunk-01.md`
-  explicitly relaxes it, stating there why "still unverified, deferred to a
-  future capture" satisfies "before treating it as final."
-  **No `interfaces/chunk-01.md` edit relaxing it exists at the time of
-  writing**, so the obligation is open and **no real captured Coveo response
-  exists anywhere in this repository** to discharge it against. Consumers SHALL
+  relaxation of it: the obligation is a different document's imposition. The
+  conditional that previously kept it open closed on 2026-09-18: it stays
+  **owed** until either it is performed or `interfaces/chunk-01.md` explicitly
+  relaxes it, stating there why "still unverified, deferred to a future capture"
+  satisfies "before treating it as final." **(`corrected 2026-09-18: this
+  sentence previously read "No `interfaces/chunk-01.md` edit relaxing it exists
+  at the time of writing" and was written — correctly — against the then-current
+  state of that file. That is no longer that file's state.**) It **has** now
+  explicitly relaxed the satisfaction condition, in the same §4.1, in the
+  paragraph titled "Satisfaction condition of the caveat above — explicitly
+  RELAXED by human ruling" (cited by paragraph title, not by line number, which
+  is not stable there). That paragraph reads the obligation as dischargeable by
+  **scope declaration** with the verification **deferred to a future capture**
+  rather than performed, on the reading that "before treating it as final" bars
+  *asserting the rule is verified* rather than barring publication of it as an
+  explicitly-unverified inference; the editing document therefore does record
+  why deferral is accepted. **Relaxed is not verified**, and the distinction
+  does not blur: the relaxation removes the bar on publishing the inferred rule,
+  and changes nothing about whether the rule is true. So the obligation remains
+  **open**, **no real captured Coveo response exists anywhere in this
+  repository** to discharge it against, and a further paragraph of the same
+  §4.1 — "The exposure deferral leaves open" — records that the deferral accepts
+  the extraction exposure rather than asserting it away. Consumers SHALL
   treat the extraction rule as inferred and unverified, and SHALL branch on
   `IdentityResolutionResult.mapping_rule_version` rather than assuming a rule
-  version's semantics silently. The relaxation decision itself is *not* made
-  here: whether deferral is an acceptable discharge is recorded in
-  `interfaces/chunk-01.md`, not in this file.
+  version's semantics silently. The relaxation decision itself is made in
+  `interfaces/chunk-01.md`, not in this file, and this file neither makes nor
+  re-makes it.
 - **The adapter's cross-field agreement step is still adapter policy, not a
   Chunk 1 primitive guarantee.** It exists because
   `validation.resolve_canonical_identity` compares the four fields'

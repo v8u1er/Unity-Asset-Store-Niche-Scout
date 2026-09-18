@@ -774,7 +774,8 @@ Copied verbatim from `requirements-dependency-map.md` §Chunk 3 Gate:
 - Must not state or imply that the URI trailing-identifier extraction rule was
   verified, sanity-checked against real redacted fixtures, or discharged: that
   obligation is unmet and open, owes no chunk, and is recorded in §12.9 and
-  `requirements-dependency-map.md` §6.4. Extraction itself stays as
+  `interfaces/chunk-03.md` §8 (this file's §8 is "Edge cases and invariants"),
+  plus `requirements-dependency-map.md` §6.4. Extraction itself stays as
   `interfaces/chunk-01.md` §4.1 defines it — inferred and unverified.
 - Must not modify `models.py`, `collector_graphql.py`,
   `config/category_taxonomy.json` (byte-identical — the all-zero
@@ -1065,6 +1066,46 @@ covers the request only. So `LREQ-EXT-050`'s "verified `totalCount`" and
 `LREQ-EXT-080`'s scalar-vs-array handling are still validated against fixtures
 that encode assumptions, not against the live contract itself.
 
+**The two gaps recorded around this entry are distinct and both remain open.**
+*This* sentence records the **response-shape** gap: the fields above
+(`totalCount` shape, `ec_category` scalar-vs-array, `permanentid`/`ec_product_id`
+typing) are asserted against assumptions about the live response, so the
+fixtures encode the contract as inferred rather than the contract as captured.
+The paragraph below records a different gap — the URI-extraction *rule* of
+`interfaces/chunk-01.md` §4.1 — with a different scope, a different owning
+document, and a different obligation. Neither paragraph's gap is closed by the
+other, and the request-side settlement of §12.1/§12.6 covers neither.
+**Outstanding, no chunk:** the response-shape obligation is not owned by any
+chunk any more than the extraction obligation is, so a later chunk's brief needs
+it recorded rather than assumed closed. It does not name Chunk 3 as its owner
+and does not add to Chunk 3's gate.
+
+**Pointer note — disambiguating the two gaps under §12.9 (added
+2026-09-18, no substance changed).** The three paragraphs
+recorded under this entry are **two separate gaps and a shared ownership
+finding**, and closing one says nothing about the other. The **response-shape**
+gap is the original body paragraph at the top of this entry alone, and it is
+about what the fixtures assume the live response *looks like*: `LREQ-EXT-050`'s
+"verified `totalCount`" — result-count integrity, i.e. whether the count a real
+response reports can actually be relied on to terminate pagination
+(`LREQ-EXT-050`: "It SHALL stop when the verified `totalCount` is reached") —
+and `LREQ-EXT-080`'s "Scalar and multi-valued category response shapes SHALL be
+handled explicitly". It is **not** about identity or URI extraction, and no part
+of it is a statement about how an identifier is derived from a `clickUri`/`uri`
+value. The **extraction** gap is the later paragraph below that begins "The
+extraction obligation is UNMET and OPEN": it is about the *inferred rule* by
+which a URI's trailing numeric segment is read as an identity candidate
+(`interfaces/chunk-01.md` §4.1), i.e. how a value is turned into an identity,
+not about the shape of the response that carries it. It is **not** a
+response-shape finding. **Both gaps remain OPEN and neither is verified** — the
+response-shape fixtures still "encode assumptions, not ... the live contract
+itself" (the original body sentence, left verbatim above), and the extraction
+rule still "stays **inferred and unverified**" (the later paragraph below) — and
+the request-side settlement that gives this entry its heading settles neither.
+The "**Outstanding, no chunk**" finding is a third thing again: it records that
+*ownership* of these obligations is unassigned, not that either obligation has
+been discharged, and it applies to both.
+
 **The extraction obligation is UNMET and OPEN, and §12.9 does not discharge it.**
 `interfaces/chunk-01.md` §4.1's caveat places an obligation on Chunk 3 —
 sanity-check the inferred URI trailing-identifier extraction rule against real
@@ -1142,8 +1183,27 @@ Chunk 10's brief. **Chunk 10 remains the owner; the new
 `requirements-dependency-map.md` §6.4 entry is a different, ownerless item — the
 deferred URI extraction verification of §12.9 — not a second recording of this
 one.** Chunk 3 must **not** implement it: it propagates the placeholder value
-verbatim (§12.1, §8, §11). This is an out-of-scope finding, not an open
-question: no human decision is pending on it, and it does not block the freeze.
+verbatim (§12.1, `interfaces/chunk-03.md` §8, §11). This is an out-of-scope
+finding, not an open question: no human decision is pending on it, and it does
+not block the freeze.
+
+**Pointer note — disambiguating the `§8` pointer in §12.11 (added
+2026-09-18, no substance changed).** That parenthetical
+previously read `(§12.1, §8, §11)`. The bare `§8` was ambiguous: unqualified, it
+reads as this plan's own §8 ("Edge cases and invariants"), whereas it means
+`interfaces/chunk-03.md` §8 — a section whose heading and body now read an
+open, chunk-less URI-extraction obligation as **owed**.
+(corrected 2026-09-18: this clause previously read "`interfaces/chunk-03.md`
+§8 — a section that is deliberately **non-contractual** and records an open,
+chunk-less URI-extraction obligation", which no longer matched that section's
+rewritten heading and body; the "non-contractual" label is dropped and the
+em-dash form is retained because the clause sits inside a sentence that began
+"whereas it means". The clause's meaning is unchanged.) Two further bare `§8`
+pointers in §7 and §11 meant the same thing and were disambiguated in the same
+pass; each carried a "Caveat Chunk 3 must verify (plan RN-1, not a defect in this
+chunk)" citation that already identified the target. Unqualified `§9` and `§11`
+pointers were left as they are: both are this plan's own sections when read in
+context, and §9/§11 are the plan's own section numbers.
 
 **12.12 RESOLVED — the second numbered resolution entry in §12.1: the committed
 capture is 5 fields / 1 facet, and the original capture's 23 fields / 6 facets

@@ -1074,7 +1074,15 @@ tasks and are cross-task evidence this plan must not destroy).
 
 ## 12. Open questions / assumptions
 
-Fourteen items; **§12.1, §12.3, §12.5, §12.6, §12.10, §12.12, and §12.13 are flagged for
+Thirteen items (corrected 2026-09-18: this sentence previously read "Fourteen
+items"; the file carries thirteen `### 12.x` subsections, one per item, and no
+unheaded fourteenth item — COUNTED: `python` read of every line beginning
+`### 12.` over this file reports 13, at lines 1086, 1109, 1132, 1152, 1168,
+1179, 1195, 1202, 1210, 1222, 1237, 1247, 1268, the same 13 lines the audit's
+`###`-anchored query returned, so the two differ in unit only — heading lines
+vs. distinct subsection numbers — and not in number; the prior wording is
+quoted here rather than deleted, per the dated-correction convention);
+**§12.1, §12.3, §12.5, §12.6, §12.10, §12.12, and §12.13 are flagged for
 a human ruling before this plan is treated as a settled scope contract.** §12.10 is
 listed as needing a ruling though it is not marked "Needs a human ruling" in its heading:
 it ends in "**A human should confirm…**". §§12.2 and 12.4 are recorded resolutions or

@@ -1,6 +1,23 @@
 # Chunk 1 — Pure taxonomy, identity, and response validation
 
 Status: FROZEN
+Re-verification state: NOT RE-VERIFIED against the 2026-09-18 interface text —
+  required and not performed (corrected 2026-09-18: the observations below were
+  taken against `Documents/interfaces/chunk-01.md` as it stood before that
+  file's §4.1 was amended; the observations themselves are unchanged and have
+  not been withdrawn).
+Interface observations from the prior gate pass, quoted as they were recorded
+  (superseded 2026-09-18: these observations previously appeared as a
+  `Status: VERIFIED` line — "Documents/interfaces/chunk-01.md (Status: VERIFIED
+  — pure `validation.py` surface: typed results, identity candidates,
+  canonicalization rule `1.0.0`, GraphQL alias comparison, structural
+  validation, redaction)". The observations were made against the pre-2026-09-18
+  text; re-verification against the amended text is required and has NOT been
+  performed, so this plan does not currently assert that its `1.0.0`-era
+  observations still hold):
+  Documents/interfaces/chunk-01.md (pure `validation.py` surface: typed results,
+  identity candidates, canonicalization rule `1.0.0`, GraphQL alias comparison,
+  structural validation, redaction)
 Depends on (frozen interfaces required before this plan can be trusted):
   Documents/interfaces/chunk-00.md (Status: VERIFIED — package layout, `models.py`
   typed structures/enums/constants, `config.py` contracts, `database.py` schema
@@ -64,8 +81,11 @@ eligibility semantics are owned by Chunk 7A.
   response-level `clickUri`, and response-level `uri`, retaining every non-empty
   candidate (LREQ-EXT-060).
 - Canonicalization of every parseable candidate under mapping rule
-  `IDENTITY_MAPPING_RULE_VERSION = "1.0.0"`, whose normative content is fixed by
-  resolved decision R-2 (section 12): `ec_product_id`/`permanentid` are treated as
+  `IDENTITY_MAPPING_RULE_VERSION = "1.0.1"`, whose normative content is fixed by
+  resolved decision R-2 (section 12) (`superseded 2026-09-18: this bullet
+  previously cited `IDENTITY_MAPPING_RULE_VERSION = "1.0.0"`; `1.0.1` is a bug
+  fix to the equality comparison only — see section 5.2): `ec_product_id` and
+  `permanentid` are treated as
   already-canonical and compared directly after whitespace trimming (as integers
   when both parse as numeric, else as strings); `clickUri`/`uri` contribute the
   trailing numeric identifier after the final `-` in the URL's last path segment,
@@ -313,11 +333,13 @@ Chunk 1 SHALL reuse these names and SHALL NOT redefine them.
 ### 4.2 Constants available from `niche_scout.models` (`interfaces/chunk-00.md` §3)
 
 ```python
-IDENTITY_MAPPING_RULE_VERSION = "1.0.0"   # the versioned mapping rule for canonicalization
+IDENTITY_MAPPING_RULE_VERSION = "1.0.1"   # the versioned mapping rule for canonicalization
                                           # (normative content fixed by R-2, section 12)
 MAX_TAXONOMY_AGE_DAYS = 30                # taxonomy freshness threshold (inclusive boundary;
                                           # SRS Appendix A, §14)
 ENDPOINT_CONTRACT_VERSION = "1.0.0"
+(deliberately NOT changed here — this is a different constant, not an identity-mapping
+version; noted 2026-09-18 only to distinguish it from `IDENTITY_MAPPING_RULE_VERSION`)
 ```
 
 ### 4.3 Serialization / timestamp helpers (`interfaces/chunk-00.md` §4.2)
@@ -518,8 +540,11 @@ def resolve_canonical_identity(
     mapping_rule_version: str = IDENTITY_MAPPING_RULE_VERSION,
 ) -> IdentityResolutionResult: ```
 
-`canonicalize_identity_candidate` implements mapping rule `1.0.0` (resolved
-decision R-2, section 12; normative for `LREQ-EXT-060` canonicalization):
+`canonicalize_identity_candidate` implements mapping rule `1.0.1` (resolved
+decision R-2, section 12; normative for `LREQ-EXT-060` canonicalization)
+(`superseded 2026-09-18: this line previously read "implements mapping rule
+`1.0.0`"; the rule content below is unchanged by `1.0.1` — the only substantive
+change is in the comparison bullet, where `1.0.0` tolerated a suffix match):
 
 - `ec_product_id` and `permanentid`, if non-empty: trim whitespace, then compare
   directly — as integers when both parse as numeric, else as strings. Both are
@@ -529,7 +554,9 @@ decision R-2, section 12; normative for `LREQ-EXT-060` canonicalization):
   contributes **nothing** (no candidate) rather than a wrong candidate.
 - `resolve_canonical_identity` compares all successfully-derived candidates: all
   equal → `resolved`, with that value as `asset_identity_key`; any disagreement →
-  `conflict`; nothing derivable from any candidate → `unresolved`.
+  `conflict`; nothing derivable from any candidate → `unresolved`. Matching is
+  **strict equality after canonicalization** (`interfaces/chunk-01.md` §4.1 rule
+  `1.0.1`; the superseded form of this bullet is recorded below).
 
 **Caveat Chunk 3 must verify** (recorded as risk note RN-1, section 12): the URI
 trailing-numeric-segment rule is *inferred* from the retired parent-SRS fragment
@@ -540,6 +567,46 @@ sanity-check this rule against real redacted fixtures before treating it as fina
 `IDENTITY_MAPPING_RULE_VERSION = "1.0.1"` exists precisely so a correction is
 cheap. Consumers SHALL branch on `IdentityResolutionResult.mapping_rule_version`
 rather than assuming `1.0.0` semantics silently.
+
+**Satisfaction condition of the caveat above — explicitly RELAXED by human ruling
+(added 2026-09-18, quoted from `Documents/interfaces/chunk-01.md` §4.1, which is
+the superseding text; the caveat above is preserved as the record of what this plan
+previously stated, and its obligation was previously unconditional).** That
+obligation "is now discharged by **scope declaration**: the rule remains
+*unverified* and the verification is **deferred to a future capture**, rather than
+performed." — `interfaces/chunk-01.md` §4.1, "Satisfaction condition of the caveat
+above — explicitly RELAXED by human ruling". `interfaces/chunk-01.md` §4.1,
+"Satisfaction condition of the caveat above — explicitly RELAXED by human ruling",
+also records the consequence precisely: "the extraction half of rule `1.0.1` is
+**UNVERIFIED**, and no artifact in this repository — this contract, an adapter
+interface, a plan, a docstring, a `mapping_rule_version` stamp, or a test name —
+may state or imply that it was verified against a real Coveo response."
+
+**Relaxed is NOT verified.** The relaxation accepted the exposure rather than
+removing it: `interfaces/chunk-01.md` §4.1, "The exposure deferral leaves open",
+records that "Deferral does **not** remove that exposure — it accepts it for the
+present rule version", that a wrong extraction pattern is "currently surfaced only
+by whatever causes *disagreement* among the candidate sources", and that "This
+exposure remains open until the deferred verification is performed; the relaxation
+does not assert it away." **The extraction rule remains inferred and
+NOT capture-verified, and no real captured Coveo response exists anywhere in this
+repository to verify it against.** This plan's own statement of the caveat below
+(section 12, RN-1) is therefore restated as status-with-pointer rather than
+repeated: the obligation remains **OPEN and owned by no chunk**, and RN-1 points
+at these paragraphs instead of carrying its own contradicting text.
+
+**Bounded correction of this plan (recorded, not deleted):** the caveat above once
+served as this plan's authoritative statement of the verification obligation; it
+does so no longer, and this plan does not restate the obligation's satisfaction
+condition on its own authority. The obligation's own record lives in
+`interfaces/chunk-01.md` §4.1 and in
+`requirements-dependency-map.md` §6.4 ("Deferred obligation with no owning
+chunk"), which names **Owner: none**. The superseded wording of this plan's
+"resolve_canonical_identity compares …" bullet read: "`resolve_canonical_identity`
+compares all successfully-derived candidates: all equal → `resolved`, with that
+value as `asset_identity_key`; any disagreement → `conflict`; nothing derivable
+from any candidate → `unresolved`." — it carried no equality-comparison clause,
+and the strict-equality clause now attached to it is the `1.0.1` reading.
 
 ```python
 def compare_graphql_identity_aliases(
@@ -639,7 +706,7 @@ Ordered checklist, each item tagged with the LREQ ID(s) it implements:
 - [ ] Implement requested-category presence validation; treat a missing requested category as an explicit failure result (the abort itself is the caller's, in Chunks 3/12). (LREQ-EXT-020)
 - [ ] Implement `normalize_category_path`, `taxonomy_path_set`, and `match_exact_category`, including exact segment equality (case-insensitive compare plus case-preserving canonical output), explicit non-matching of parent-vs-child prefixes in both directions, and explicit handling of scalar, `null`/absent, and multi-valued category shapes → `verified` / `mismatch` / `unverified`. (LREQ-EXT-080, LREQ-EXT-050, LREQ-EXT-090)
 - [ ] Implement `collect_identity_candidates` over `ec_product_id`, `permanentid`, response-level `clickUri`, and response-level `uri`; retain every non-empty candidate verbatim, drop empty/whitespace/non-string values without inventing placeholders, and record the source field per candidate. (LREQ-EXT-060, LREQ-GQL-010)
-- [ ] Implement `canonicalize_identity_candidate` as mapping rule `1.0.0` per resolved decision R-2: trim-then-direct comparison for `ec_product_id`/`permanentid` (integer when both parse numeric, else string; both already canonical, no transformation), and trailing-numeric-identifier-after-the-final-`-` extraction in the last path segment for `clickUri`/`uri` with non-conforming values contributing no candidate; record a typed parse-failure reason. (LREQ-EXT-060)
+- [ ] Implement `canonicalize_identity_candidate` as mapping rule `1.0.1` per resolved decision R-2 (superseded 2026-09-18: this item previously read "as mapping rule `1.0.0`"; the rule's content is unchanged — its comparison-half change is the strict-equality clause recorded in section 5.2): trim-then-direct comparison for `ec_product_id`/`permanentid` (integer when both parse numeric, else string; both already canonical, no transformation), and trailing-numeric-identifier-after-the-final-`-` extraction in the last path segment for `clickUri`/`uri` with non-conforming values contributing no candidate; record a typed parse-failure reason. (LREQ-EXT-060)
 - [ ] Implement `resolve_canonical_identity` classification: all successfully-derived candidates agree → `resolved` with the canonical key; any derived candidates disagreeing → `conflict` plus reason and `included_in_canonical_denominator = False`, `included_in_enrichment_set = False`; nothing derivable from any candidate → `unresolved` plus reason and the same exclusions. (LREQ-EXT-070, LREQ-SMP-010)
 - [ ] Implement `compare_graphql_identity_aliases` returning `ID_MAPPING_MISMATCH` semantics for non-agreeing aliases, treating missing aliases as a mismatch with an explicit unknown/missing reason, and never treating an absent alias as agreement. (LREQ-GQL-070, LREQ-ID-020)
 - [ ] Implement `annotate_state_eligibility`: `published` → eligible; any other present state → `state_excluded`; `null`/absent/non-string → `state_unknown`; always `remains_in_discovered_breadth = True`. Do not implement the D/R/Q eligibility decision. (LREQ-GQL-060)
@@ -699,7 +766,7 @@ Chunk 1 description and gate invariants:
 | Stale / exactly-at-threshold / future / naive `captured_at_utc` payloads | Hand-derived against `MAX_TAXONOMY_AGE_DAYS = 30` (SRS Appendix A constant table; `interfaces/chunk-00.md` §3) with an explicit fixture `reference_utc`. Boundary fixtures must cover **both** `age == 30` (fresh) and `age == 30 + ε` (stale), per the inclusive convention of SRS §7.4 (`RECENT_WINDOW_DAYS` defaults to `365`, inclusive) adopted for taxonomy freshness by resolved decision R-5 |
 | Requested-category lists: all present; exactly one absent; requested list containing a parent path of a real inventory path | Hand-derived from `DEFAULT_CATEGORIES` |
 | Category-value shapes: scalar exact match; scalar parent path; scalar child path; `null`; wrong type (int/list-of-int); multi-valued list with one exact match; multi-valued list with a parent-path entry; multi-valued list with an entry matching a child path | SRS §4.1 LREQ-EXT-080 edge cases ("Parent versus child path, exact match, scalar category, multi-valued category") |
-| Identity records: `ec_product_id` only; `permanentid` only; `clickUri` URL with trailing `-<numeric>` segment; `uri` URL with slug + trailing identifier; a URI whose last path segment has no trailing `-<numeric>` (contributes **no** candidate); all four agreeing; `"123"` vs `" 123 "` vs `123` (agree under R-2); two disagreeing canonical values; `ec_product_id` and `permanentid` disagreeing with the URI-derived value; URLs carrying query strings/fragments; all candidates empty/whitespace; candidates non-string | SRS §4.1 LREQ-EXT-060/070; normative content is adopted mapping rule `1.0.0` (resolved decision R-2, section 12). The retired parent-SRS fragment (`Documents/retired-documents/SRS-revision2.md`, OI-4 / REQ-EXT-065) is retained only as the documented **provenance of the fixture shapes**, not as normative text |
+| Identity records: `ec_product_id` only; `permanentid` only; `clickUri` URL with trailing `-<numeric>` segment; `uri` URL with slug + trailing identifier; a URI whose last path segment has no trailing `-<numeric>` (contributes **no** candidate); all four agreeing; `"123"` vs `" 123 "` vs `123` (agree under R-2); two disagreeing canonical values; `ec_product_id` and `permanentid` disagreeing with the URI-derived value; URLs carrying query strings/fragments; all candidates empty/whitespace; candidates non-string (2026-09-18 note: the fixture rows above are listed by shape only, so nothing in them changed with rule `1.0.1`; its only substantive change is the strict-equality comparison recorded in section 5.2) | SRS §4.1 LREQ-EXT-060/070; normative content is adopted mapping rule `1.0.1` (resolved decision R-2, section 12) (superseded 2026-09-18: this cell previously cited "mapping rule `1.0.0`"; the fixture shapes are unchanged and the reference is a version name only). The retired parent-SRS fragment (`Documents/retired-documents/SRS-revision2.md`, OI-4 / REQ-EXT-065) is retained only as the documented **provenance of the fixture shapes**, not as normative text |
 | GraphQL alias maps: agreeing alias; disagreeing alias; missing alias; unparseable alias; alias agreeing only after canonicalization | SRS §4.2 LREQ-GQL-070 |
 | State values: `"published"`, another non-empty state string, `null`, absent, non-string | SRS §4.2 LREQ-GQL-060 |
 | Malformed response shapes: non-mapping payload, missing required member, `null` required member, wrong scalar type (str where int expected), list where mapping expected, mapping where list expected | SRS §4.2 LREQ-GQL-040; §7.1 LREQ-MET-010 structural half |
@@ -847,7 +914,9 @@ re-open them.
   Chunk 1 test; their required tests belong to Chunks 3 and 12. Section 9 is
   conformant with this decision.
 
-- **R-2 — Content of identity-mapping rule 1.0.0.** Adopted as the normative content
+- **R-2 — Content of identity-mapping rule `1.0.1`** (heading corrected
+  2026-09-18: it previously read "Content of identity-mapping rule 1.0.0", which
+  no longer matched the version this plan cites). Adopted as the normative content
   of LREQ-EXT-060 canonicalization, exactly as stated in section 5.2: `ec_product_id`
   and `permanentid` are trimmed then compared directly (as integers when both parse
   as numeric, else as strings) and treated as already canonical with no
@@ -855,7 +924,15 @@ re-open them.
   the final `-` in the URL's last path segment, and a value not fitting that pattern
   contributes nothing rather than a wrong candidate; `resolve_canonical_identity`
   returns `resolved` on full agreement, `conflict` on any disagreement, `unresolved`
-  when nothing is derivable. The comparison and conflict logic follows directly from
+  when nothing is derivable. Equality is **strict after canonicalization** (rule
+  `1.0.1`): a parseable URI-derived identifier that does not equal the explicit
+  anchor is a `conflict`, not an agreement, and no suffix-tolerant comparison is
+  part of this rule at any version
+  (`interfaces/chunk-01.md` §4.1, "What `1.0.1` is"). The extraction half of this
+  rule remains **inferred and NOT capture-verified** — the relaxation paragraph in
+  `interfaces/chunk-01.md` §4.1 changes who may treat the obligation as satisfied,
+  not whether the rule is verified (see section 5.2 and RN-1 below). The
+  comparison and conflict logic follows directly from
   LREQ-EXT-070 and is considered settled. Provenance of the fixture shapes is the
   retired parent SRS (`Documents/retired-documents/SRS-revision2.md`, REQ-EXT-065 /
   OI-4), which is **NOT** normative; the rule text above is what this plan makes
@@ -906,15 +983,37 @@ re-open them.
 
 ### Flagged risks (downstream verification obligations, not blockers on freezing this plan)
 
-- **RN-1 — The URI trailing-numeric-segment rule is unverified against real data.**
-  The `clickUri`/`uri` parsing half of mapping rule 1.0.0 (R-2) is inferred from the
-  retired parent-SRS fragment plus general Unity Asset Store URL conventions. It has
-  **NOT** been verified against a real captured Coveo response. Chunk 3 (the
+- **RN-1 — The URI trailing-numeric-segment rule is unverified against real data
+  (restated 2026-09-18 as status-with-pointer; the paragraph below previously
+  carried this plan's own unconditional obligation text — "Chunk 3 (the
   LREQ-EXT-060 integration completion chunk) SHALL sanity-check this rule against
-  real redacted fixtures before treating it as final; `IDENTITY_MAPPING_RULE_VERSION`
-  exists precisely so a `1.0.1` correction is cheap. This is a downstream
-  verification obligation, not an unresolved human decision and not a blocker on
-  freezing this plan.
+  real redacted fixtures before treating it as final" — which the human ruling
+  superseded. It is reproduced here as the record of what this plan said, and it
+  does NOT state the obligation's satisfaction condition any longer: that lives in
+  `interfaces/chunk-01.md` §4.1, "Satisfaction condition of the caveat above —
+  explicitly RELAXED by human ruling", with the residual exposure recorded in the
+  same §4.1 at "The exposure deferral leaves open".)** The `clickUri`/`uri`
+  parsing half of mapping rule `1.0.1` (R-2) is inferred from the retired
+  parent-SRS fragment (`Documents/retired-documents/SRS-revision2.md`, OI-4 /
+  REQ-EXT-065) plus general Unity Asset Store URL conventions. It has **NOT** been
+  verified against a real captured Coveo response, and **no such capture exists
+  anywhere in this repository**: the only capture in the tree is a **request**
+  capture (`config/coveo_search_template.json`), which cannot settle a
+  response-side extraction question. Chunk 3 (the LREQ-EXT-060 integration
+  completion chunk) did **not** discharge the check and does not claim to have
+  done so (`interfaces/chunk-03.md` §8;
+  `Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+  §12.9). `IDENTITY_MAPPING_RULE_VERSION` exists precisely so a correction is
+  cheap; `1.0.1` was such a correction, and it deliberately left extraction
+  untouched. The obligation is **OPEN and owned by no chunk**, recorded in
+  `requirements-dependency-map.md` §6.4 as a "Deferred obligation with no owning
+  chunk" with **Owner: none**; **relaxed is not verified**, and no artifact in
+  this repository may state or imply that the rule was verified against a real
+  Coveo response. This is a downstream verification obligation, not an unresolved
+  human decision and not a blocker on freezing this plan.
 
 Section 12 contains no unresolved human decisions. R-1…R-6 are decided; RN-1 is a
-downstream Chunk 3 verification obligation.
+downstream verification obligation that owns no chunk (2026-09-18: this closing
+sentence previously ended "RN-1 is a downstream Chunk 3 verification obligation",
+naming Chunk 3 as its home; the obligation is now recorded as owned by no chunk,
+and its satisfaction condition was relaxed by human ruling — see RN-1 above).

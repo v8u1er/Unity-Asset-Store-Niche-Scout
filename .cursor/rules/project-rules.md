@@ -168,3 +168,58 @@ These are deliberate human checkpoints, not implementation gaps.
   as confirmation. Where a claim about an artifact is checkable by opening or
   querying that artifact, a reviewer that did not do so SHALL label the claim
   unverified rather than pass it.
+
+## Verification of existence, change, and content
+- Any claim about whether something EXISTS, was CHANGED, or CONTAINS specific
+  text SHALL be backed by an actual read of that content. A search result, a
+  search tool's return value, or the absence of a match is not a read and SHALL
+  NOT be offered as evidence of existence, of change, or of content.
+- The absence of a match is not evidence of absence. A search that returns
+  nothing supports no claim beyond the search having returned nothing; an agent
+  SHALL NOT record such a result as a finding that a file, section, line, or
+  symbol does not exist.
+- Metadata is not content. A diff hunk header, a filename, a path, a directory
+  listing, a cross-reference, a commit subject, and a citation in another
+  document each state something about an artifact without stating what the
+  artifact says. None of them SHALL be reported as the artifact's contents, and
+  none SHALL be quoted as if it had been read.
+- Where a claim is checkable by opening or querying the artifact, an agent that
+  did not do so SHALL label the claim unverified. An unverified claim is not
+  verified by being repeated from an earlier document, an earlier dispatch, or
+  an earlier agent's report.
+- Tool output is not self-authenticating. A search tool can return a value that
+  does not mean what it appears to mean — a `-SimpleMatch`-style flag silently
+  ignored, a result column printing a different field than the one queried, a
+  count of raw substring matches that includes prose, docstrings, comments, or
+  headers. When a tool's output is the sole basis for a claim, the agent SHALL
+  state which tool produced it, SHALL state what the returned value actually
+  measures, and SHALL NOT treat a zero or a total as conclusive without a
+  second, differently-shaped query that would fail if the first result were
+  wrong. Where the tool's own semantics are the uncertainty, the second query
+  SHALL NOT be the same tool with the same flags.
+- A claim asserted in a dispatch brief propagates. A subagent cannot see the
+  conversation that produced its brief, so a false premise in that brief will be
+  returned in the subagent's report as though the brief were a source. A lead
+  that asserts a fact in a brief SHALL ground that assertion the same way it
+  requires of the report receiving it, and SHALL state in the brief which claims
+  are read, which are counted, and which are unverified.
+- The failure these rules address has one shape: inferring an artifact's content
+  or existence from a tool's metadata instead of opening and reading the region
+  in question. Five observed instances, compressed:
+  1. A search for a specific line missed the word "Caveat" in that line, and the
+     miss was recorded as "no such caveat exists" — the caveat paragraph was
+     present and bolded in the file.
+  2. A subagent inferred a "Dated correction block" from a `git diff` hunk
+     header and reported it as file content; no such block existed.
+  3. A directory listing run from the wrong working directory returned empty,
+     and the emptiness was recorded as "that directory was not pulled into the
+     repo" — the directory existed with two files in it.
+  4. A section header was quoted from memory instead of read, the actual file
+     said something different, and the remembered header was stated as the
+     REASON for a placement decision that happened to be correct anyway.
+  5. A `git status` listing and a `git diff --numstat` listing were compared, a
+     discrepancy was recorded between them and labeled as counted, and a
+     programmatic set comparison later proved the two lists one-to-one
+     identical. The disagreement did not exist; it had been inferred from the
+     shape of the two outputs, and it propagated into a later report because it
+     sat in a dispatch brief.
