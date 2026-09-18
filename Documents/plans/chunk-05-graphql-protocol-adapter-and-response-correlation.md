@@ -95,7 +95,8 @@ build against it without reading source.
   authorization failures indefinitely. Chunk 5 does **not** claim `LREQ-EXT-100`, which
   Chunk 3 owns, and keys no idempotency or attempt tracking off `sentry-trace` (§12 Q4).
 - Test modules `tests/test_collector.py` (**modified**, not new — it already exists
-  at 1310 lines as Chunk 3's frozen Coveo test module; Chunk 5 appends new GraphQL
+  at 2532 lines (corrected 2026-09-18: this previously read "1310 lines", the
+  pre-Chunk-5 count; see §12.2 item 9) as Chunk 3's frozen Coveo test module; Chunk 5 appends new GraphQL
   nodes only) and `tests/test_identity.py` (modified), a new local fixture module,
   and the corresponding new `tests/traceability.json` entries.
 
@@ -1164,8 +1165,8 @@ Contract:
 |---|---|---|
 | `src/niche_scout/collector_graphql.py` | modified | The entire GraphQL adapter: constants, `GraphQLFailureClass`, request/operation/response/result/correlation/validation/draft types, request builders, correlation, per-operation validation, page-view validation, identity/state annotation, retry policy, `execute_graphql_batch`, `enrich_asset`, `__all__`. |
 | `src/niche_scout/collector.py` | modified | Facade only, **line 4 only**: `from .collector_graphql import *` becomes explicit-name re-exports drawn from `collector_graphql.__all__`. Line 3 (`from .collector_coveo import *`) is byte-identical and untouched. No behavior. |
-| `tests/test_collector.py` | modified | **Append-only.** Chunk 3's frozen Coveo module (1310 lines, 25 markers over 13 distinct nodes) already exists and is listed as New at Chunk 3's plan line 410. Chunk 5 appends new GraphQL protocol nodes only: request shape, correlation (including reversed order, missing/duplicated/unknown/ambiguous), per-operation status and every LREQ-GQL-040 failure class, page-view type/range, partial success, retry/backoff and no-indefinite-retry, `request_metadata_json` contents, redaction, no-bulk/no-gate invariants. No Chunk 3 node, marker, fixture import, or `tests/traceability.json` entry is touched. |
-| `tests/test_identity.py` | modified | Extend with adapter-level identity tests only (mismatch detected from a correlated `ProductDetail` payload, missing identity alias, and that the adapter's mismatch marking is not a D/R/Q verdict). Chunk 1's 25 existing marked nodes (24 `LREQ-*` plus the `LREQ-TST-030` suite node) and their 25 markers are untouched. |
+| `tests/test_collector.py` | modified | **Append-only.** Chunk 3's frozen Coveo test module (2532 lines, 51 markers over 51 distinct nodes — see §12.2 item 9; corrected 2026-09-18: this cell previously read "1310 lines, 25 markers over 13 distinct nodes", which described the pre-Chunk-5 file) already exists and is listed as New at Chunk 3's plan line 410. Chunk 5 appends new GraphQL protocol nodes only: request shape, correlation (including reversed order, missing/duplicated/unknown/ambiguous), per-operation status and every LREQ-GQL-040 failure class, page-view type/range, partial success, retry/backoff and no-indefinite-retry, `request_metadata_json` contents, redaction, no-bulk/no-gate invariants. No Chunk 3 node, marker, fixture import, or `tests/traceability.json` entry is touched. |
+| `tests/test_identity.py` | modified | Extend with adapter-level identity tests only (mismatch detected from a correlated `ProductDetail` payload, missing identity alias, and that the adapter's mismatch marking is not a D/R/Q verdict). Chunk 1's 26 existing marked nodes and their 26 markers are untouched (corrected 2026-09-18: this cell previously read "25 existing marked nodes ... their 25 markers" — see §12.2 item 9). |
 | `tests/fixtures/graphql_fixtures.py` | new | Hand-derived, credential-free, clock-free fixtures: request/response golden vectors, reversed-order and partial-success responses, per-failure-class responses, identity-mismatch responses, non-integral/non-finite/bool page-view responses, a recording fake transport, and a recording fake sleeper. |
 | `tests/fixtures/__init__.py` | modified | Add `graphql_fixtures` to the existing re-export list (`from fixtures import config_fixtures, graphql_fixtures, validation_fixtures`). |
 | `tests/traceability.json` | modified | Add one entry per new base node ID; no existing entry is edited. |
@@ -1249,8 +1250,9 @@ none is stale formatting, and no box records work outside this chunk's scope.
       Coveo nodes, markers, imports, and `tests/traceability.json` entries are
       untouched and byte-identical (§9). (LREQ-TST-040 test mechanism)
 - [ ] Extend `tests/test_identity.py` with the §9 adapter-level identity nodes,
-      leaving its 25 existing marked nodes (24 `LREQ-*` plus the `LREQ-TST-030` suite
-      node) and all 25 existing markers untouched.
+      leaving its 26 existing marked nodes and all 26 existing markers untouched
+      (corrected 2026-09-18: this previously read "25 existing marked nodes ...
+      all 25 existing markers" — see §12.2 item 9).
       (LREQ-GQL-070, LREQ-TST-030)
 - [ ] Add the §9 `tests/traceability.json` entries and manually cross-check every new
       marker against the matrix in both directions (the validator's required-set is
@@ -1360,39 +1362,54 @@ ownership: the annotated row is *not* silently promoted to a Chunk 5 decision.
   for `LREQ-GQL-*` names `test_collector.py`, `test_identity.py`), and
   `tests/test_identity.py` (modified). The two files are described below with
   their own verified counts and their own byte-identity protection.
-  `tests/test_identity.py` currently holds **25 marked test nodes carrying 25
-  `@pytest.mark.lreq` marker occurrences over 8 distinct LREQ IDs, 0 unmarked**:
+  `tests/test_identity.py` currently holds **26 marked test nodes carrying 26
+  `@pytest.mark.lreq` marker occurrences over 8 distinct LREQ IDs, 0 unmarked**
+  (corrected 2026-09-18: this previously read "25 marked test nodes carrying 25
+  ... marker occurrences", the pre-Chunk-5 figure — see §12.2 item 9):
   24 `LREQ-*` analytical nodes (18 single-node IDs, the other 6 nodes belonging to
   IDs that appear more than once) plus 1
   `LREQ-TST-030` suite node
   (`test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_mismatch`).
   Markers and nodes are one-to-one here: no node in the file carries a second marker
-  (distribution `{1: 25}`), `test_requested_identity_compatibility_comparison`
+  (distribution `{1: 26}`), `test_requested_identity_compatibility_comparison`
   (def at line 751) carries exactly one, `LREQ-ID-020` at line 750, and lines 748–749
-  are blank. The naive substring count of 26 includes the module docstring's own prose
-  mention of `@pytest.mark.lreq` at line 3, which is not a decorator. Node count (25),
-  marker count (25), and distinct-LREQ-ID count (8) are three different units and must
+  are blank. The naive substring count of 27 includes the module docstring's own prose
+  mention of `@pytest.mark.lreq` at line 3, which is not a decorator. Node count (26),
+  marker count (26), and distinct-LREQ-ID count (8) are three different units and must
   not be interchanged.
+  (corrected 2026-09-18: this paragraph previously read `{1: 25}`, "naive substring
+  count of 26", and "Node count (25), marker count (25)"; the line-number facts it
+  states are unchanged and were re-read — see §12.2 item 9)
   None of the 8 is a Chunk 3 node — Chunk 3's Coveo nodes are in
   `tests/test_collector.py`. They cover Chunk 1's `validation` primitives. Chunk 5
   **extends** it with correlation/identity-flow tests only, adds no marker to an
-  existing node, and does not re-assert any Chunk 1 primitive behavior. All 24
-  existing `LREQ-*` node IDs, the `LREQ-TST-030` suite node, and all 25 existing
+  existing node, and does not re-assert any Chunk 1 primitive behavior. All 26
+  existing `LREQ-*`-and-suite node IDs, and all 26 existing
   markers stay byte-identical, so their
   existing `tests/traceability.json` entries stay untouched.
 - **`tests/test_collector.py` protection (append-only).** The file already exists at
-  1310 lines as Chunk 3's frozen Coveo test module: its module docstring opens
-  "Chunk 3 analytical tests for the Coveo discovery adapter", it carries 25
-  `@pytest.mark.lreq` markers over 13 distinct nodes, all of them Chunk 3's
+  2532 lines (corrected 2026-09-18: this previously read "1310 lines", the
+  pre-Chunk-5 count; see §12.2 item 9) as Chunk 3's frozen Coveo test module: its module docstring opens
+  "Chunk 3 analytical tests for the Coveo discovery adapter", it carries 51
+  `@pytest.mark.lreq` markers over 51 distinct nodes (corrected 2026-09-18:
+  this previously read "25 ... markers over 13 distinct nodes", a pre-Chunk-5
+  figure — see §12.2 item 9), all of them Chunk 3's
   `LREQ-EXT-*` / `NFR-*` / `SEC-*` and none an `LREQ-GQL-*`, and it already has
   entries in `tests/traceability.json`. Chunk 3's plan
   (`Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`,
+  the real filename; corrected 2026-09-18: this citation previously read
+  `…-and-streamed-raw-persistence.md`, dropping "streamed-raw" and misspelling the
+  filename, which resolves to no file on this tree),
   `Status: FROZEN` at its line 3) lists the file as **New** at its line 410 and as
   the sole test module at its line 598, and teaches that a module's two
   non-analytical tests carry no marker and no matrix entry (its lines 650–652);
-  `tests/test_collector.py` today has 25 markers over 13 nodes for exactly that
+  `tests/test_collector.py` today has 51 markers over 51 nodes (corrected
+  2026-09-18: this previously read "25 markers over 13 nodes" — see §12.2
+  item 9) for exactly that
   reason. Chunk 5 therefore **appends** new GraphQL nodes only:
-  - Chunk 3's 25 markers, its 13 distinct node IDs, its fixtures, its module-level
+  - Chunk 3's 51 markers, its 51 distinct node IDs (corrected 2026-09-18: this
+    previously read "25 markers, its 13 distinct node IDs" — see §12.2 item 9),
+    its fixtures, its module-level
     imports, and its existing `tests/traceability.json` entries are **untouched —
     byte-identical**, the same protection this plan extends to `tests/test_identity.py`.
     Chunk 5 SHALL NOT delete, rename, reorder, or re-mark a Chunk 3 node.
@@ -1541,9 +1558,12 @@ left as provisional choices for the implementer:
   each mapping the fully qualified node ID
   (e.g. `"tests/test_collector.py::test_reversed_response_order_correlates_by_explicit_key": ["LREQ-GQL-030"]`)
   to the array of the marker(s) on that node. No existing entry is edited, removed, or
-  reordered beyond appending — the 25 `tests/test_collector.py` entries Chunk 3 created
-  (all Chunk 3 `LREQ-EXT-*`/`NFR-*`/`SEC-*`) and the `tests/test_identity.py` entries
-  standing behind its 25 marked nodes, 25 markers, and 8 distinct LREQ IDs
+  reordered beyond appending — the 51 `tests/test_collector.py` entries Chunk 3 created
+  (all Chunk 3 `LREQ-EXT-*`/`NFR-*`/`SEC-*`; corrected 2026-09-18: this previously
+  read "25 `tests/test_collector.py` entries" — see §12.2 item 9) and the `tests/test_identity.py` entries
+  standing behind its 26 marked nodes, 26 markers, and 8 distinct LREQ IDs
+  (corrected 2026-09-18: this previously read "25 marked nodes, 25 markers" — see
+  §12.2 item 9)
   (24 `LREQ-*` nodes — 18 single-node IDs, the other 6 nodes belonging to IDs that
   appear more than once — plus the `LREQ-TST-030` suite
   node) are untouchable here. The multi-LREQ arrays
@@ -1554,7 +1574,13 @@ left as provisional choices for the implementer:
   that precedent is a style model only — no existing array is copied or reused for a
   new node, which is the `marker_mismatch` corruption §11 forbids.
 - **Validator limitation — mandatory manual cross-check.** Per
-  `interfaces/chunk-01.md` §6 and `chunk-02.md` §7, `tools/validate_traceability.py`
+  `interfaces/chunk-01.md` §6 and `chunk-02.md` §7,
+  `tools/validate_traceability.py` (corrected 2026-09-18: this citation
+  previously read the bare `tools/validate_traceability.py`, a path that does
+  not exist on this tree — the real location is
+  `src/niche_scout/tools/validate_traceability.py`, as this same sentence's own
+  next line already stated; the bare form is retained here as the quoted prior
+  wording, not as a live path)
   is still hard-wired to Chunk 0's required set (`src/niche_scout/tools/
   validate_traceability.py` line 131, where `main` calls `chunk_requirements(text)`
   with the default `chunk="0"` — `required = chunk_requirements(...)`) and its
@@ -1746,7 +1772,11 @@ not a second copy of the gate text.
   `tests/test_contracts.py::test_repository_protocol_and_schema_specification` node
   (marker at line 881): the file is outside Chunk 5's file scope, not a source of
   pre-existing debt.
-- Chunk 5 SHALL NOT widen `tools/validate_traceability.py`; its required-set
+- Chunk 5 SHALL NOT widen `tools/validate_traceability.py` (corrected
+  2026-09-18: this citation previously read the bare
+  `tools/validate_traceability.py`; the real location is
+  `src/niche_scout/tools/validate_traceability.py`, and the bare form is
+  retained here as the quoted prior wording, not as a live path); its required-set
   widening is Chunk 13 (`LREQ-NFR-060`).
 
 ## 12. Resolutions, scoped omissions, assumptions, and open items
@@ -1783,6 +1813,8 @@ endpoint details", lines 125–126) while reserving sampling, sample-derived met
 evidence grades, rankability, and sensitivity analysis as the lean SRS's own normative
 domain (lines 131–132). Precedent already frozen in this repo: the **FROZEN**
 `Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+(corrected 2026-09-18: this citation previously read
+`…-and-streamed-raw-persistence.md`, which resolves to no file on this tree)
 §12.5 ("RESOLVED — endpoint details are capture-confirmed", lines 863–868) cites the
 same retired document for the Coveo endpoint, and its §7 uses the same citation at
 line 508.
@@ -2042,16 +2074,20 @@ the formula `product_page_views * 7 / age_days_exact` and calls the field
 6. **The §9 test-plan baseline counts were factually wrong.** They were produced by
    grep-substring counting rather than by reading the files and were accepted on trust
    across two review passes. Verified by direct count: `tests/test_collector.py` is
-   **1310 lines** with **25 `@pytest.mark.lreq` markers over 13 distinct nodes** (not
-   1313 / 26 / 21), and `tests/test_identity.py` holds **25 marked test nodes carrying
-   25 `@pytest.mark.lreq` marker occurrences over 8 distinct LREQ IDs, 0 unmarked**
+   **2532 lines** with **51 `@pytest.mark.lreq` markers over 51 distinct nodes** (not
+   1313 / 26 / 21; corrected 2026-09-18: this previously read "1310 lines ... 25
+   `@pytest.mark.lreq` markers over 13 distinct nodes", the pre-Chunk-5 file's
+   figures — see item 9), and `tests/test_identity.py` holds **26 marked test nodes carrying
+   26 `@pytest.mark.lreq` marker occurrences over 8 distinct LREQ IDs, 0 unmarked**
    (not 26 / 21). Both corrected nodes are analytical: the marker counts are the
    analytical present-node counts, and the earlier "24 + 1 suite node" total (24
    `LREQ-*` + 1 `LREQ-TST-030`) described the pre-Chunk-5 file and excluded the
    `LREQ-GQL-060` / `LREQ-GQL-070` nodes Chunk 5 itself doesn't add but the file already
    contains. The corrected figures are the counts that traverses the file today.
-   `tests/traceability.json` carries **25** entries for each file, matching marker for
-   marker. The "26" arose because a raw substring search for `@pytest.mark.lreq` also
+   `tests/traceability.json` carries **51** entries for `tests/test_collector.py`
+   and **26** for `tests/test_identity.py` (corrected 2026-09-18: this previously
+   read "carries **25** entries for each file, matching marker for marker" — see
+   item 9), each matching its file's markers marker for marker. The "26" arose because a raw substring search for `@pytest.mark.lreq` also
    matches line 3's module docstring prose in each file; "21" corresponded to nothing.
    The two non-analytical `tests/test_collector.py` tests (lines 303 and 335, under the
    "Non-analytical tests (no marker, no traceability entry)" banner at line 299) are
@@ -2081,13 +2117,23 @@ the formula `product_page_views * 7 / age_days_exact` and calls the field
    distribution `{1: 25}`. The `tests/test_contracts.py` line correction carried by the
    same item is unaffected and stands. All figures below were counted in the artifacts,
    never derived from this plan:
+   **(Superseded 2026-09-18 on the `tests/test_identity.py` figures only: the counts
+   immediately above and in (a)/(b) below were correct for the pre-Chunk-5 file and are
+   now 26 nodes / 26 markers / `{1: 26}` / 26 matrix entries, re-counted from the
+   artifact in item 9. This item's *method* findings — the docstring-prose off-by-one,
+   the invented two-marker attribution, the bijection argument — are unaffected and
+   stand. The `tests/test_contracts.py` line-881 correction in (c)/(d) is unaffected
+   and stands.)**
    - **(a) §6 line 1168, §7 line 1253, §9 lines 1363–1376, §9 line 1542, §12.2 item 6 —
      the `tests/test_identity.py` identity-file baseline.** Artifact queries, all
      re-run for this correction: anchored `Grep` for `^@pytest\.mark\.lreq\("(LREQ-[A-Z0-9-]+)"\)`
      returns **25 rows**; the same pattern anchored on `^def test_` returns **25 rows**,
      and each decorator sits at exactly `def_line − 1` (a bijection, so no node carries
      two markers); a Python `ast` walk replicating
-     `tools/validate_traceability.py`'s `test_markers` reports **25 marked nodes,
+     `tools/validate_traceability.py` (corrected 2026-09-18: the citation read
+     the bare `tools/validate_traceability.py`; the real location is
+     `src/niche_scout/tools/validate_traceability.py` — bare form retained as
+     the quoted prior wording, not as a live path)`'s `test_markers` reports **25 marked nodes,
      markers-per-node `{1: 25}`, 25 marker occurrences, 8 distinct LREQ IDs, 0 unmarked,
      no multi-marker node**; `python -m pytest tests/test_identity.py --collect-only -q
      -m lreq` reports **25** nodes and the same 25 node IDs the `ast` walk found. An
@@ -2169,7 +2215,132 @@ pointing at the same items. Item 7 is appended after item 6 for the same reason:
 corrects item 6 rather than renumbering it, so the existing references to item 6
 still resolve. Item 8 follows item 7 for the same reason: it records why item 7's own
 first pass was wrong and carries no independent correction of its own, so renumbering
-either would break the cross-references above.
+either would break the cross-references above. Item 9 follows item 8 for the same
+reason: it is a counts-only correction of figures left stale by the Chunk 5
+implementation that items 6–8's own corrections already anticipated in kind.
+
+9. **The `tests/test_collector.py` and `tests/test_identity.py` baselines this plan
+   carries were the pre-Chunk-5 figures, and thirteen expression sites still asserted
+   them after Chunk 5 landed.** Amendment 2026-09-18 (this item). Correction-only:
+   no scope, contract, gate, or `Status:` text is changed and `Status` remains
+   `FROZEN`. Item 6 already stated the principle — the corrected figures are "the
+   counts that traverses the file today" — but the figures written into the plan were
+   Chunk 3's frozen-file counts, and Chunk 5's own append of the GraphQL protocol
+   nodes moved both files. Every number below was **counted in the artifacts by
+   querying them**, never derived from this plan and never carried over from an
+   earlier item's arithmetic.
+   - **`tests/test_collector.py` — the file.** Counted by reading the file: 2532
+     bytes-`\n` occurrences and 2532 `str.splitlines()` entries (the file ends with a
+     newline, so both agree). **Unit: file lines, 2532.** The plan's `1310` was the
+    pre-Chunk-5 count and appeared at four sites (§1 line 98, §6 line 1168, §9 line
+    1391, §12.2 item 6), all four now dated-corrected. (corrected 2026-09-18: this
+    sentence previously listed the sites as "§1 line 98, §6 line 1167, §9 line 1384,
+    §12.2 item 6" — this item's own pre-insertion line numbers; the numbers above
+    were read from the file after this item was written. The count of four sites is
+    unchanged.)
+   - **`tests/test_collector.py` — markers and nodes.** Query: anchored `Grep` for
+     `^@pytest\.mark\.lreq\("LREQ-[A-Z0-9-]+"\)` returns **51 rows** (unit: full
+     decorator lines). Independently, a Python `ast` walk replicating
+     `src/niche_scout/tools/validate_traceability.py`'s `test_markers` reports **51
+     marked `def` nodes**, markers-per-node histogram `{1: 51}` (unit: distinct node
+     objects). **All 51 decorators are `LREQ-GQL-*`-free Chunk 3 nodes plus Chunk 5's
+     appended GraphQL nodes; the file spans 19 distinct LREQ IDs.** `tests/traceability.json`
+     carries **51** entries for this file, one per node, no multi-ID array (unit:
+     top-level JSON keys). The plan's `25 markers over 13 distinct nodes` appeared at
+     §6 line 1168, §9 lines 1394–1395, §9 lines 1407–1408, §9 lines 1410–1411, and
+     §12.2 item 6, all now dated-corrected; its `25 entries` claim in item 6 is
+     corrected to 51. (corrected 2026-09-18: this sentence previously listed the
+     sites as "§6 line 1167, §9 lines 1386 and 1393, §9 line 1395" — this item's own
+     pre-insertion line numbers; the numbers above were read from the file after this
+     item was written.)
+   - **`tests/test_identity.py` — markers and nodes.** Same query shape over that
+     file: anchored decorator `Grep` returns **26 rows** (unit: full decorator lines);
+     the `ast` walk reports **26 marked `def` nodes**, histogram `{1: 26}`, **8 distinct
+     LREQ IDs, 0 unmarked test nodes** (unit: distinct node objects). `tests/traceability.json`
+     carries **26** entries for this file (unit: top-level JSON keys). An unanchored
+     substring scan for `@pytest.mark.lreq` returns **27** rows because line 3 is the
+     module docstring's prose mention — the same off-by-one mechanism item 7 named.
+     Correction: **items 6, 7, and 8's `25`/`0 unmarked`/`24 LREQ-* + 1 LREQ-TST-030`
+     figures describe the pre-Chunk-5 file and are superseded by 26/26/8**, at the
+     sites listed in that bullet below. The `tests/test_identity.py` sites were
+     §6 line 1169, §7 line 1254, §9 lines 1365–1368, and §9 lines 1561–1565 — four
+    sites, not three. (corrected 2026-09-18: this sentence previously read "The
+    three `tests/test_identity.py` sites were §6 line 1168, §7 line 1252, §9 line
+    1363, §9 line 1546", which both miscounted four listed sites as three and
+    carried this item's pre-insertion line numbers; the numbers above were read
+    from the file after this item was written.)
+   - **`tests/test_collector.py` protection statements.** §9's byte-identity bullet
+     and §11's non-widening bullet both stated "25 markers, 13 distinct node IDs";
+     both now read 51/51. (corrected 2026-09-18, on re-reading the sites: those two
+     bullets in fact carried **no** numeric count — §9's byte-identity bullet and
+     §11's protection block said only "untouched and byte-identical", and the
+     `25 markers over 13 distinct nodes` figure this item corrected lived in §6 line
+     1168, §9 lines 1394–1395, §9 lines 1407–1408, §9 lines 1410–1411, and §12.2
+     item 6, all of which are corrected.
+     This bullet's claim about *where* the figures sat was wrong; the corrected
+     figures it states are unchanged. No protection text was removed.) The
+     protection's *content* is unchanged: Chunk 3's nodes,
+     fixtures, imports, and matrix entries are still untouched and byte-identical.
+   - **`tests/traceability.json` as a whole.** `python -m
+     niche_scout.tools.validate_traceability` was **run** (read-only validator, exit
+     **0**) and printed: `Note: 2 test(s) carry no lreq marker:
+     tests/test_collector.py::test_module_imports_without_side_effects,
+     tests/test_collector.py::test_request_body_builder_signature_is_stable` then
+     `Traceability valid: 7 Chunk 0 requirements mapped, 144 matrix nodes, 89 defined
+     LREQ IDs`. **Unit: matrix nodes 144** (top-level entries), and the 2 unmarked
+     nodes are the two non-analytical tests this plan already names at lines 299–335.
+   - **Method statement for this item.** Every count above came from an actual read or
+     query of the artifact, named with its unit; none was re-derived from this plan's
+     prose. The prior pass's proposed replacement figures were not adopted on trust —
+     they were re-measured, and they proved correct for markers/nodes while its
+     `13`-node figure and the `53` figure this dispatch's brief carried did **not**
+     reproduce **as a markers-over-nodes figure** (51 anchored decorator lines, 51
+     marked `def` nodes, 51 matrix entries) — but the `53` **is** a real quantity of
+     this file under a different unit, and the parenthetical as first written was
+     wrong about it (corrected 2026-09-18: this sentence previously closed
+     "…did **not** reproduce (51 unanchored substring rows, 51 anchored, 51 nodes)",
+     attributing `53` to no unit; re-counted, the naive substring count of
+     `@pytest.mark.lreq` over this file is **53**, not 51, and `53` is also the count
+     of `def test_*` functions in the file, both distinct from the 51 marked nodes.
+     The `13`-node figure remains non-reproducing: no unit of this file yields 13.
+     Units and queries: naive substring `.count("@pytest.mark.lreq")` = 53 (unit:
+     substring occurrences), anchored `^@pytest\.mark\.lreq\("LREQ-[A-Z0-9-]+"\)$`
+     = 51 (unit: decorator lines), `ast` walk = 51 marked nodes (unit: node objects),
+     `def test_*` function count = 53 (unit: function definitions), of which 2 carry
+     no marker; the 2 unmarked are the non-analytical tests already named above. See
+     §12.2 item 9's method statement, which this correction does not otherwise
+     disturb.)
+   - **Unchanged by this item:** the two non-analytical `tests/test_collector.py`
+     tests remain unmarked and unentried; ¶6's account of the "26"/"21" provenance
+     stands; the `tests/test_contracts.py` line-881 correction of item 7 stands; and
+     no gate bullet's text is touched.
+   - **A reported dangling chunk-13 citation does not reproduce in this file.** A
+    dispatch brief asserted that this plan cites a chunk-13 plan file that does not
+    exist. Verified by two differently-shaped whole-file scans, both re-run against
+    the file as it stands now: a Python line scan for the regex `chunk-13` finds it
+    **only inside this item's own correction text and the cross-reference below**
+    (i.e. every `chunk-13` match is a *mention of the chunk*, not a citation of a
+    `chunk-13-…md` filename), and a second scan for the regex `chunk-\d\d-` returns
+    matches **all of them** naming
+    `chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md` or this item's
+    own cross-reference to it — no chunk-13 *filename* anywhere. (corrected
+    2026-09-18: this sentence previously read "a Python line scan for the regex
+    `chunk-13` over all 2396 lines returns **0 rows**, and a second scan for the
+    regex `chunk-\d\d-` returns **3 rows** … at lines 461, 1396, and 1809" and named
+    the file as `chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`.
+    Those were the figures this item measured *before its own text was inserted*, and
+    they are not restatable: inserting this item changed the file's line count and
+    added `chunk-13` and `chunk-\d\d-` matches of its own, so any line total or row
+    count quoted here is invalidated by the act of quoting it. The line-number list
+    is therefore dropped in favour of the content assertion, which is the claim that
+    matters and which does not move.) **Unit: matching lines.** The
+    absence claim is therefore *about this file*, and it holds: this plan does not
+    cite a chunk-13 plan file. (The `chunk-13-…md` citation that does dangle lives in
+    `Documents/plans/tooling-p0-2-traceability-blind-spot.md` lines 571 and 1046, which
+    is outside this dispatch's authorized edit set — reported, not edited.) This plan's
+     chunk-13 references are to the *chunk*, never to a filename: they name Chunk 13 as
+     `LREQ-TST-040`/`LREQ-TST-080`/`LREQ-NFR-060`'s owner and defer the validator widening
+     to it. **No fix applied — did not reproduce.**
 
 ### 12.3 Scoped omissions (deliberately out of scope; owned by no chunk or by another)
 

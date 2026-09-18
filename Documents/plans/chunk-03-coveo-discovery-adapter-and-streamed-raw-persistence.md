@@ -526,7 +526,12 @@ verbatim and never computes or rewrites them (§12.11).
   `discovery_status_for_category_status(filter_status)`), keep the full
   condition set on `CategoryDiscoveryResult.conditions`, and select the single
   terminal status by the **non-normative predecessor convention** carried from
-  the retired `SRS-revision2.md` §4.1 `REQ-EXT-095` —
+  the retired `SRS-revision2.md` §4.1 `REQ-EXT-095` — that document is retired,
+  and the live normative document for this project is `Documents/SRS-lean.md`,
+  which does not itself state this precedence (corrected 2026-09-18: this
+  sentence previously read "the retired `SRS-revision2.md` §4.1
+  `REQ-EXT-095`" with no live-document qualification, which named a retired
+  document where a reader could take it for the governing SRS) —
   `request_failed`, `page_failed`, `filter_unverified`, `category_mismatch`,
   `identity_incomplete`, `truncated`, `complete` (`LREQ-EXT-050`,
   `LREQ-EXT-080`, `LREQ-EXT-090`; §12.4).
