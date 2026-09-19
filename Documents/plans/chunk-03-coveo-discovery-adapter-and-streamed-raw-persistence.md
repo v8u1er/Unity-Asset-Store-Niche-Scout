@@ -1736,3 +1736,62 @@ corrections that post-date it, at the end of §12, because it closes no numbered
 scope question and resolves nothing in §12.1–§12.14: it records a change to the
 front-matter Status region, which is the one region §12's numbered entries do
 not cover. No §12.15 exists and none is implied.
+
+**Dated corrections — two stale locants asserted about this document later in
+this same chain (recorded 2026-09-19).** Both claims below were re-derived by
+reading this file at its current revision rather than carried forward from the
+reviews that made them, and each was false at the revision it was asserted
+against. The earlier text that carries both locants is retained as superseded,
+not deleted; the paragraphs above are quoted, not rewritten, and nothing in
+§12.1–§12.14 or in §10's gate bullets changes.
+
+- **The Status footnote's extent is `:4-47`; the earlier locant `:4-27` was
+  stale.** Three live paragraphs cite the footnote as `:4-27` — the exclusion
+  list at `:144`, the §7 preamble at `:483`, and the §10 preamble at `:865`.
+  Read now, the footnote opens at `:4` and its last line is `:47` ("documents
+  the exact suite composition that produced it."); `:48` is
+  `Published contract:`, the next front-matter field. The footnote grew past
+  `:27` at the 2026-09-18 correction pass that the footnote's own second line
+  records, so `:4-27` now ends mid-sentence rather than at a boundary. The
+  correct citation is `:4-47`. **The earlier draft of this correction asserted
+  four such occurrences and also that the footnote "cites itself" at `:4-27`;
+  both are wrong** — a substring query over the whole file (unit: occurrences
+  of the literal `:4-27`) returns exactly **3**, at the three lines named
+  above, and none of them is inside the footnote, which contains no `:4-27`
+  string at all. The three occurrences above are `:4-27` occurrences in the
+  current text; the claim that they are *live* prose rather than
+  retained-as-superseded text is this note's own reading of those lines, not a
+  query result.
+- **The dated correction at the end of §12 that the §7 preamble cites as
+  `:1676-1709` is actually `:1673-1732`.** The `:1676-1709` range resolves
+  inside a *different* correction: `:1676-1683` is the first bullet of the
+  entry headed at `:1673` ("**Dated corrections — two locant/name errors in
+  this plan's own review reasoning (recorded 2026-09-18; the earlier text is
+  quoted, not deleted).**"), and `:1705` is the hard-wrapped last line of that
+  entry's second bullet — the citation therefore stops one line short of the
+  entry it names. The block the §7 preamble *describes* — the entry that
+  records "their conversion into this plan's §12 obligation/§6 'Not touched'
+  convention is a deferred, separately-committed change" — is the entry headed
+  at `:1705` ("**Dated correction — the Status region was amended to carry a
+  footnote, so that `VERIFIED` stops reading as a green-suite claim (recorded
+  2026-09-18).**"), which runs to `:1732` and is followed by the unnumbered
+  placement paragraph at `:1734-1738`. The correct citation is `:1705-1732`.
+  Two further candidate ranges proposed during the same review are also
+  recorded and rejected here: `:1724-1730` is a sub-bullet of the `:1705` entry
+  (the deferred-§7 paragraph, not the entry), and `:1750-1794` lies past this
+  file's end (its last line is `:1739`).
+- **Two locants reported in the earlier investigation are not present in this
+  document at all** and are recorded here only so a later reader does not
+  re-import them as citations: a sub-bullet at `:1785-1788` (past this file's
+  end) and the commit hash `6ea65ce`. Both were reported by an earlier
+  investigation and are **not** present in this document. No content behind
+  them is recorded here as lost, recovered, or reconstructed: the working-tree
+  delta those reports described was independently confirmed to have been
+  superseded by committed content, so there is no content to restore.
+- **Re-runnable reads for every locant above.** `grep -c ':4-27'` over this
+  file (unit: occurrences) = 3; `grep -c ':4-47'` = 0, which is an absence of
+  matches and is not evidence that the corrected locant is wrong — the
+  corrected extent was derived by reading `:4-47` and `:48`, not by this query.
+  `:1673`, `:1705`, `:1732`, and `:1734` were each confirmed by reading those
+  lines. The current revision is 1,739 lines (unit: `wc -l`-equivalent line
+  count over the file's newline count).
