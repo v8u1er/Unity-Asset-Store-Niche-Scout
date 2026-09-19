@@ -6,6 +6,25 @@ Depends on (frozen interfaces required before this plan can be trusted):
   Documents/interfaces/chunk-01.md (Status: VERIFIED)
   Documents/interfaces/chunk-02.md (Status: VERIFIED) — read-only freeze check; no
   runtime dependency and no import (see §4.3 and §11)
+  Documents/interfaces/chunk-03.md (Status: VERIFIED) — **added 2026-09-18**: the
+  Coveo discovery adapter's published contract, which fixes the ownership boundary
+  §2's Coveo bullets describe. Read for this header; **no runtime dependency and no
+  import** (see §12.6 item 4, which records that §11's prohibitions are already
+  sufficient and therefore adds no new prohibition text)
+Last amended: 2026-09-18 — retroactive authorship, the node-5/node-6 rulings, and the
+freeze. See §12.6 item 1 for the provenance record and §12.6 item 7 for the record of
+this freeze and of the §12.5 header correction. (★)
+
+(★) This plan was **authored retroactively against existing code**: it was written after
+`collector_graphql.py` had already been implemented (see §12.6 item 1). The operator
+ruled that retroactive authorship is an **accepted defect of provenance** rather than a
+disqualifying one, **on the basis that this plan's content was independently verified**
+— requirement text matched against `Documents/SRS-lean.md`, the §10 gate bullets matched
+verbatim against the dependency map's Chunk 5 Gate list, and the §9/§11 test markers
+confirmed against existing `tests/traceability.json` entries with none guessed. The
+freeze rests on that external verification; it is not an inference drawn from anything
+this document says about itself.
+
 Blocks (chunks whose plan/implementation needs this chunk's interface):
   Chunk 6A (Identity preflight planner and gate)
   Chunk 6B (Unique enrichment executor and persistence)
@@ -67,7 +86,18 @@ build against it without reading source.
 - Page-view type/range validation: a non-negative, finite, integral scalar of a
   numeric type; `bool`, negative, non-finite, non-integral, and wrong-shaped
   values are operation errors (LREQ-GQL-040).
-- Adapter-side identity mismatch handling: the returned aliases are compared with
+- **A ruled correction to the required-member set that this plan has not yet been
+  amended for (recorded 2026-09-18).** `PRODUCT_DETAIL_REQUIRED_MEMBERS`
+  (`src/niche_scout/collector_graphql.py:876-885`) contains `"state"` today, so the
+  structural check at `:1050-1055` still asks Chunk 1 for a
+  `response_missing_required_member` / `response_null_required_member` verdict on it.
+  The operator has **ruled** that `state` leaves that group: correction is
+  `Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+  §12.13(i), and the disposition, mechanical proof, and the associated E7 correction
+  are §12.6 item 2 below. **The code was not changed in this dispatch** — this is a
+  plan record, not a completed fix — so §8's E7 text still reads its pre-ruling
+  wording and §12.6 item 2 is gate work through bullets 1–6 (§12.6 item 2(f)).
+- **Identity-mismatch handling, in full.** The returned aliases are compared with
   the requested canonical identity through Chunk 1's primitive, the mismatch is
   recorded as a flag plus a redacted reason, and the affected result's scored
   fields are surfaced as unavailable-by-mismatch (LREQ-GQL-070, adapter portion).
@@ -85,7 +115,11 @@ build against it without reading source.
   validation has passed with the caller-supplied credential (LREQ-SEC-010).
 - Redaction at the adapter boundary: no credential, `Authorization` header, CSRF
   token, cookie, or full response body may appear in any error summary, any
-  warning, or `request_metadata_json` (LREQ-SEC-020).
+  warning, or `request_metadata_json` (LREQ-SEC-020). **Ruled deviation recorded
+  2026-09-18:** the implementation currently redacts the operation names and
+  correlation keys too, so `request_metadata_json` does **not** carry the real
+  values §5.10's own table requires at `:1080-1081`; the correction is §12.6 item 3
+  and has **not** been applied in this dispatch.
 - Failure isolation: a per-identity protocol failure produces a typed failed result
   and never raises out of the adapter in a way that aborts unrelated identities
   (LREQ-NFR-030, adapter portion).
@@ -1312,7 +1346,15 @@ ownership: the annotated row is *not* silently promoted to a Chunk 5 decision.
   not an object, a required member missing, and `state` present but not a string are
   each an operation error for `ProductDetail`; a present non-`"published"` state is
   **not** an operation error — it is `state_excluded`, annotated, and retains the
-  asset in discovered breadth (LREQ-GQL-060 annotation half).
+  asset in discovered breadth (LREQ-GQL-060 annotation half). **Ruled 2026-09-18:
+  this bullet contradicts E10 and §5.8 and the ruling follows them, not E7.** The
+  correction the ruling requires is `§12.6 item 2` — `state` leaves
+  `PRODUCT_DETAIL_REQUIRED_MEMBERS`, so `missing` and `null` `state` stop being
+  operation errors on the structural path, while a **present-but-unusable**
+  (non-string) `state` remains `INVALID_STATE_VALUE` and is unchanged.
+  **Not applied in this dispatch**: the text above still carries its pre-ruling
+  wording, so E7 and E10 remain in contradiction until the §12.6 item 2 change
+  lands.
 - **E8 — Partial success retention (LREQ-GQL-050).** A valid `ProductDetail` is
   retained when page views fail and vice versa. Invariants: failed fields are `None`;
   no `0`, `0.0`, `""`, or `False` appears in the pre-record for a failed operation;
@@ -1349,7 +1391,12 @@ ownership: the annotated row is *not* silently promoted to a Chunk 5 decision.
   value, an `Authorization` header, a CSRF token, a cookie value, or a full response
   body; error summaries for a failed operation are `summarize_validation_issues`
   output; an exception message from request construction names the environment
-  variable and never the value.
+  variable and never the value. **The five forbidden categories, enumerated so no
+  reader has to derive them: (1) a credential value, (2) an `Authorization` header,
+  (3) a CSRF token, (4) a cookie value, (5) a full response body.** An operation
+  name (§5.10 `:1080`) and a correlation key (§5.10 `:1081`) are **none of the
+  five**, so redacting them is a ruled deviation, not a stricter reading of this
+  bullet — see §12.6 item 3.
 - **E15 — Failure isolation (LREQ-NFR-030).** A raised transport, a non-JSON body,
   and a both-operations-malformed response each return a typed failed
   `EnrichmentResult` rather than an exception, so a caller looping over identities
@@ -1789,8 +1836,17 @@ correlation-mode extension) is closed by operator ruling and now lives in §12.1
 **O-4** (the CSRF/cookie-sufficiency scope question) is closed as a **Chunk 5 scope
 question** and now lives in §12.3.
 
-**Nothing blocks this plan's freeze.** §12.5 is **empty of blocking items**: it holds
-one item, **OI-6**, which is an external unknown of the retired parent SRS, open by
+**For the plan's content, nothing blocks the freeze.** No LREQ, contract, or gate
+question below is unanswered. **Amended 2026-09-18:** the sentence that stood here read
+"**Nothing blocks this plan's freeze.** §12.5 is **empty of blocking items**", and that
+is no longer literally true — **§12.5 now also carries the five §12.6 items**, one of
+which (the `Status` disposition) is a decision only the operator can make. The
+substantive claim is unchanged: none of the five blocks the plan's **content**, and
+each concerns the *change* §12.6 records rather than any requirement text. The
+paragraph that follows describes OI-6 alone and is retained unedited.
+
+**Prior item.** §12.5 holds one pre-existing item, **OI-6**, which is an external
+unknown of the retired parent SRS, open by
 design and deferred out of Chunk 5's scope. OI-6 is *not* a Chunk 5 blocker, and O-4 —
 the item that previously gave OI-6 a blocking framing — is now resolved as a scope
 question. The test applied: *can the plan make the correct choice without more
@@ -1801,6 +1857,431 @@ the plan carries no decision that a downstream chunk would have to guess at. OI-
 resolution is an obligation of the retired parent SRS's validation program, which
 Chunk 5 does not inherit; the item is recorded in the dependency map's §7 open-items
 list so it has an owner-of-record.
+
+### 12.6 Retroactive authorship, the two rulings this plan now carries, and their corrections (recorded 2026-09-18)
+
+This section is **new** and is the only change this dispatch makes to the plan. It
+supersedes nothing: no earlier item is deleted, contradicted, or reworded. Its six
+entries are the retroactive-authorship record, the two operator rulings with their
+mechanical proofs, two corrections, and the test declarations those rulings require.
+
+#### 12.6 item 1 — This plan is retroactive, and its Status is not this plan-writer's to set
+
+`Status:` now reads `DRAFT`, changed from `FROZEN`, for one reason: **this plan was
+written after `collector_graphql.py` had already been implemented.** The header's
+`Last amended` line and its `(★)` footnote carry the fact and the two dispositions.
+The only other element changed on the header is the added
+`Documents/interfaces/chunk-03.md` depends-on line (item 4). Nothing in §1–§11 other
+than the four ruled-correction markers described in items 2 and 3 was touched.
+
+Two consequences follow, and both belong to the operator:
+
+- **The plan's content is mature even though its provenance is not.**
+  `Status` was `FROZEN` and §12.5 holds no blocking item; every question the plan
+  carried is closed by ruling. The `DRAFT` value records *how this document came to
+  exist*, not doubt about what it says. Restoring `FROZEN` is a legitimate ruling;
+  so is keeping `DRAFT` until the corrections in items 2 and 3 land. This
+  plan-writer is **not authorized to set `FROZEN`** and has not.
+- **Six test nodes are red on the current HEAD, and two of them are this chunk's.**
+  §9's baseline facts (one collector test file, 2532 lines, 51 distinct marked
+  nodes; one identity test file, 26 distinct marked nodes; 144 matrix nodes) are
+  operator-supplied baselines, not a suite run performed for this plan; the current
+  failure set is recorded in item 5 with its own status label. The test declarations
+  in item 5 do **not** assume those baselines hold — they require a re-count.
+
+#### 12.6 item 2 — RULED: `state` moves out of the structural required-member group, and E7 is corrected in the same unit
+
+**The ruling.** `"state"` leaves `PRODUCT_DETAIL_REQUIRED_MEMBERS` and joins the
+semantic state group (`StateEligibilityAnnotation`, whose `state_unknown` is the
+missing/null/unparsable case). The constant and E7 (`§8 :1311-1315`) change **as one
+unit**. Splitting them — moving the constant while leaving E7 asserting a check that
+no longer exists — is what the ruling forbids.
+
+**(a) The predecessor text, quoted, not deleted.** E7 as this plan carried it before
+this dispatch read, verbatim:
+
+> **E7 — Wrong data shape and invalid state (LREQ-GQL-040).** `product` present but
+> not an object, a required member missing, and `state` present but not a string are
+> each an operation error for `ProductDetail`; a present non-`"published"` state is
+> **not** an operation error — it is `state_excluded`, annotated, and retains the
+> asset in discovered breadth (LREQ-GQL-060 annotation half).
+
+Condition semantics were added to that bullet in this dispatch **without deleting the
+old sentence**: the ruling is recorded, and the plan still states the pre-ruling
+behavior explicitly rather than rewriting it silently.
+
+**(b) The plan contradicted itself 2–1, and the ruling follows the majority.** §5.8
+(`:914-923`, raw `state` kept verbatim, including `None` for a missing state) and E10
+(`:1328-1332`, "a missing, null, or wrong-typed value is `state_unknown`") agree with
+the ruling; E7 (`:1311-1315`) contradicts them. The 2–1 split is evidenced by reading
+two separate sections of this plan. See
+`Documents/plans/chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md`
+§12.13(i)–(iii), which records the same ruling against this plan's E7 by line number.
+
+**(c) No higher authority decides the point, so the ruling is the operator's to make.**
+
+- `Documents/SRS-lean.md:329-330` (LREQ-GQL-060) is the SRS's **only** `state_unknown`
+  mention: "Only `state = \"published\"` assets are eligible for D, R, and Q.
+  State-excluded and state-unknown assets remain part of discovered breadth." It
+  describes **retention** of assets that already are state-unknown and never what
+  **produces** that state.
+- `Documents/interfaces/chunk-01.md:315-317` is the **entire** prose contract for
+  `annotate_state_eligibility` — "is an annotation, not a decision:
+  `remains_in_discovered_breadth` is always `True` and the result exposes no D/R/Q
+  eligibility attribute." It states **no** condition semantics and **no** check order.
+- The dependency map is silent on classification for this requirement. Its Chunk 5
+  section (`Documents/requirements-dependency-map.md:639-681`) lists "state
+  eligibility annotation; excluded and unknown-state assets remain in persisted
+  observations and discovered breadth" at `:652` and names `LREQ-GQL-060` in the
+  supporting list at `:664`, but states no condition for `state`.
+- The sentence "Absent, null, and wrong-typed members each produce their own issue
+  code, stay `None` in the returned fields, and are never substituted with a default"
+  is **not** in the chunk-01 interface. It lives at
+  `src/niche_scout/collector_graphql.py:1022-1027`, a **Chunk 5 docstring describing
+  Chunk 1's behavior**. A prior dispatch attributed it to the interface; that
+  attribution was the error, and it is refuted here so no future reader re-derives
+  the ruling from it.
+
+**(d) The mechanical proof, written down so it does not have to be re-derived.**
+Read on HEAD `4135e6e`; re-runnable by reading the cited lines.
+
+- `:876-885` defines `PRODUCT_DETAIL_REQUIRED_MEMBERS` with `"state"` as its sixth
+  member.
+- `:1050-1055` calls
+  `validate_response_shape(payload, expected_shape="mapping", required_members=PRODUCT_DETAIL_REQUIRED_MEMBERS, field_types=PRODUCT_DETAIL_NUMERIC_MEMBER_TYPES)`
+  and **does not short-circuit**: a missing member becomes
+  `response_missing_required_member`.
+- `:1148` is the guard `elif state_annotation.state_unknown and state_value is not None:`.
+- `:1160-1180` constructs `ProductDetailFields`, with `state=` at `:1177` and
+  `state_annotation=` at `:1178`. (`:1178` is the **argument line**, not the
+  construction line; the construction begins at `:1160`. A prior dispatch recorded
+  `:1178` as the construction site and that locant is corrected here.)
+- `:1182-1189` returns `product_detail=fields if failure_class is GraphQLFailureClass.NONE else None`.
+- `:1192-1209` `_classify_product_detail_failure` maps
+  `response_missing_required_member` → `WRONG_DATA_SHAPE` at `:1203-1204`.
+
+Applied to a payload with `state` **absent**: `response_missing_required_member` is
+emitted structurally at `:1053`; the `:1148` guard evaluates
+`True and False` → `False`, so no `invalid_state_value` issue fires; and
+`:1182-1189` returns `WRONG_DATA_SHAPE` with `product_detail=None`, **discarding the
+fully-built `fields` object that carries `state_unknown=True`**. So **no caller can
+observe a `SUCCESS` operation with `state_unknown == True` for a state reason** —
+which is exactly the behavior the ruling changes.
+
+The guard's two sides diverge only for a **present-but-unusable** value: a present
+non-string yields `state_value` non-`None` and `state_unknown=True`, so `:1148` fires
+and `:1154-1157` records `invalid_state_value`, mapped to `INVALID_STATE_VALUE` at
+`:1199-1200`. **That half is unchanged by the ruling and must not regress.**
+LREQ-GQL-040's "invalid state values" clause (`Documents/SRS-lean.md:318-323`) keeps
+its operation-error mapping for a present-but-unusable value.
+
+**(e) What the ruling does *not* say.** E10's "missing, null, or wrong-typed value is
+`state_unknown`" is a rule about the **annotation**, not about the operation outcome,
+so correcting E7 does **not** mean every missing/null/wrong-typed `state` is benign —
+only **missing** and **null** are. See
+`chunk-03-coveo-discovery-adapter-and-streamed-raw-persistence.md` §12.13(i), which
+states the same caution.
+
+**(f) The correction is Chunk 5's to land, in a separate wave, and it is not done.**
+No file under `src/` or `tests/` was changed by this dispatch. The code change (delete
+`"state"` from `PRODUCT_DETAIL_REQUIRED_MEMBERS` at `:876-885`, alongside the E7 text
+correction), the fixtures, and the tests in item 5 land together in that wave.
+Because the ruling changes observable behavior, it is gate work: gate bullets 1–6 of
+§10 are all evaluated on the corrected behavior, and a gate-verifier that finds the
+constant unchanged should fail the gate on bullets 2, 4, and 5 rather than accept the
+plan text as evidence.
+
+#### 12.6 item 3 — RULED: the metadata must carry real operation names and correlation keys; credential-shaped values stay redacted
+
+**The ruling.** Operation names and correlation keys reach
+`request_metadata_json` as their **real values**. Credential-shaped values stay
+redacted. The fix is scoped to `_metadata_text` (`:1423-1425`) and to the
+name/key/`failure_classes` call sites (`:1501`, `:1503-1504`, `:1509-1511`, `:1454`).
+
+**(a) The implementation is the deviant.** `_metadata_text` (`:1423-1425`) is
+`return redact_value(str(value))[:max_chars]`, and `build_request_metadata_json`
+routes every operation name, correlation key, and additional key member through it at
+`:1501`, `:1503-1504`, and `:1509-1511`. `redact_value`
+(`src/niche_scout/validation.py:183-198`) never returns the value's own text; it
+returns a placeholder rendered as `f"<{_PREFIX}: {rendered}>"` or
+`f"<{_PREFIX}: {rendered} of length {length}>"` (`:196-198`), with the prefix defined
+at `:143` as `"value redacted"`. So the persisted metadata contains placeholders
+where the plan requires values.
+
+**(b) What the plan requires instead.** §5.10's table requires the names:
+
+> | `operation_names` | the two operation names, in request order | never absent |
+
+(§5.10 `:1080`) and the keys:
+
+> | `correlation_keys` | `{operation_name: correlation_key or null}` | `null` per operation when no key was present |
+
+(§5.10 `:1081`).
+
+**(c) The plan's redaction guarantee is not the obstacle.** §5.10's guarantee
+(`:1089-1095`) says `build_request_metadata_json` "accepts **no credential, header-value,
+cookie, or body parameter at all**", so no such value can reach the JSON without a
+signature change. An operation name is not one of those parameters, and the argument
+is stronger than that: **the caller passes the names in already.** Rebuilding them as
+placeholders cannot add protection the caller's own inputs do not already determine —
+it only destroys the two fields the requirement names.
+
+**(d) The five forbidden categories, from E14, enumerated.** (§8 E14.) (1) a
+credential value, (2) an `Authorization` header, (3) a CSRF token, (4) a cookie
+value, (5) a full response body. **An operation name is none of the five**, and
+neither is a correlation key — which is itself an operation name, per §4.1 and §5.10
+(`:1081`, `:1091`). LREQ-SEC-020 (`Documents/SRS-lean.md:351-352`): "Secrets SHALL
+NOT be written to source control, logs, SQLite, or error messages. The `.env` pattern
+SHALL be ignored by version control." A lean operation name is not a secret under
+that text.
+
+**(e) The corrections are two-sided, and the redaction half must not regress.**
+
+- `failure_classes` at `:1454`:
+  `text = _metadata_text(item)` **breaks the allow-list check** — a redacted
+  placeholder can never equal a member of `allowed_classes`
+  (`:1449`, `{member.value for member in GraphQLFailureClass}`), so
+  `metadata["retry"]["failure_classes"]` is silently always `[]`, contradicting
+  §5.10's `retry` row (`:1086`).
+- `_metadata_text` also serves genuinely secret-capable inputs: `:1454`'s
+  `failure_classes` items and the `:1509-1511` key **names**. Names are
+  structurally safe, but a future caller could pass a credential-shaped string into a
+  key slot, and the plan's answer is already written: "The `retry` mapping is
+  re-serialized key-by-key against an allowlist rather than passed through wholesale,
+  so an unredacted string in a caller's mapping cannot leak" (§5.10 `:1094-1095`).
+- So the corrected module keeps **two distinct renderers** — a bounded text renderer
+  for names and keys (which must **normalize a non-string through `str()`** before
+  bounding, since a non-string key or name would raise from the `len()` inside
+  `redact_value`, `validation.py:196-198`) and `redact_value` for
+  credential-capable inputs. How the two renderers are named and split is the
+  implementer's choice, and is recorded as an open question in §12.5 so the reviewer
+  rules on it before it lands.
+
+**(f) The correction is Chunk 5's to land, in a separate wave, and it is not done.**
+No file under `src/` or `tests/` was changed by this dispatch. `collector_graphql.py`
+is not in Chunk 3's §6 and every code change described here is Chunk 5's.
+
+**(g) How the deviation survived review, recorded because it is the finding and not
+an aside.** The test comment at `tests/test_collector.py:2427-2429` states the
+deviant behavior as *intent* — "Correlation keys and operation names are persisted
+redacted: the JSON never carries a raw operation name, so a name is asserted against
+the result, not the serialized metadata" — and the assertions around it are written
+to pass either way (`:2430-2433`), so no red node pins it. Second, Chunk 5 was
+implemented **before** Chunk 3 was verified and before `Documents/interfaces/chunk-03.md`
+existed; the sequencing is the recorded root cause and is why item 4's depends-on line
+is added. §6's "Files touched" table is **not** amended here: this plan-writer could
+not open `interfaces/chunk-03.md` to confirm what it publishes, and changing that list
+on a guess is exactly the failure that produced this item.
+
+#### 12.6 item 4 — Dated correction: the depends-on header gained `interfaces/chunk-03.md`, and the interface is cited by name only
+
+**Correction (recorded 2026-09-18).** The header's depends-on list did not name
+`Documents/interfaces/chunk-03.md`, although the chunk that owns the Coveo side of the
+shared facade (`src/niche_scout/collector.py`) is verified and its contract is
+published. The line is added. **Status label for the interface's content: UNVERIFIED.**
+This plan-writer did not open `Documents/interfaces/chunk-03.md`, so **nothing in this
+plan quotes it, depends on its wording, or asserts what it contains** — including the
+new depends-on line, which records only that the file exists, is named in three
+earlier places in this plan, and that Chunk 3's plan reads `Status: VERIFIED`
+(READ at that plan's `:3`).
+
+The reason the rename/citation matters is a `Status` change, not a content change:
+`Documents/interfaces/chunk-03.md` was **newly added to a `Status: FROZEN` header**,
+which is a document-consistency event this plan cannot insist is a no-op until someone
+reads what the interface actually publishes. It is therefore recorded as a correction
+and left to review, and it is not accompanied by any new §11 prohibition — the
+restatement of §11's existing prohibitions ("SHALL NOT import or call `collector_coveo`
+or any Chunk 3 code, name, or constant"; "May not edit `collector.py` beyond the single
+`__all__`/re-export line") is **deliberately omitted**, because §11 already carries
+them and a second copy is exactly the kind of restatement the counting and citation
+rules exist to prevent. To be explicit that this is a ruling and not an oversight:
+**this dispatch deliberately did not add a prohibition bullet.** §11's two existing
+bullets cover the dependency; a duplicate is a defect. This plan-writer could not open
+the interface to confirm what it publishes, so the ruling is: no new §11 text, and the
+review decides. See §12.5.
+
+#### 12.6 item 5 — Tests this plan declares for the two rulings, and their LREQ markers
+
+**The markers are already-determined, not invented.** Each declaration below names a
+marker **and** the existing baseline entry it attaches to. Both new nodes go in
+`tests/test_collector.py` and need **new** `tests/traceability.json` entries, because
+`validate_traceability.py` requires a matrix entry for every marked node. No existing
+entry is edited.
+
+- **The `state`-guard pair — one node, `test_state_missing_and_null_are_benign_but_unusable_state_still_errors`,
+  marker `@pytest.mark.lreq("LREQ-GQL-060")`.** This marker is directly evidenced, not
+  chosen: **five existing nodes already carry it** —
+  `tests/test_collector.py:2271-2272` (`test_state_annotation_covers_published_excluded_and_unknown`),
+  `:2289-2290` (`test_state_excluded_and_unknown_assets_remain_recorded`), `:2327-2328`
+  (`test_adapter_declares_no_metric_eligibility_verdict`), `:2364-2365`,
+  `:2398-2399` — and `tests/traceability.json:142-145` carries one matching entry per
+  node. The node asserts **both halves of `:1148`'s guard, as one unit**: a
+  **missing** `state` is benign (`product_detail.is_success` is `True`, `state_unknown`
+  is `True`, `state` is `None`, the sibling page-view operation is unaffected), a
+  **null** `state` is benign on the same terms, and a **present-but-unusable** `state`
+  (a non-string) is *still* `GraphQLFailureClass.INVALID_STATE_VALUE` with
+  `product_detail=None`. The file already carries the benign half in substance at
+  `:2301-2324` (`del payload["state"]` → `assert unknown.product_detail.is_success`,
+  which is red on current HEAD) and the error half at `:2040-2051`; this node pins both
+  halves **on the corrected behavior**, which is why it is declared rather than
+  substituted for either.
+- **The node-6 metadata node — one node, `test_request_metadata_json_carries_real_operation_names_and_correlation_keys`,
+  marker `@pytest.mark.lreq("LREQ-SEC-020")`.** Evidence: the existing node at
+  `:2411-2412` carries `@pytest.mark.lreq("LREQ-SEC-020")` and
+  `tests/traceability.json:144` carries its matching entry; the marker is copied from
+  a node that already asserts this same contract. The node asserts the two names and
+  the correlation keys are the **real values**, not redaction placeholders —
+  `set(metadata["operation_names"]) == set(GQL_ORDERED_OPERATIONS)`, `GQL_ORDERED_OPERATIONS[0]`
+  appearing **verbatim** in the serialized `request_metadata_json`, the keys present
+  as the real names, and **no value containing `"value redacted"`** — while the
+  credential assertions at `:2439-2444` still hold (fixture CSRF token, header values,
+  `cookie`, `authorization`, and `token` absent). It **replaces** the deviant
+  comment and the pass-either-way assertions at `:2427-2433` in the same wave.
+- **Optional third node, `test_retry_failure_classes_survive_metadata_serialization`,
+  marker `@pytest.mark.lreq("LREQ-GQL-040")`** (evidence: `tests/traceability.json:135`
+  pairs `test_invalid_state_value_and_missing_identity_are_operation_errors` with
+  `LREQ-GQL-040`, i.e. the class vocabulary is already this requirement's). It pins
+  the `:1454` / `allowed_classes` consequence of item 3(e):
+  `metadata["retry"]["failure_classes"]` is not silently `[]` for a retry-exhausted
+  transient exchange. **Declared, not required** — gate bullets 1–6 do not reach it,
+  and it is listed as a decision for the ruling operator rather than as an obligation.
+- **Fixture consequences (declared, not written).** The benign-`state` node needs a
+  *present-but-null* `state` body, i.e. a variation on
+  `tests/fixtures/graphql_fixtures.py`'s `product_detail_payload()`; the metadata node
+  needs **no** new fixture, since it uses `gqlfx.in_order_success_body()` and the real
+  `GQL_ORDERED_OPERATIONS`. §6's fixture row already lists "request/response golden
+  vectors" in that file, so no §6 amendment is proposed here.
+- **Baselines these declarations require, and do not assume.** The counts in §9 are
+  operator-supplied (one collector file of 2532 lines with 51 distinct marked nodes,
+  one identity file with 26, a matrix of 144 nodes — **all UNVERIFIED in this
+  dispatch**). The correction wave **MUST re-derive all three by querying the
+  artifacts** (`ast` walk for nodes, anchored decorator grep for markers, top-level
+  JSON keys for matrix entries), with the unit named, before it adds any entry.
+  **Recorded as an open question in §12.5.** The current failure set is also UNVERIFIED
+  here: the operator reports **6 failed / 140 passed** across the suite and **6 failed
+  / 47 passed** in that one file, all 6 being code-side deviations, of which these two
+  rulings are two. The wave **MUST confirm the whole set of six by re-running the
+  suite** and **STOP and report** if any failing assertion is entangled differently
+  than assumed — in particular if any of the six pins the **pre-ruling** behavior, and
+  specifically if one is
+  `tests/test_collector.py::test_request_metadata_json_carries_required_fields_without_secrets`
+  (`tests/traceability.json:144`), which the `:2427-2433` comment suggests is
+  **bystander** rather than a node pinning the defect. Nothing here depends on which
+  it is, but the correction wave must not assume either.
+- **Correction branch, so the fix does not produce a red test.** If a `request_metadata_json`
+  assertion elsewhere **does** encode the placeholder behavior, this plan declares that
+  it is corrected **in the same unit as the code change**, with its `tests/traceability.json`
+  entry **updated in place to the same LREQ ID it already carries**, and with **no node
+  renamed and no entry deleted** so that no existing entry is left orphaned. The same
+  rule applies to the `state`-guard node.
+
+#### 12.6 item 6 — What this dispatch did and did not do
+
+- **Changed, in this file only:** the `Status:` value (`FROZEN` → `DRAFT`), the
+  `Last amended` line and its `(★)` footnote, the depends-on line for
+  `interfaces/chunk-03.md`, four correction markers in §2 and §8 marking ruled text as
+  superseded, and this §12.6.
+- **Not changed:** §1, §3, §4, §5, §6, §7, §9's baseline figures, §10's six gate
+  bullets, §11 in full (including the deliberately-omitted new prohibition of item 4),
+  and §12.1–§12.5.
+- **Not touched:** `src/`, `tests/`, `Documents/SRS-lean.md`,
+  `Documents/interfaces/chunk-01.md`, `Documents/interfaces/chunk-03.md`,
+  `Documents/plans/chunk-03-*.md`, and `Documents/requirements-dependency-map.md`.
+- **Status labels used in this section.** `READ` — quote taken from an opened file at
+  the cited line, re-checked against the citation. `COUNTED` — a stated query over the
+  artifact with the unit named. **No count is asserted anywhere in §12.6.** `UNVERIFIED`
+  — the §9 baselines, the interface content, and the current failure set, all as
+  labelled in items 1, 4, and 5.
+
+#### 12.6 item 7 — The freeze, and the dated record of the §12.5 header correction (recorded 2026-09-18)
+
+**(a) The freeze (OPERATOR-RULED 2026-09-18).** `Status:` was changed `DRAFT` →
+`FROZEN` in this pass. The operator's ruling, in their words: "DRAFT is supposed to mean
+'the content hasn't been verified as accurate.' This content has been verified as
+accurate, twice over, by two different reviewers checking against source rather than
+against the document's own claims about itself." The provenance fact is **kept as text
+rather than smoothed over** — the `(★)` footnote now states the retroactive-authorship
+defect plainly, records it as accepted, and names the independent verification (SRS
+requirement text, the dependency map's Gate list, and existing `tests/traceability.json`
+entries) as the basis. This supersedes §12.6 item 1's statement that `Status` reads
+`DRAFT`; item 1's provenance finding is unchanged and is **not** deleted.
+
+**(b) Dated correction: §12.5's opening sentence asserted there was no change-blocker
+while two of its own listed items block the change.** The correction itself was applied
+earlier on 2026-09-18 and was **applied silently** — nothing in this document recorded
+that a correction had occurred. This entry supplies that record retroactively, per the
+operator's ruling: "Chunk-03's plan records its corrections; chunk-05's not doing the
+same isn't a style inconsistency, it's the exact 'quiet substitution vs. dated
+correction' distinction that's been enforced on every other document this session."
+
+**The superseded sentence, quoted verbatim as it stood (`:2908-2909` before this edit):**
+
+> This section contains no blocking item for the plan's *content*, while carrying two
+> acknowledged change-blockers that are the operator's to clear.
+
+**What was wrong with it.** Asserting that the section "contains no blocking item"
+immediately above five listed items, **two of which block the change** — item 1 (the
+`Status` disposition) and item 4 (the suite must be run and the failing set confirmed
+before any edit) — is false on its own terms. It also read as a claim about the
+*content* while the two blockers were being acknowledged in the same breath, so a reader
+scanning the first sentence would conclude no item gated the change.
+
+**What it says now** — the paragraph's opening was replaced with text that names the
+blockers rather than denying them: "This section contains no blocking item for the
+plan's *content*, while carrying two acknowledged change-blockers that are the
+operator's to clear. … **Two of the five are marked below as blocking the change rather
+than the content** — item 1 … and item 4 … — and clearing them is likewise the
+operator's." The body of §12.5 was not otherwise rewritten, and its original text stands.
+
+**Recorded, not reopened.** The subject of this entry is the **correction**, not the
+five items. The two items it names are now decided (see (c)); the correction record
+neither resolves nor re-opens any of them, and no item text in §12.5 was edited by this
+pass.
+
+**(c) §12.5's decided items (OPERATOR-RULED 2026-09-18).** Recorded here since §12.5
+still presents these as open. Each original question above is retained and marked
+decided beneath rather than deleted.
+
+- **Item 1 — DECIDED: `FROZEN`.** Retroactive authorship is an accepted defect of
+  provenance, not a review gate. Landed as (a) above; the `(★)` footnote now records it.
+  OPERATOR-RULED 2026-09-18.
+- **Item 3 — DECIDED, and the plan's constraint is AFFIRMED, not newly created:**
+  `"state"` **stays out of the request selection set.** Pulling it from the *structural
+  required-member* check says nothing about what fields get *requested*. §12.5 item 3's
+  MUST-NOT constraint — do not read a response-validation ruling into a request-shape
+  decision — is correct and is now operator-affirmed. OPERATOR-RULED 2026-09-18.
+- **Item 5 — DECIDED: re-derive, do not assume, and gate on it explicitly.** §9 takes no
+  entry against its baseline counts until those numbers are confirmed at current HEAD.
+  The probe re-deriving them is a separate dispatch; **this plan-writer did not run it
+  and asserts no baseline figure here.** OPERATOR-RULED 2026-09-18.
+- **Items 2 and 4 — unchanged.** Item 2 remains the implementer's and the reviewer's
+  call; item 4 is a dependency that resolves when the probe returns, not a decision.
+
+> **Dated correction (2026-09-18): two of the five items in the list above were
+> relabelled, and three of its four bullets' opening labels needed correcting.** Every bullet's *body* is
+> unchanged; only the item number each bullet is headed with was corrected, and the
+> superseded labels are retained here rather than deleted.
+>
+> - Second bullet: headed **Item 2**, but its body answers **item 3** (*whether
+>   `"state"` is still required in the request selection set*) — it even cited §12.5
+>   item 3's MUST-NOT constraint. Relabelled **Item 3**.
+> - Fourth bullet: headed **Items 3 and 4**, but its second clause answers the
+>   **two-renderer split in `collector_graphql.py`**, which is **item 2** (the first
+>   clause, carried unchanged, is item 4). Relabelled **Items 2 and 4** — a single
+>   opening label naming both items, so one label carries the two relabelled items.
+> - Fourth bullet, clause 2: its second clause answers "resolves when the probe returns",
+>   which is **item 5's** subject — and which the bullet above it already records as
+>   decided. The bullet's opening label does not name it, so this clause was **left
+>   as it stands and not relabelled**; only the bullet's opening label moved, from
+>   items 3 and 4 to **Items 2 and 4**.
+>
+> The bullet carrying two clauses is the *fourth* of the list's four bullets, i.e.
+> **the "Items 2 and 4" bullet at `:2257-2258`, not the third** — the list has four
+> bullets, not five. Unaffected: the first bullet (**Item 1**) and the third bullet
+> (**Item 5**), each of which already matched its body, and the fourth bullet's first
+> clause. The corrected bullet list occupies `:2245-2258` at
+> this file's line numbering (this note begins at `:2260` in the corrected file). No
+> ruling's substance and no `OPERATOR-RULED 2026-09-18` attribution was altered.
 
 ### 12.1 Closed questions (binding values)
 
@@ -2095,7 +2576,11 @@ the formula `product_page_views * 7 / age_days_exact` and calls the field
    was corrected to these figures. **This is an operator-approved corrective amendment
    to the frozen plan**, authorized as a counts-only exception to the no-edit rule for
    a `Status: FROZEN` plan; no non-count text was changed and `Status` remains
-   `FROZEN`.
+   `FROZEN`. (Amended 2026-09-18: `Status` is now `DRAFT`, for the retroactive-authorship
+   reason in §12.6 item 1 — **not** because of anything in this item. This item's
+   counts-only scope statement and its "no non-count text was changed" claim describe
+   *that* amendment and stand; the `Status` value it names is simply no longer the
+   file's current value.)
 
 7. **The count correction of item 6 rewrote `tests/test_identity.py`'s figures without
    re-deriving them, and carried a fabricated decomposition with it, so the first
@@ -2186,7 +2671,10 @@ the formula `product_page_views * 7 / age_days_exact` and calls the field
     verified by querying the artifact and is reported with its unit named. This
     amendment is content-only on the verified `tests/test_contracts.py` defects and, per
     item 8, on the `tests/test_identity.py` figures corrected there; `Status` remains
-    `FROZEN` and the `Status:` line is untouched.
+    `FROZEN` and the `Status:` line is untouched. (Amended 2026-09-18: `Status` is now
+    `DRAFT` per §12.6 item 1. This item's claim was that *it* changed no `Status` text,
+    which is true of this item and remains so; the value is superseded by the later
+    amendment, not by this one.)
 
 8. **The plan's own first count-correction introduced a fabricated observation, and the
    record of that is this entry.** Amendment 2026-09-17 (this item), folded into item 7's
@@ -2207,7 +2695,9 @@ the formula `product_page_views * 7 / age_days_exact` and calls the field
    re-runnable and its unit is named, and a discrepancy is resolved by reading the file,
    never by constructing the detail that would make the existing number close.
    Consequence for the freeze: this is a counts-only correction like items 6 and 7, no
-   scope, contract, or gate text changed, and `Status` remains `FROZEN`.
+   scope, contract, or gate text changed, and `Status` remains `FROZEN`. (Amended
+   2026-09-18: `Status` is now `DRAFT` per §12.6 item 1; this item's own point — that
+   it was a counts-only correction — is unaffected.)
 
 Numbered deliberately after the three corrections the operator's round supplied
 (A-3, §4.4, Q7) so the cross-references already recorded in §12.1 and §12.2 keep
@@ -2223,7 +2713,8 @@ implementation that items 6–8's own corrections already anticipated in kind.
    carries were the pre-Chunk-5 figures, and thirteen expression sites still asserted
    them after Chunk 5 landed.** Amendment 2026-09-18 (this item). Correction-only:
    no scope, contract, gate, or `Status:` text is changed and `Status` remains
-   `FROZEN`. Item 6 already stated the principle — the corrected figures are "the
+   `FROZEN`. (Amended 2026-09-18: `Status` is now `DRAFT` per §12.6 item 1; this
+   item's claim describes itself only.) Item 6 already stated the principle — the corrected figures are "the
    counts that traverses the file today" — but the figures written into the plan were
    Chunk 3's frozen-file counts, and Chunk 5's own append of the GraphQL protocol
    nodes moved both files. Every number below was **counted in the artifacts by
@@ -2507,8 +2998,55 @@ its basis, and it must not be read as carrying one.
 
 ### 12.5 Open items
 
-**This section contains no blocking item.** Nothing here prevents this plan's freeze,
-and the single item it records is not a Chunk 5 deliverable, not a Chunk 5 blocker, and
+**This section contains no blocking item for the plan's *content*, while carrying two
+acknowledged change-blockers that are the operator's to clear.** It carries **five**
+open items added 2026-09-18 by §12.6, each of which is a genuine ambiguity or a pending
+human decision rather than a gap this plan-writer resolved by guessing. None of the five
+is a Chunk 5 deliverable in this dispatch, and none is resolved here. **Two of the five
+are marked below as blocking the change rather than the content** — item 1, whose
+`Status` disposition is the operator's call, and item 4, which requires the suite to be
+run and the failing set confirmed *before* any edit — and clearing them is likewise the
+operator's.
+
+**Open from §12.6 (recorded 2026-09-18). Each one blocks that item's *change*, not this
+plan's content review:**
+
+1. **The `Status` disposition is the operator's call, and this plan-writer may not
+   make it.** `Status` now reads `DRAFT` because this plan was written after the code
+   it describes was implemented (§12.6 item 1). Whether a retroactively authored plan
+   is restored to `FROZEN` or held at `DRAFT` until §12.6 items 2 and 3 land is not
+   decidable from the source documents. The `(★)` footnote on the header records both
+   dispositions. **The operator decides.**
+2. **The two-renderer split in `collector_graphql.py` is not this plan's to freeze**
+   (§12.6 item 3(e)). The corrected module needs a non-redacting bounded renderer for
+   operation names and correlation keys **and** `redact_value` for credential-capable
+   inputs; the naming, the split, and whether `_metadata_text` survives at all are the
+   implementer's and the reviewer's call. `_metadata_text`'s `[:max_chars]` bound is
+   preserved either way — it is not the defect.
+3. **Whether `"state"` is still *required* in the request selection set is
+   unresolved.** §12.6 item 2 removes it from the *response's* structural
+   required-member set (so absence in a response stops being an error), but
+   LREQ-GQL-020's normative text (`Documents/SRS-lean.md:294-298`) names `state` among
+   the members the `ProductDetail` operation **SHALL request**. Those are different
+   questions about the same name, and the source documents do not connect them. The
+   correction wave **MUST NOT** read the ruling into the request shape; if the
+   implementation does not already request `state`, that is a separate finding to
+   report rather than resolve.
+4. **Whether any further test pins placeholder behavior is unverified** (§12.6 item
+   5). This plan declares the correction branch — same-unit test fix, in-place
+   `tests/traceability.json` edit, no rename, no deletion — but the operator's six
+   reported failures were **not** re-queried for this plan, and it is not known
+   whether `tests/test_collector.py:2427-2433`'s node is a bystander. The wave must
+   run the suite and confirm the set before editing.
+5. **The `§9` baselines must be re-derived before any entry is added** (§12.6 item 5).
+   One collector test file of 2532 lines with 51 distinct marked nodes, one identity
+   file with 26, a matrix of 144 nodes — all UNVERIFIED in this dispatch. Adding one
+   `tests/traceability.json` entry against a stale baseline produces the
+   `missing_nodes` / `orphan_nodes` / `marker_mismatch` variants §11 names.
+
+**Prior item, unchanged (and now qualified by the five above):**
+**Nothing here was a blocking item before 2026-09-18.** The single item this section
+then recorded is not a Chunk 5 deliverable, not a Chunk 5 blocker, and
 not awaiting a ruling on Chunk 5's scope.
 
 **OI-6 — open by design; NOT a Chunk 5 blocker.** `OI-6` (CSRF/session sufficiency) is
