@@ -17,12 +17,17 @@ expected value.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
+import fixtures.graphql_fixtures as gqlfx
 import fixtures.validation_fixtures as fx
 
+import niche_scout.collector_graphql as collector_graphql
 import niche_scout.validation as v
 from niche_scout.models import (
+    GraphQLOperationCorrelationMode,
     IDENTITY_MAPPING_RULE_VERSION,
     IdentityResolutionStatus,
 )
@@ -978,3 +983,139 @@ def test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_misma
     assert v.collect_identity_candidates(tools_category_record) == v.collect_identity_candidates(
         {name: value for name, value in tools_category_record.items() if name != "category"}
     )
+
+
+# --------------------------------------------------------------------------
+# Chunk 5 / LREQ-GQL-070 - adapter-level identity mismatch marking
+# --------------------------------------------------------------------------
+
+
+#: A caller-supplied UTC instant; the adapter never reads the clock.
+_IDENTITY_EXCHANGE_RETRIEVED_AT = datetime(2026, 9, 17, 4, 30, 0, tzinfo=timezone.utc)
+
+
+def _enrich_identity(
+    body_text: str,
+) -> tuple[
+    collector_graphql.EnrichmentResult,
+    collector_graphql.EnrichmentObservationDraft,
+]:
+    """Run one adapter exchange for the fixture identity against ``body_text``."""
+    transport = gqlfx.RecordingTransport([{"http_status": 200, "body_text": body_text}])
+    return collector_graphql.enrich_asset(
+        gqlfx.GQL_FIXTURE_ASSET_ID,
+        credentials=gqlfx.GQL_CREDENTIALS,
+        transport=transport,
+        correlation_mode=GraphQLOperationCorrelationMode.EXPLICIT_KEY,
+        retrieved_at_utc=_IDENTITY_EXCHANGE_RETRIEVED_AT,
+        sleep=gqlfx.RecordingSleeper(),
+    )
+
+
+def _mismatch_body() -> str:
+    """Return a correlated body whose ProductDetail aliases disagree."""
+    return gqlfx.correlation_body(
+        {
+            "operationName": gqlfx.GQL_OPERATION_NAMES[0],
+            "data": gqlfx.IDENTITY_MISMATCH_PRODUCT_DETAIL_PAYLOAD,
+        },
+        {
+            "operationName": gqlfx.GQL_OPERATION_NAMES[1],
+            "data": {"pageViews": 4321},
+        },
+    )
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_correlated_product_detail_reports_alias_mismatch() -> None:
+    """A correlated ProductDetail with disagreeing aliases is marked mismatched."""
+    result, draft = _enrich_identity(_mismatch_body())
+
+    # The association is a real correlation, so the mismatch is reported on a
+    # correlated payload rather than being confused with a correlation failure.
+    assert result.correlation.is_fully_correlated
+    assert result.product_detail.is_success
+    assert result.page_views.is_success
+
+    # The requested identity is the fixture identity; the returned aliases are a
+    # different identifier, so the adapter marks the affected result.
+    assert draft.asset_identity_key == gqlfx.GQL_FIXTURE_ASSET_ID
+    assert draft.graphql_id == gqlfx.GQL_FIXTURE_ASSET_ID_OTHER
+    assert draft.product_id == gqlfx.GQL_FIXTURE_ASSET_ID_OTHER
+    assert draft.id_mapping_mismatch is True
+    assert "graphql_id_mapping_mismatch" in {
+        issue.code for issue in result.product_detail.issues
+    }
+
+    # The agreeing case does not raise the flag, so the flag reports the
+    # comparison rather than being a constant.
+    _agreeing, agreeing_draft = _enrich_identity(gqlfx.in_order_success_body())
+    assert agreeing_draft.id_mapping_mismatch is False
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_missing_returned_identity_is_not_an_implicit_match() -> None:
+    """A missing or unusable returned identity is a mismatch, never a match."""
+    for body_factory in (
+        gqlfx.missing_identity_body,
+        gqlfx.missing_identity_member_body,
+    ):
+        result, draft = _enrich_identity(body_factory())
+
+        # No returned alias is usable, and no alias is fabricated from the
+        # request: the draft carries ``None``, never the requested identifier.
+        assert draft.graphql_id is None, body_factory.__name__
+        assert draft.product_id is None, body_factory.__name__
+        assert draft.graphql_id != gqlfx.GQL_FIXTURE_ASSET_ID, body_factory.__name__
+        assert draft.product_id != gqlfx.GQL_FIXTURE_ASSET_ID, body_factory.__name__
+
+        # An uncomparable identity is never an implicit match: the flag is set
+        # and the operation is an error, not a success with an assumed identity.
+        assert draft.id_mapping_mismatch is True, body_factory.__name__
+        assert (
+            result.product_detail.failure_class
+            is collector_graphql.GraphQLFailureClass.MISSING_IDENTITY
+        ), body_factory.__name__
+        assert not result.product_detail.is_success, body_factory.__name__
+
+        # The failing identity operation does not drag its sibling down.
+        assert result.page_views.is_success, body_factory.__name__
+        assert draft.product_page_views == 4321, body_factory.__name__
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_adapter_mismatch_is_a_flag_not_a_metric_exclusion() -> None:
+    """The adapter marks ``id_mapping_mismatch`` and emits no D/R/Q verdict."""
+    result, draft = _enrich_identity(_mismatch_body())
+
+    # The mark is a flag on an otherwise successful result: the adapter does not
+    # turn a mismatch into an operation error or drop the observation.
+    assert result.product_detail.is_success
+    assert (
+        result.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.NONE
+    )
+    assert draft.id_mapping_mismatch is True
+    record = draft.to_record("run-chunk-05")
+    assert record.asset_identity_key == gqlfx.GQL_FIXTURE_ASSET_ID
+    assert record.id_mapping_mismatch is True
+
+    # Neither the result nor the draft exposes a D/R/Q, metric-eligibility, or
+    # score verdict: exclusion from D, R, and Q is Chunk 7A"s decision.
+    for surface in (type(result).__slots__, type(draft).__slots__):
+        names = {str(name).casefold() for name in surface}
+        for forbidden in (
+            "metric",
+            "eligib",
+            "score",
+            "rankab",
+            "demand",
+            "quality",
+        ):
+            assert not any(forbidden in name for name in names), forbidden
+        assert not ({"d", "r", "q"} & names)
+
+    # The flag is not a metric verdict: the agreeing draft carries the same field
+    # set, so no verdict appears only when a mismatch is set.
+    _agreeing, agreeing_draft = _enrich_identity(gqlfx.in_order_success_body())
+    assert type(agreeing_draft).__slots__ == type(draft).__slots__

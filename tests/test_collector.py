@@ -2468,9 +2468,9 @@ def test_request_metadata_json_carries_required_fields_without_secrets() -> None
     assert metadata["retry"]["http_statuses"] == [200]
     assert metadata["response_sha256"] == result.response_sha256
     assert len(metadata["response_sha256"]) == 64
-    # Correlation keys and operation names are persisted redacted: the JSON never
-    # carries a raw operation name, so a name is asserted against the result, not
-    # the serialized metadata.
+    # Operation names and correlation keys are persisted as their real values
+    # (plan section 5.10; the two-renderer ruling D4), so the serialized metadata
+    # carries the names verbatim.
     assert result.product_detail.operation_name == GQL_ORDERED_OPERATIONS[0]
     assert result.page_views.operation_name == GQL_ORDERED_OPERATIONS[1]
     assert list(metadata["correlation_keys"]) == list(GQL_ORDERED_OPERATIONS)
@@ -2513,6 +2513,52 @@ def test_request_metadata_json_carries_required_fields_without_secrets() -> None
 
 
 @pytest.mark.lreq("LREQ-SEC-020")
+def test_request_metadata_json_carries_real_operation_names_and_correlation_keys() -> None:
+    """Metadata carries the real correlation-key member name, never a placeholder."""
+    _transport, _sleeper, (_result, draft) = gql_exchange(
+        [{"http_status": 200, "body_text": gqlfx.in_order_success_body()}]
+    )
+    metadata = gql_metadata(draft)
+
+    # The names are real: the two issued operations, character for character.
+    assert set(metadata["operation_names"]) == set(GQL_ORDERED_OPERATIONS)
+    assert GQL_ORDERED_OPERATIONS[0] in draft.request_metadata_json
+    assert GQL_ORDERED_OPERATIONS[1] in draft.request_metadata_json
+
+    # The correlation key is real too: the persisted key is the CORRELATION-KEY
+    # MEMBER NAME that supplied the association -- ``operationName`` on the normal
+    # path (see ``GraphQLCorrelationResult.correlation_keys`` and LREQ-GQL-030,
+    # SRS-lean lines 300-302) -- never a ``value redacted`` placeholder.
+    # The old deviation rendered every key through the redacting renderer, so
+    # this assertion pins the corrected behavior.
+    assert metadata["correlation_keys"][GQL_ORDERED_OPERATIONS[0]] == "operationName"
+    assert metadata["correlation_keys"][GQL_ORDERED_OPERATIONS[1]] == "operationName"
+    assert "value redacted" not in draft.request_metadata_json
+
+    # Redaction still holds for the credential-capable inputs: no header value,
+    # CSRF token, cookie, authorization, or token key reaches the JSON.
+    for _name, value in collector_graphql.GRAPHQL_REQUEST_HEADERS.items():
+        assert value not in draft.request_metadata_json
+    assert gqlfx.GQL_FIXTURE_CSRF_TOKEN not in draft.request_metadata_json
+    assert "cookie" not in {key.casefold() for key in metadata}
+    assert "authorization" not in {key.casefold() for key in metadata}
+    assert "token" not in {key.casefold() for key in metadata}
+
+    # A key is still bounded text, never a placeholder; the renderer normalizes a
+    # non-string through ``str()`` rather than raising from ``len()``.
+    direct = json.loads(
+        collector_graphql.build_request_metadata_json(
+            operation_names=GQL_ORDERED_OPERATIONS,
+            correlation_keys={GQL_ORDERED_OPERATIONS[0]: 1234567},
+            correlation_mode=GraphQLOperationCorrelationMode.EXPLICIT_KEY,
+            http_status=None,
+            response_sha256=None,
+            retry_metadata={"attempts": 1},
+        )
+    )
+    assert direct["correlation_keys"][GQL_ORDERED_OPERATIONS[0]] == "1234567"
+
+
 def test_error_summaries_and_metadata_are_redacted() -> None:
     """Neither an error summary, an issue, nor metadata carries a credential."""
     secret_bearing_body = json.dumps(

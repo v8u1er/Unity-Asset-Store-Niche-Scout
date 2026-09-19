@@ -58,7 +58,6 @@ from .validation import (
     ValidationIssue,
     annotate_state_eligibility,
     compare_graphql_identity_aliases,
-    redact_value,
     summarize_validation_issues,
     validate_response_shape,
 )
@@ -634,7 +633,8 @@ def _correlation_key_member_of(item: object) -> str:
 
 
 def additional_correlation_key_names(item: object) -> tuple[str, ...]:
-    """Return the extra explicit key members an item carries beyond ``operationName``."""
+    """Return the extra explicit key members an item carries beyond
+    ``operationName``."""
     if not isinstance(item, Mapping):
         return ()
     return tuple(
@@ -754,7 +754,8 @@ def _correlate_by_explicit_key(
             issues.append(
                 _issue(
                     "operation_correlation_unknown",
-                    "a response item carries a correlation key that names no issued operation",
+                    "a response item carries a correlation key that names no "
+                    "issued operation",
                     item_index=index,
                 )
             )
@@ -765,7 +766,8 @@ def _correlate_by_explicit_key(
             issues.append(
                 _issue(
                     "operation_correlation_duplicated",
-                    "more than one response item carries this operation's correlation key",
+                    "more than one response item carries this operation's "
+                    "correlation key",
                     operation=operation_name,
                 )
             )
@@ -827,8 +829,8 @@ def _correlate_by_validated_position(
         issues.append(
             _issue(
                 "operation_correlation_ambiguous",
-                "the response does not present the validated two-operation ordering, so "
-                "no operation can be attached",
+                "the response does not present the validated two-operation "
+                "ordering, so no operation can be attached",
                 item_count=len(response_items),
             )
         )
@@ -1018,7 +1020,9 @@ def _usable_container_json(value: object) -> str | None:
     if isinstance(value, (list, tuple)):
         if not value:
             return None
-        return json.dumps(list(value), sort_keys=True, separators=(",", ":"), default=str)
+        return json.dumps(
+            list(value), sort_keys=True, separators=(",", ":"), default=str
+        )
     return None
 
 
@@ -1044,7 +1048,7 @@ def _parse_first_published_date(value: object) -> tuple[datetime | None, str | N
         try:
             from datetime import date as _date
 
-            parsed_date = _date.fromisoformat(text)
+            _date.fromisoformat(text)
         except ValueError:
             return None, "unparsable"
         return None, "date_only"
@@ -1135,7 +1139,8 @@ def validate_product_detail_payload(
     # ``_classify_product_detail_failure`` reach ``MISSING_IDENTITY`` by the
     # LREQ-GQL-040 route instead of falling through to the required-member route.
     absent_alias = any(member not in payload for member in PRODUCT_DETAIL_ALIAS_MEMBERS)
-    if not missing_identity and (absent_alias or (graphql_id is None and product_id is None)):
+    no_populated_alias = graphql_id is None and product_id is None
+    if not missing_identity and (absent_alias or no_populated_alias):
         issues.append(
             _issue(
                 "response_missing_identity",
@@ -1343,7 +1348,11 @@ def validate_page_view_scalar(scalar: object) -> PageViewValue:
     return PageViewValue(
         is_valid=False,
         value=None,
-        failure_class=GraphQLFailureClass.WRONG_SCALAR_TYPE if not isinstance(scalar, (Mapping, list, tuple)) else GraphQLFailureClass.WRONG_DATA_SHAPE,
+        failure_class=(
+            GraphQLFailureClass.WRONG_SCALAR_TYPE
+            if not isinstance(scalar, (Mapping, list, tuple))
+            else GraphQLFailureClass.WRONG_DATA_SHAPE
+        ),
         rejected_shape=_shape_name(scalar),
     )
 
@@ -1493,8 +1502,20 @@ _METADATA_MAX_TEXT_CHARS: int = 256
 
 
 def _metadata_text(value: object, *, max_chars: int = _METADATA_MAX_TEXT_CHARS) -> str:
-    """Return a bounded, secret-free rendering of a caller-supplied string."""
-    return redact_value(str(value))[:max_chars]
+    """Render a caller-supplied name or key verbatim, bounded and secret-free.
+
+    Operation names and correlation keys reach ``request_metadata_json`` as their
+    **real values** (plan section 5.10, ruling D4): a placeholder would destroy
+    the two fields the requirement names. Nothing is decided on the strength of
+    the value's shape -- every input is rendered, so no caller-supplied string is
+    silently dropped -- and a non-string is normalized through ``str()`` before
+    bounding, because a non-string would raise from the ``len()`` inside
+    :func:`redact_value`.
+
+    Credential-capable inputs never reach this renderer; they stay on
+    :func:`redact_value`, which never returns the value's own text.
+    """
+    return str(value)[:max_chars]
 
 
 def render_operation_name(name: object) -> str | None:
@@ -1507,10 +1528,8 @@ def render_operation_name(name: object) -> str | None:
     allowlist -- nothing is passed through on the strength of its shape.
 
     Any value that is not exactly one of the allowlisted names returns ``None``
-    and is therefore never emitted: an unrecognized name is dropped rather than
-    rendered, so no caller-supplied string reaches the metadata as a name. The
-    caller-supplied ``correlation_keys`` and ``additional_correlation_keys``
-    stay on :func:`_metadata_text`, which redacts unconditionally.
+    and is therefore never emitted by this function; the caller falls back to
+    :func:`_metadata_text`, which renders the real name.
     """
     if isinstance(name, str) and name in GRAPHQL_OPERATION_NAMES:
         return name[: _METADATA_MAX_TEXT_CHARS]
@@ -1543,7 +1562,7 @@ def _allowlisted_retry_metadata(retry_metadata: Mapping[str, object]) -> dict[st
     raw_classes = retry_metadata.get("failure_classes")
     if isinstance(raw_classes, (list, tuple)):
         for item in raw_classes:
-            text = _metadata_text(item)
+            text = item.value if isinstance(item, GraphQLFailureClass) else item
             if text in allowed_classes and text not in failure_classes:
                 failure_classes.append(text)
 
@@ -1573,14 +1592,15 @@ def build_request_metadata_json(
     additional_correlation_keys: Mapping[str, Sequence[str]] | None = None,
     correlation_key_members: Sequence[str] = (),
 ) -> str:
-    """Build the redacted ``request_metadata_json`` payload for one identity.
+    """Build the ``request_metadata_json`` payload for one identity.
 
     The signature accepts no credential, header-value, cookie, or body parameter
-    at all, so none of those can reach the JSON without a signature change.
-    allowlist, so the persisted names are this adapter's own operations and
-    never a caller-supplied string. ``correlation_mode`` is always one of the
-    two persisted modes, and the ``retry`` mapping is re-serialized key by key
-    against an allowlist.
+    at all, so none of those can reach the JSON without a signature change. The
+    persisted operation names and correlation keys are their **real values**
+    (plan section 5.10, ruling D4): names pass through the operation-name
+    allowlist and keys are bounded text, so neither is a redaction placeholder.
+    ``correlation_mode`` is always one of the two persisted modes, and the
+    ``retry`` mapping is re-serialized key by key against an allowlist.
     """
     if correlation_mode not in (
         GraphQLOperationCorrelationMode.EXPLICIT_KEY,
@@ -1604,8 +1624,9 @@ def build_request_metadata_json(
         rendered_name = render_operation_name(name)
         if rendered_name is None:
             other_key_members.append(_metadata_text(name))
-        # The operation name is this adapter's own; the correlation key itself is
-        # caller-supplied and stays on the redacting renderer.
+        # Names and keys are persisted as their real values; the correlation key
+        # is itself an operation name (plan section 5.10), so both are bounded
+        # text and neither is a redaction placeholder.
         keys[rendered_name or _metadata_text(name)] = (
             None if key is None else _metadata_text(key)
         )
@@ -1701,7 +1722,8 @@ class EnrichmentResult:
 
 @dataclass(frozen=True, slots=True)
 class EnrichmentObservationDraft:
-    """A pre-record value: the ``EnrichmentObservationRecord`` field set minus ``run_id``.
+    """A pre-record value: the ``EnrichmentObservationRecord`` field set minus
+    ``run_id``.
 
     Chunk 5 does not persist. :meth:`to_record` is the only conversion and it
     performs a field-for-field copy: it never substitutes a default, so a failed
@@ -2369,7 +2391,9 @@ def execute_graphql_batch(
         raise TypeError("transport must be callable")
     if not callable(sleep):
         raise TypeError("sleep must be callable")
-    if isinstance(policy.max_attempts, bool) or not isinstance(policy.max_attempts, int):
+    if isinstance(policy.max_attempts, bool) or not isinstance(
+        policy.max_attempts, int
+    ):
         raise TypeError("policy.max_attempts must be an integer")
     if policy.max_attempts < 1:
         raise ValueError("policy.max_attempts must be at least 1")

@@ -97,6 +97,11 @@ build against it without reading source.
   are §12.6 item 2 below. **The code was not changed in this dispatch** — this is a
   plan record, not a completed fix — so §8's E7 text still reads its pre-ruling
   wording and §12.6 item 2 is gate work through bullets 1–6 (§12.6 item 2(f)).
+  **Correction landed (recorded 2026-09-19).** The pre-wave record above is
+  **superseded**: `"state"` was removed from `PRODUCT_DETAIL_REQUIRED_MEMBERS`
+  and E7 was corrected in the same unit, and the id-alias classification order
+  was corrected in a later unit. §12.6 item 2 carries the landed status
+  records.
 - **Identity-mismatch handling, in full.** The returned aliases are compared with
   the requested canonical identity through Chunk 1's primitive, the mismatch is
   recorded as a flag plus a redacted reason, and the affected result's scored
@@ -120,6 +125,10 @@ build against it without reading source.
   correlation keys too, so `request_metadata_json` does **not** carry the real
   values §5.10's own table requires at `:1080-1081`; the correction is §12.6 item 3
   and has **not** been applied in this dispatch.
+  **Correction landed (recorded 2026-09-19).** The pre-wave record above is
+  **superseded**: `build_request_metadata_json` now persists the real operation
+  names and correlation keys, with credential-capable inputs still redacted;
+  §12.6 item 3 is the ruling it implements.
 - Failure isolation: a per-identity protocol failure produces a typed failed result
   and never raises out of the adapter in a way that aborts unrelated identities
   (LREQ-NFR-030, adapter portion).
@@ -2878,6 +2887,21 @@ implementation that items 6–8's own corrections already anticipated in kind.
      chunk-13 references are to the *chunk*, never to a filename: they name Chunk 13 as
      `LREQ-TST-040`/`LREQ-TST-080`/`LREQ-NFR-060`'s owner and defer the validator widening
      to it. **No fix applied — did not reproduce.**
+
+   - **(corrected 2026-09-19: the `tests/test_identity.py` figures in this item are
+     superseded.)** The three `LREQ-GQL-070` adapter-level nodes added by Chunk 5
+     landed in `tests/test_identity.py` --
+     `test_correlated_product_detail_reports_alias_mismatch`,
+     `test_missing_returned_identity_is_not_an_implicit_match`, and
+     `test_adapter_mismatch_is_a_flag_not_a_metric_exclusion` -- so that file now
+     holds **29 marked nodes, 29 marker occurrences, 29
+     `tests/traceability.json` entries** (re-counted from the artifact; units:
+     distinct node objects, full decorator lines, top-level JSON keys). The `26`
+     figures recorded earlier in this item describe the pre-extension file and are
+     **superseded** by `29/29/29`; the `{1: 26}` markers-per-node distribution is
+     superseded by `{1: 29}`, and the 8-distinct-LREQ-ID count is unchanged
+     because no new LREQ ID was added. No other count in this item and no existing
+     text is altered.
 
 ### 12.3 Scoped omissions (deliberately out of scope; owned by no chunk or by another)
 

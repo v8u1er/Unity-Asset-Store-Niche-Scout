@@ -2,53 +2,53 @@
 
 from .collector_coveo import *  # noqa: F401, F403
 from .collector_graphql import (
-    DEFAULT_BACKOFF_BASE_SECONDS,
-    DEFAULT_BACKOFF_MAX_SECONDS,
-    DEFAULT_BACKOFF_MULTIPLIER,
-    DEFAULT_MAX_ATTEMPTS,
-    DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
-    GRAPHQL_BATCH_ENDPOINT,
-    GRAPHQL_CSRF_HEADER_NAME,
-    GRAPHQL_OPERATION_NAMES,
-    GRAPHQL_REQUEST_HEADERS,
-    PERMANENT_HTTP_STATUSES,
-    PRODUCT_DETAIL_ALIAS_MEMBERS,
-    PRODUCT_DETAIL_NUMERIC_MEMBER_TYPES,
-    PRODUCT_DETAIL_OPERATION_NAME,
-    PRODUCT_DETAIL_REQUIRED_MEMBERS,
-    PRODUCT_PAGE_VIEWS_OPERATION_NAME,
-    PRODUCT_PAGE_VIEWS_PAYLOAD_SHAPE,
-    REQUEST_METADATA_REQUIRED_KEYS,
-    RETRYABLE_HTTP_STATUSES,
-    EnrichmentObservationDraft,
-    EnrichmentResult,
-    GraphQLBatchRequest,
-    GraphQLBatchResponse,
-    GraphQLCorrelationDisposition,
-    GraphQLCorrelationResult,
-    GraphQLFailureClass,
-    GraphQLOperation,
-    GraphQLOperationCorrelationMatch,
-    GraphQLOperationResult,
-    GraphQLOperationValidation,
-    GraphQLRetryPolicy,
-    GraphQLTransport,
-    PageViewValue,
-    ProductDetailFields,
-    annotate_product_detail_identity,
-    build_enrichment_observation_draft,
-    build_graphql_batch_request,
-    build_graphql_headers,
-    build_product_detail_operation,
-    build_product_page_views_operation,
-    build_request_metadata_json,
-    correlate_operations,
-    enrich_asset,
-    execute_graphql_batch,
-    extract_operation_correlation_key,
-    header_name_in,
-    is_retryable,
-    retry_delay_seconds,
-    validate_page_views_payload,
-    validate_product_detail_payload,
-)  # noqa: F401
+    DEFAULT_BACKOFF_BASE_SECONDS,  # noqa: F401
+    DEFAULT_BACKOFF_MAX_SECONDS,  # noqa: F401
+    DEFAULT_BACKOFF_MULTIPLIER,  # noqa: F401
+    DEFAULT_MAX_ATTEMPTS,  # noqa: F401
+    DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,  # noqa: F401
+    GRAPHQL_BATCH_ENDPOINT,  # noqa: F401
+    GRAPHQL_CSRF_HEADER_NAME,  # noqa: F401
+    GRAPHQL_OPERATION_NAMES,  # noqa: F401
+    GRAPHQL_REQUEST_HEADERS,  # noqa: F401
+    PERMANENT_HTTP_STATUSES,  # noqa: F401
+    PRODUCT_DETAIL_ALIAS_MEMBERS,  # noqa: F401
+    PRODUCT_DETAIL_NUMERIC_MEMBER_TYPES,  # noqa: F401
+    PRODUCT_DETAIL_OPERATION_NAME,  # noqa: F401
+    PRODUCT_DETAIL_REQUIRED_MEMBERS,  # noqa: F401
+    PRODUCT_PAGE_VIEWS_OPERATION_NAME,  # noqa: F401
+    PRODUCT_PAGE_VIEWS_PAYLOAD_SHAPE,  # noqa: F401
+    REQUEST_METADATA_REQUIRED_KEYS,  # noqa: F401
+    RETRYABLE_HTTP_STATUSES,  # noqa: F401
+    EnrichmentObservationDraft,  # noqa: F401
+    EnrichmentResult,  # noqa: F401
+    GraphQLBatchRequest,  # noqa: F401
+    GraphQLBatchResponse,  # noqa: F401
+    GraphQLCorrelationDisposition,  # noqa: F401
+    GraphQLCorrelationResult,  # noqa: F401
+    GraphQLFailureClass,  # noqa: F401
+    GraphQLOperation,  # noqa: F401
+    GraphQLOperationCorrelationMatch,  # noqa: F401
+    GraphQLOperationResult,  # noqa: F401
+    GraphQLOperationValidation,  # noqa: F401
+    GraphQLRetryPolicy,  # noqa: F401
+    GraphQLTransport,  # noqa: F401
+    PageViewValue,  # noqa: F401
+    ProductDetailFields,  # noqa: F401
+    annotate_product_detail_identity,  # noqa: F401
+    build_enrichment_observation_draft,  # noqa: F401
+    build_graphql_batch_request,  # noqa: F401
+    build_graphql_headers,  # noqa: F401
+    build_product_detail_operation,  # noqa: F401
+    build_product_page_views_operation,  # noqa: F401
+    build_request_metadata_json,  # noqa: F401
+    correlate_operations,  # noqa: F401
+    enrich_asset,  # noqa: F401
+    execute_graphql_batch,  # noqa: F401
+    extract_operation_correlation_key,  # noqa: F401
+    header_name_in,  # noqa: F401
+    is_retryable,  # noqa: F401
+    retry_delay_seconds,  # noqa: F401
+    validate_page_views_payload,  # noqa: F401
+    validate_product_detail_payload,  # noqa: F401
+)
