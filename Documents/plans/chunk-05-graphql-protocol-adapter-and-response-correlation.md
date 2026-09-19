@@ -2004,6 +2004,26 @@ before the wave already asserted. The sentence above is retained as the record o
 the state before the wave; the E7 bullet's "Not applied" note is superseded by the
 "Correction applied" note now carried in that bullet.
 
+**Status (recorded 2026-09-19, later unit): the id-alias classification ORDER did
+need a code correction, and the preceding sentence is superseded on that point.**
+The wave above left one test red:
+`tests/test_collector.py::test_invalid_state_value_and_missing_identity_are_operation_errors`
+failed on its `missing_identity_member_body` case
+(`tests/fixtures/graphql_fixtures.py:770-780`), asserting
+`WRONG_DATA_SHAPE` where `MISSING_IDENTITY` was required. Cause: `id` and
+`productId` stay in `PRODUCT_DETAIL_REQUIRED_MEMBERS` (item 2(f) scopes the member
+deletion to `"state"` only; `Documents/rulings/chunk-05-state-member-ruling.md:534`
+records the same), so a payload that OMITS one alias keeps the identity group in
+`validate_response_shape` saturated and emits `response_missing_required_member`
+instead of `response_missing_identity`; classification then fell to the
+required-member route. LREQ-GQL-040 fixes no order between "wrong data shape" and
+"missing identity", so the fix states the absent-alias fact structurally in
+`validate_product_detail_payload`'s existing identity backstop, which now fires for
+"an alias member was omitted" as well as "no populated alias was returned". Only
+`PRODUCT_DETAIL_ALIAS_MEMBERS` members are covered: every absent non-alias required
+member still classifies as `WRONG_DATA_SHAPE`. No fixture and no test was changed —
+the assertion was correct as written; it is the code that was behind it.
+
 **(g) The tolerance boundary as implemented, so it need not be re-derived.** The
 structural path no longer judges `state` at all: `validate_response_shape`
 (`:1094-1099`) is called with required members that no longer include `state`, so an
