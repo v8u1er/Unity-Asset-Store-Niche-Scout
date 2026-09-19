@@ -2015,24 +2015,53 @@ def test_operation_level_errors_on_http_200_are_operation_errors() -> None:
 
 @pytest.mark.lreq("LREQ-GQL-040")
 def test_null_required_data_and_wrong_data_shape_are_operation_errors() -> None:
-    """``null`` data, a list payload, non-JSON, and an empty body each fail."""
+    """``null`` data, a list payload, non-JSON, and an empty body each fail.
+
+    The four cases do not share one outcome, so each carries its own. The two
+    whole-body failures leave no operation items to correlate at all, so the
+    class applies to both operations; the two body-is-a-batch-that-names-one-
+    malformed-ProductDetail cases fail only the operation whose own payload is
+    at fault, and the sibling stays successful (the same one-sided behavior
+    ``test_operation_level_errors_on_http_200_are_operation_errors`` pins).
+    """
     cases = {
-        "http_200_null_required_data": collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA,
-        "http_200_wrong_data_shape": collector_graphql.GraphQLFailureClass.WRONG_DATA_SHAPE,
-        "http_200_response_not_json": collector_graphql.GraphQLFailureClass.RESPONSE_NOT_JSON,
-        "http_200_empty_body": collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA,
+        "http_200_null_required_data": (
+            collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA,
+            False,
+        ),
+        "http_200_wrong_data_shape": (
+            collector_graphql.GraphQLFailureClass.WRONG_DATA_SHAPE,
+            False,
+        ),
+        "http_200_response_not_json": (
+            collector_graphql.GraphQLFailureClass.RESPONSE_NOT_JSON,
+            True,
+        ),
+        "http_200_empty_body": (
+            collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA,
+            True,
+        ),
     }
-    for case, failure_class in cases.items():
+    for case, (failure_class, whole_body) in cases.items():
         _transport, _sleeper, (result, draft) = gql_exchange(
             [gqlfx.PER_FAILURE_CLASS_RESPONSES[case]]
         )
         assert result.product_detail.status is OperationStatus.ERROR, case
-        assert result.page_views.status is OperationStatus.ERROR, case
         assert result.product_detail.payload is None, case
-        assert draft.product_page_views is None, case
         assert draft.product_detail_error_summary is not None, case
-        if failure_class is collector_graphql.GraphQLFailureClass.RESPONSE_NOT_JSON:
+        if whole_body:
+            # No operation item was decodable, so the class covers both
+            # operations and neither may report success.
+            assert result.page_views.status is OperationStatus.ERROR, case
+            assert result.page_views.failure_class is failure_class, case
+            assert draft.page_views_error_summary is not None, case
+        else:
+            # A one-sided failure: the malformed operation does not drag its
+            # sibling down, so the sibling operation keeps its payload.
             assert result.product_detail.failure_class is failure_class, case
+            assert result.page_views.is_success, case
+            assert draft.product_page_views == 4321, case
+        assert draft.product_page_views is None if whole_body else True, case
 
     # The ProductDetail-specific cases keep their own classes.
     _t1, _s1, (null_product, _d1) = gql_exchange(
