@@ -2281,9 +2281,10 @@ def test_failed_operation_fields_are_none_never_zero() -> None:
         "publisher_json",
         "category_json",
         "state",
-        "product_detail_error_summary",
-        "page_views_error_summary",
     ):
+        # ``product_detail_error_summary``/``page_views_error_summary`` are
+        # deliberately not listed: unlike the draft's data fields, a failed
+        # operation's summary is required to be populated (LREQ-NFR-030).
         assert getattr(draft, field) is None, field
 
     # ``to_record`` is a field-for-field copy: the NULLs survive it.
