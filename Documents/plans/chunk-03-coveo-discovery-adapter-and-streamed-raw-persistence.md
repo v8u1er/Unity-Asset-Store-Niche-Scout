@@ -141,7 +141,7 @@ page into zero assets.
   edit to that module and does not call it. Chunk 5's GraphQL protocol test
   family is also appended to `tests/test_collector.py` — the module §6 lists as
   *this* chunk's new test file — so that file currently holds both chunks'
-  nodes; see the Status footnote at `:4-27`.
+  nodes; see the Status footnote at `:4-47`.
 - **Identity-preflight planning and gating** — Chunk 6A. **Unique enrichment
   and reuse** — Chunk 6B.
 - **`LREQ-EXT-090`'s warning emission and rankability suppression** — Chunk 10
@@ -480,7 +480,7 @@ openers but declare work **Chunk 5 owns**, not this chunk: the first records
 interface values consumed rather than edited, and the other two declare test
 obligations in Chunk 5's files. They are left as they stand in this pass and are
 not a second instruction to edit `collector_graphql.py`; see the Status footnote
-at `:4-27` and the dated correction at `:1676-1709`, which record that their
+at `:4-47` and the dated correction at `:1676-1709`, which record that their
 conversion into this plan's §12 obligation/§6 "Not touched" convention is a
 deferred, separately-committed change.
 
@@ -862,7 +862,7 @@ Copied verbatim from `requirements-dependency-map.md` §Chunk 3 Gate:
 - This chunk completes the Coveo-side integration of the validation primitives from Chunk 1; the primitive contracts alone do not satisfy LREQ-EXT-060 or LREQ-EXT-080.
 
 The six bullets are copied verbatim and are not re-scored here. What this
-section does not say, and what the Status footnote at `:4-27` now states
+section does not say, and what the Status footnote at `:4-47` now states
 instead, is that the suite that was green when this gate was first recorded is
 **not** green at the current working-tree state (6 failed / 140 passed overall;
 6 failed / 47 passed in `tests/test_collector.py`) because six Chunk 5-family
@@ -1756,12 +1756,13 @@ not deleted; the paragraphs above are quoted, not rewritten, and nothing in
   correct citation is `:4-47`. **The earlier draft of this correction asserted
   four such occurrences and also that the footnote "cites itself" at `:4-27`;
   both are wrong** — a substring query over the whole file (unit: occurrences
-  of the literal `:4-27`) returns exactly **3**, at the three lines named
-  above, and none of them is inside the footnote, which contains no `:4-27`
-  string at all. The three occurrences above are `:4-27` occurrences in the
-  current text; the claim that they are *live* prose rather than
-  retained-as-superseded text is this note's own reading of those lines, not a
-  query result.
+  of the literal `:4-27`) returns exactly **11** at revision `5c0aa51`, the
+  three live prose lines named above plus eight inside this note, which quotes
+  the literal deliberately, and none of them is inside the footnote, which
+  contains no `:4-27` string at all. The three live occurrences are `:4-27`
+  occurrences in the current text; the claim that they are *live* prose rather
+  than retained-as-superseded text is this note's own reading of those lines,
+  not a query result.
 - **The dated correction at the end of §12 that the §7 preamble cites as
   `:1676-1709` is actually `:1673-1732`.** The `:1676-1709` range resolves
   inside a *different* correction: `:1676-1683` is the first bullet of the
@@ -1789,9 +1790,9 @@ not deleted; the paragraphs above are quoted, not rewritten, and nothing in
   delta those reports described was independently confirmed to have been
   superseded by committed content, so there is no content to restore.
 - **Re-runnable reads for every locant above.** `grep -c ':4-27'` over this
-  file (unit: occurrences) = 3; `grep -c ':4-47'` = 0, which is an absence of
-  matches and is not evidence that the corrected locant is wrong — the
-  corrected extent was derived by reading `:4-47` and `:48`, not by this query.
+  file (unit: occurrences) = 11 at revision `5c0aa51`; `grep -c ':4-47'` (unit:
+  occurrences) = 4 at revision `5c0aa51`, which counts the live Status-footnote
+  citations as well as this note's own mentions of the corrected locant.
   `:1673`, `:1705`, `:1732`, and `:1734` were each confirmed by reading those
-  lines. The current revision is 1,739 lines (unit: `wc -l`-equivalent line
-  count over the file's newline count).
+  lines. The current revision is 1,798 lines (unit: line count obtained by
+  splitting the file's 1,797 newlines, i.e. `wc -l` = 1,797).
