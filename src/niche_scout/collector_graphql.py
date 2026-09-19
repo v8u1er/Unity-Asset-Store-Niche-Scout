@@ -917,13 +917,17 @@ def correlate_operations(
 
 PRODUCT_DETAIL_ALIAS_MEMBERS: tuple[str, ...] = ("id", "productId")
 
+# ``state`` is deliberately not a member here: it is validated semantically by
+# ``annotate_state_eligibility`` below, where a missing/null value is
+# ``state_unknown`` rather than a structural failure (plan section 12.6 item 2,
+# E10). A present-but-unusable ``state`` still fails as ``INVALID_STATE_VALUE``
+# on the semantic path, not as a missing-member complaint.
 PRODUCT_DETAIL_REQUIRED_MEMBERS: tuple[str, ...] = (
     "id",
     "productId",
     "rating",
     "reviewCount",
     "firstPublishedDate",
-    "state",
     "category",
     "publisher",
 )

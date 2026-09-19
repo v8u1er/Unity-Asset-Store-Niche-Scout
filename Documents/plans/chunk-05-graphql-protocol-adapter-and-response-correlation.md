@@ -1347,14 +1347,19 @@ ownership: the annotated row is *not* silently promoted to a Chunk 5 decision.
   each an operation error for `ProductDetail`; a present non-`"published"` state is
   **not** an operation error — it is `state_excluded`, annotated, and retains the
   asset in discovered breadth (LREQ-GQL-060 annotation half). **Ruled 2026-09-18:
-  this bullet contradicts E10 and §5.8 and the ruling follows them, not E7.** The
-  correction the ruling requires is `§12.6 item 2` — `state` leaves
-  `PRODUCT_DETAIL_REQUIRED_MEMBERS`, so `missing` and `null` `state` stop being
-  operation errors on the structural path, while a **present-but-unusable**
-  (non-string) `state` remains `INVALID_STATE_VALUE` and is unchanged.
-  **Not applied in this dispatch**: the text above still carries its pre-ruling
-  wording, so E7 and E10 remain in contradiction until the §12.6 item 2 change
-  lands.
+  this bullet contradicts E10 and §5.8 and the ruling follows them, not E7.**
+  **Correction applied, Chunk 5 wave (recorded 2026-09-19).** E7 now reads: a
+  `product` present but not an object, a genuinely required member missing, and a
+  **present-but-unusable** (non-string) `state` are each an operation error for
+  `ProductDetail`; a present non-`"published"` state is **not** an operation error
+  — it is `state_excluded`, annotated, and retains the asset in discovered
+  breadth (LREQ-GQL-060 annotation half); and a **missing or null** `state` is
+  **not** an operation error either — it is `state_unknown`, annotated, and
+  retained, because `state` is no longer a member of
+  `PRODUCT_DETAIL_REQUIRED_MEMBERS` (§12.6 item 2; the constant and this bullet
+  changed as one unit, as that item requires). The pre-ruling wording above is
+  retained only as the record of what the ruling superseded; E7 and E10 now
+  agree.
 - **E8 — Partial success retention (LREQ-GQL-050).** A valid `ProductDetail` is
   retained when page views fail and vice versa. Invariants: failed fields are `None`;
   no `0`, `0.0`, `""`, or `False` appears in the pre-record for a failed operation;
@@ -1990,6 +1995,27 @@ Because the ruling changes observable behavior, it is gate work: gate bullets 1�
 §10 are all evaluated on the corrected behavior, and a gate-verifier that finds the
 constant unchanged should fail the gate on bullets 2, 4, and 5 rather than accept the
 plan text as evidence.
+
+**Status (recorded 2026-09-19): the wave landed.** `"state"` was removed from
+`PRODUCT_DETAIL_REQUIRED_MEMBERS` (`src/niche_scout/collector_graphql.py`) and E7
+was corrected in the same unit, as this item requires. No fixture or test needed a
+change: the tolerance boundary below is exactly what the two tests that were red
+before the wave already asserted. The sentence above is retained as the record of
+the state before the wave; the E7 bullet's "Not applied" note is superseded by the
+"Correction applied" note now carried in that bullet.
+
+**(g) The tolerance boundary as implemented, so it need not be re-derived.** The
+structural path no longer judges `state` at all: `validate_response_shape`
+(`:1094-1099`) is called with required members that no longer include `state`, so an
+absent `state` emits no `response_missing_required_member` and a `null` `state` emits
+no `response_null_required_member`. `state` is then read at `:1181-1182` and
+annotated by `annotate_state_eligibility`, whose `state_unknown` covers both. The
+guard at `:1192` (`elif state_annotation.state_unknown and state_value is not None:`)
+is **unchanged and must stay unchanged**: it is what keeps a present-but-unusable
+(non-string) `state` an `invalid_state_value` issue, which
+`_classify_product_detail_failure` (`:1260-1261`) maps to `INVALID_STATE_VALUE`.
+Deleting the `and state_value is not None` clause would silently swallow the
+non-string case and is a regression, not a simplification.
 
 #### 12.6 item 3 — RULED: the metadata must carry real operation names and correlation keys; credential-shaped values stay redacted
 
