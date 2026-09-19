@@ -1,343 +1,166 @@
 ---
-description: Niche Scout project rules — architecture, traceability, and scope discipline for all agents and subagents
-globs:
+description: Niche Scout project rules — normative constraints for all agents and subagents; deduplicated against AGENTS.md
 alwaysApply: true
 ---
 
+Rationale and incident record: `.kilo/project-rules-rationale.md`.
+
 ## Source-of-truth precedence
-1. Documents/SRS-lean.md — normative requirement text. Never paraphrase a
-   requirement from memory; open the file and quote/derive it.
-2. Documents/requirements-dependency-map.md — chunk ownership, gates, edge cases.
-3. Documents/plans/chunk-*.md — the frozen scope contract for one chunk.
-4. Documents/interfaces/chunk-*.md — frozen public contracts from completed chunks.
-Never treat prior chat turns as a source of truth for requirement text,
-interface dependencies, or gate criteria if they conflict with the files
-above — that includes an LREQ list or interface list typed into a dispatch
-message. A chunk identifier is a pointer; the files above are what actually
-define its scope.
+1. `Documents/SRS-lean.md` — normative requirement text. Never paraphrase from
+   memory; open the file and quote or derive it.
+2. `Documents/requirements-dependency-map.md` — chunk ownership, gates, edge cases.
+3. `Documents/plans/chunk-*.md` — the frozen scope contract for one chunk.
+4. `Documents/interfaces/chunk-*.md` — frozen public contracts from completed chunks.
+
+Chat turns, dispatch briefs, and this file are never a source of requirement text,
+interface dependencies, or gate criteria when they conflict with the files above. A
+chunk identifier is a pointer; the files define its scope.
 
 ## Architecture rules (non-negotiable, all chunks)
-- Module boundary is fixed: models.py (typed structures), validation.py
-  (structural/semantic validation primitives), sampling.py (deterministic
-  sampling), metrics.py (eligibility + raw estimators), scoring.py
-  (normalization, score components, evidence, sensitivity). I/O and
-  orchestration live only in collector.py, database.py, pipeline.py,
-  report.py, cli.py.
-- metrics.py and scoring.py must never import sqlite3, network, filesystem,
-  CLI, or system-clock APIs. All time-dependent pure functions take
-  scoring_cutoff_utc as an explicit argument.
-- Null, zero, invalid, and unavailable are distinct states. Never silently
-  convert missing/invalid data to zero.
-- Determinism: same inputs + same policy versions → structurally and
-  numerically equivalent results. No random generators in sampling; no
-  current-time reads in pure code.
+- Module boundary is fixed. Pure: `models.py` (typed structures), `validation.py`
+  (structural/semantic validation primitives), `sampling.py` (deterministic
+  sampling), `metrics.py` (eligibility + raw estimators), `scoring.py`
+  (normalization, score components, evidence, sensitivity). I/O and orchestration
+  only: `collector.py`, `collector_coveo.py`, `collector_graphql.py`,
+  `database.py`, `pipeline.py`, `report.py`, `cli.py`.
+- `metrics.py` and `scoring.py` never import `sqlite3`, network, filesystem, or CLI
+  APIs and never read the clock; `scoring_cutoff_utc` is always an explicit
+  parameter. Purity, missing-not-zero, time, and precision: see `AGENTS.md`
+  "Hard rules" 1–4.
+- Determinism: same inputs + policy versions → equivalent results. No RNG in
+  sampling; no clock reads in pure code.
 
 ## Test traceability (non-negotiable, all chunks)
-- Every analytical test has an explicit `@pytest.mark.lreq("LREQ-....")`
-  marker and a matching entry in tests/traceability.json.
-- Parameterized tests are mapped by their base pytest node ID, not each case.
-- Run `python -m niche_scout.tools.validate_traceability` before declaring any
-  chunk done.
-- Traceability counts (markers, distinct node IDs, matrix entries) are countable
-  claims about existing artifacts; verify them per the counting rule under "Plan
-  review and audit."
+Every analytical test carries `@pytest.mark.lreq("LREQ-....")` and a matching
+`tests/traceability.json` entry; parameterized tests map by base pytest node ID; run
+`python -m niche_scout.tools.validate_traceability` before declaring a chunk done.
+Details: `AGENTS.md` "Tests and quality" and `tests/AGENTS.md`. Traceability counts
+are countable claims — verify per "Plan review and audit".
 
 ## Scope discipline
-- A chunk's frozen plans/chunk-XX.md is the only scope authority for that
-  chunk's implementation. Do not implement behavior that the plan explicitly
-  marks as owned by a different chunk, even if it would be convenient to do
-  so now.
-- If something looks missing or ambiguous, write it to the plan's "Open
-  questions" section (planning tasks) or stop and ask (implementation tasks).
-  Never invent a resolution silently. An open question blocks that plan's
-  freeze until a human resolves it — no team member may clear it on its own.
+- A chunk's frozen `Documents/plans/chunk-XX.md` is the only scope authority for
+  that chunk. Do not implement behavior the plan assigns to another chunk.
+- Missing or ambiguous behavior: write it to the plan's "Open questions" (planning
+  tasks) or stop and ask (implementation tasks). An open question blocks the plan's
+  freeze until a human resolves it; no agent clears it alone.
 
 ## File discipline
-- Only touch files listed in the active chunk's plan under "Files touched."
-  If you believe another file must change, stop and flag it instead of
-  editing it.
-- Growth inside a file you are already authorized to touch is in scope, but a file
-  crossing the thresholds in "File size and concern boundaries" is a report item,
-  not a silent continuation and not a mid-task split.
+- Touch only files in the active chunk's plan §6 "Files touched." If another file
+  must change, stop and flag it instead of editing it.
+- Growth inside an authorized file is in scope; crossing a threshold in "File size
+  and concern boundaries" is a report item, not a silent continuation and not a
+  mid-task split.
 
 ## File size and concern boundaries
 
-These are review triggers, not gates. Crossing a threshold never blocks a
-chunk, never fails a Definition of Done bullet, and never justifies a split
-that changes a frozen interface, a pytest node ID, or a `tests/traceability.json`
-entry. The trigger's only output is a note in the implementing agent's report
-plus a proposed split boundary. A split is a scope decision for a human or a
-plan, not something an agent performs mid-task to satisfy a counter.
+Review triggers, not gates. Crossing a threshold never blocks a chunk, never fails a
+Definition of Done bullet, and never justifies a split that changes a frozen
+interface, a pytest node ID, or a `tests/traceability.json` entry. Output: a note
+plus a proposed split boundary in the implementer's (`impl-fast`/`impl-deep`)
+report; a split is a scope decision for a human or a plan.
 
-- Test files: when a test file crosses roughly 800–1,000 lines, chunk-implementer
-  notes it in its report and proposes a split along **requirement-cluster
-  boundaries** — the clusters the LREQ ownership matrix and the file's own
-  `@pytest.mark.lreq` markers already distinguish — never a mechanical "file A /
-  file B" cut. Existing examples of the shape a split should take:
-  `tests/test_identity.py` separates candidate collection/canonicalization
-  (`LREQ-EXT-060`) from agreement/conflict/unresolved resolution (`LREQ-EXT-070`).
-  A split SHALL NOT duplicate or rename a pytest node ID; existing
-  `tests/traceability.json` entries SHALL stay byte-identical for every node whose
-  behavior is unchanged, and any node that moves keeps its ID and gains a
-  traceability path update in the same change.
-- Fixtures are data, not logic. Golden vectors, parametrized tables, and captured
-  response bodies belong in `tests/fixtures/*.py` (the existing convention:
-  `config_fixtures`, `coveo_discovery`, `graphql_fixtures`, `validation_fixtures`,
-  re-exported by `tests/fixtures/__init__.py`). Moving them there shrinks the file
-  an agent must reason about without touching test logic, and a largely inert data
-  module is allowed to be long — length alone is not a reason to split one.
-- Source files: no line count is a violation. This project's module-boundary rule
-  already states the real boundary, so a source file that grows far beyond its
-  peers is a signal to check *structure*, not length: does it import something the
-  boundary forbids, is it performing two named modules' jobs, or has a function
-  accreted unrelated responsibilities? A structural boundary violation is caught
-  by the module-boundary and import-boundary rules and is reported as such; it
-  SHALL NOT be reported as "the file is too long."
-- This section does not apply to files the rule is not about: frozen plans,
-  interface files, the SRS, `tests/traceability.json`, and
-  `tests/fixtures/*.py` data modules are exempt. A long frozen document is a
-  documentation-shape question, not a code-responsibility one.
+- Test files at roughly 800–1,000 lines: propose a split along requirement-cluster
+  boundaries (the clusters the LREQ ownership matrix and the file's own
+  `@pytest.mark.lreq` markers distinguish), never a mechanical "file A / file B"
+  cut. A split SHALL NOT duplicate or rename a pytest node ID; unchanged nodes keep
+  byte-identical `tests/traceability.json` entries, and a moved node keeps its ID
+  and gains a traceability path update in the same change.
+- Fixtures are data, not logic: golden vectors, parametrized tables, and captured
+  response bodies belong in `tests/fixtures/*.py`; an inert data module may be long.
+- Source files: no line count is a violation. A file far larger than its peers is a
+  signal to check structure (forbidden imports, two named modules' jobs, accreted
+  responsibilities), reported as a boundary violation, never as "too long."
+- Exempt: frozen plans, interface files, the SRS, `tests/traceability.json`, and
+  `tests/fixtures/*.py`.
 
 ## Temporary scripts and scratch space
-- The ONLY sanctioned location for throwaway scripts, probes, and temporary
-  output is `.scratch/` at the repository root. Never write to `%TEMP%`,
-  `$env:TEMP`, `AppData`, `C:\Windows\Temp`, or any other path outside this
-  repository, and never ask the user for permission to do so — use `.scratch/`.
-- Prefer `python -c` or an inline run for a one-liner. If a file is genuinely
-  needed, create `.scratch/<task-or-chunk>-<purpose>.py` (see
-  `.scratch/README.md` for naming and header conventions).
-- Scratch scripts import the package by running from the repository root
-  (`python .scratch/<name>.py`) with `src` on `PYTHONPATH` (e.g.
-  `$env:PYTHONPATH = "src"; python .scratch/<name>.py`). Do not add new
-  packaging or path shims for scratch code.
-- `.scratch/*` is git-ignored and is not part of any deliverable. Scratch code
-  is never referenced by `src/`, `tests/`, or `Documents/`.
-- Delete each scratch file in the same task that created it, unless the user
-  explicitly asks for it to be kept.
-- Never place product databases, fixtures used by `tests/`, or copies of
-  frozen plan/interface/SRS text in `.scratch/`.
-- No diagnostic or exploratory probe SHALL name a real artifact path as its
-  source or as its destination. A probe that tests whether a destructive flag is
-  refused, tests overwrite semantics, or tests a move SHALL name a scratch
-  source and a scratch destination, both under `.scratch/`. A real plan,
-  interface, source, test, or fixture path is never the probe's input, its
-  target, or its output. This rule is not weakened by the probe's purpose: on
-  this project a probe that tested `Move-Item -Force` semantics against a real
-  plan file destroyed that file. The probe succeeded — `-Force` was not
-  refused — and the artifact was the casualty, which is exactly why a probe's
-  value never justifies pointing it at something not reproducible.
-- A single-copy uncommitted delta of more than roughly a few hundred lines SHALL
-  be committed as a DRAFT/WIP snapshot as soon as it is noticed, whether or not
-  its content is finished. (Adopted 2026-09-19.) Completeness is not a
-  precondition for a snapshot commit: replicating the delta into git costs
-  nothing and takes one command, while the alternative — holding it uncommitted
-  on one copy — has already caused one irreversible loss on this project, where
-  six working-tree hunks existed in no other form and could not be restored from
-  anywhere. A document that self-declares DRAFT makes the snapshot an accurate
-  record of its actual state rather than a premature claim of readiness, so
-  finishing the work is not a reason to wait and amending or superseding the
-  snapshot once the work finishes is a normal follow-on commit, not a redo.
-  This rule sits with the scratch-space rules because it governs the same
-  exposure the probe-path rule above was written against — a valuable artifact
-  surviving on exactly one copy — and a scratch-space probe is one of the ways
-  that copy is lost.
+- Throwaway scripts, probes, and temporary output go only in `.scratch/` at the
+  repository root; never write outside the repository. Naming, header, running, and
+  cleanup: `.scratch/README.md`.
+- No probe SHALL name a real artifact path as its source or destination. Use a
+  scratch source and a scratch destination under `.scratch/`; a real plan,
+  interface, source, test, or fixture path is never a probe's input, target, or
+  output, whatever the probe's purpose.
+- A single-copy uncommitted delta above roughly a few hundred lines SHALL be
+  committed as a DRAFT/WIP snapshot as soon as noticed, finished or not. Commit a
+  file before any write against it: `git diff` describes a change but cannot restore
+  a deleted hunk.
 
 ## Chunk pipeline auto-chaining
-When Project mode runs a chunk's pipeline (plan-writer → plan-reviewer →
-chunk-implementer → gate-verifier) as one wave, chain automatically between
-members — don't pause for confirmation on the happy path. But if any
-member's report contains one of the following, stop the chain immediately,
-do not attempt to resolve it yourself or reroute it to a different member,
-and relay the member's report to the user in full:
-- plan-reviewer leaving Status as DRAFT, for any reason (a failed audit
-  check or an unresolved open question).
-- chunk-implementer reporting a file outside the plan's "Files touched," or
-  a requirement whose behavior is ambiguous even after reading the cited
-  SRS text.
-- gate-verifier reporting any Definition of Done bullet as FAIL.
+Chain automatically between stages when `chunk-lead` dispatches `chunk-planner`,
+`test-author`, `impl-fast`/`impl-deep`, `spec-reviewer`; do not pause on the happy
+path. Stop immediately, do not reroute, and relay the member's report to the user in
+full when:
+- `chunk-planner` returns `QUESTIONS`/`BLOCKED` or leaves a plan at DRAFT (failed
+  audit check or unresolved open question);
+- `impl-fast`/`impl-deep` reports a file outside the plan's "Files touched," or a
+  requirement ambiguous even after reading the cited SRS text;
+- `spec-reviewer` reports a Blocker or Major surviving the allowed fix rounds.
+
 These are deliberate human checkpoints, not implementation gaps.
 
 ## Plan review and audit
-- Counting is part of auditing. Any statement in a plan or an audit report that
-  asserts a countable property of an existing artifact — node, marker, line,
-  entry, table-row, or symbol count — SHALL be verified by querying that
-  artifact, never by cross-reading the plan or any other document. A count
-  asserted in a document is not evidence about the artifact.
-- The audit report SHALL state how it counted, not merely that it counted. It
-  SHALL distinguish at minimum: distinct identifiers (node IDs, LREQ IDs) from
-  occurrences (marker lines, matches); table rows from line numbers; 1-based
-  line numbers from newline or trailing-newline counts; and matches against real
-  code from matches against prose, docstrings, comments, or test-file headers.
-- The report SHALL label every factual claim as quoted from a source (opened and
-  read) or counted in a source (queried, method named), and SHALL label a claim
-  that is neither as unverified. An unverified claim SHALL NOT be certified
-  correct because an earlier pass agreed with it.
-- Agreement between passes is not verification. Repetition of a number from an
-  earlier document is not evidence for it; only a count of the artifact is.
-- No agent SHALL dispatch or perform a write or edit against a repository path
-  whose working-tree delta is uncommitted and has no second copy. Commit the
-  file first. A pending change survives on exactly one copy, so any later
-  operation that destroys the working-tree file destroys the change with it;
-  `git diff` output is a description of what changed, not a copy of the changed
-  content, and cannot restore a deleted hunk. On this project six uncommitted
-  hunks — a 68-line/6-line working-tree delta — were lost this way, and they
-  could not be restored because no copy existed anywhere. A commit is what makes
-  the delta recoverable, so it belongs before the edit, not after it.
-- The fix scope for a propagated citation is the full transmission path, not the
-  origin point. (Adopted 2026-09-19.) When a locant, name, or claim is found to
-  be wrong and other text relies on it, correcting the point where it was born
-  is not the fix: an agent SHALL trace FORWARD from the false citation to every
-  place that cited it or relied on it, and correct each of those too. A
-  downstream reader absorbs the wrong fact secondhand from the citing text even
-  after the origin has been repaired, so a correction that stops at the origin
-  leaves the defect live and merely hides its source. On this project a single
-  mis-derived count propagated into a plan, an interface file, and a dispatch
-  brief before anyone followed it forward; the origin was fixed first and the
-  inherited copies kept circulating.
-- This section applies to any task that authors or audits a countable claim,
-  including in-flight dispatches.
-- Any count that is written into a frozen document — a plan, an interface file,
-  or a rule file — SHALL be accompanied, in the report the document is drawn
-  from, by the anchored enumeration that produced it: the exact query, quoted
-  so it can be re-run verbatim; the row or match count that query returned; the
-  matched lines themselves, or for a long list the full list of line numbers
-  plus enough verbatim text to identify each; the arithmetic reconciliation
-  when the total is composed of parts, every matched line assigned to exactly
-  one category with the addition shown; and an explicit statement of which unit
-  each number is — distinct identifiers from occurrences; table rows from line
-  numbers; decorator lines from substring matches; real code from prose,
-  docstrings, comments, or headers. A number that arrives without its
-  enumeration has not been audited, however it was labeled.
-- A number is not verified by being agreed with. A second reviewer that has not
-  re-run the query has not verified the count and SHALL NOT present agreement
-  as confirmation. Where a claim about an artifact is checkable by opening or
-  querying that artifact, a reviewer that did not do so SHALL label the claim
-  unverified rather than pass it.
-- A record is not neutral history. A transcript, todo list, or working note that
-  contains both a claim and a prior refutation of that claim SHALL NOT be read
-  as settled: the refutation SHALL be surfaced at the point where the claim is
-  next dispatched or acted on, not merely left present upstream. A
-  completed-but-wrong item sitting unflagged next to its own correction
-  re-enters circulation, because an agent reading the list sees a completed item
-  as decided. The failure is distinct from never having checked — the check was
-  performed and recorded, and the record was not then consulted. When briefing
-  or reviewing work, a lead SHALL state, for each fact it asserts, whether that
-  fact has already been refuted anywhere in its own record, and SHALL surface
-  the refutation rather than restate the original claim. Where a claim and its
-  refutation coexist in one list, the refutation SHALL be the operative entry.
+- A statement asserting a countable property of an existing artifact — node,
+  marker, line, entry, table-row, or symbol count — SHALL be verified by querying
+  that artifact, never by cross-reading the plan or another document.
+- State how you counted, and distinguish: distinct identifiers from occurrences;
+  table rows from line numbers; 1-based line numbers from newline counts; matches in
+  real code from matches in prose, docstrings, comments, or headers.
+- Label every factual claim quoted (opened and read), counted (queried, method
+  named), or unverified. Agreement between passes is not verification; a reviewer
+  that did not re-run the query labels the count unverified rather than passing it.
+- A count written into a frozen document (plan, interface, or rule file) SHALL ship,
+  in the report it is drawn from, with its anchored enumeration: the exact query
+  quoted so it can be re-run verbatim; the row or match count it returned; the
+  matched lines, or the full list of line numbers plus identifying text; the
+  arithmetic reconciliation when the total is composed of parts, every matched line
+  in exactly one category with the addition shown; and the unit of each number.
+- Dispatch briefs propagate. A lead asserting a fact in a brief SHALL ground it the
+  same way it requires of the report it receives, and SHALL state which claims are
+  read, counted, or unverified.
+- A record is not neutral history: where a claim and a prior refutation coexist,
+  surface the refutation where the claim is next dispatched or acted on; it is the
+  operative entry, and a completed-but-wrong item SHALL NOT be read as settled.
+- The fix scope for a propagated citation is the full forward transmission path, not
+  the origin: trace forward to every place that cited or relied on a wrong locant,
+  name, or claim and correct each one.
+- Applies to any task that authors or audits a countable claim, including in-flight
+  dispatches.
 
 ## Verification of existence, change, and content
-- Any claim about whether something EXISTS, was CHANGED, or CONTAINS specific
-  text SHALL be backed by an actual read of that content. A search result, a
-  search tool's return value, or the absence of a match is not a read and SHALL
-  NOT be offered as evidence of existence, of change, or of content.
-- The absence of a match is not evidence of absence. A search that returns
-  nothing supports no claim beyond the search having returned nothing; an agent
-  SHALL NOT record such a result as a finding that a file, section, line, or
-  symbol does not exist.
-- Metadata is not content. A diff hunk header, a filename, a path, a directory
-  listing, a cross-reference, a commit subject, and a citation in another
-  document each state something about an artifact without stating what the
-  artifact says. None of them SHALL be reported as the artifact's contents, and
-  none SHALL be quoted as if it had been read.
-- Where a claim is checkable by opening or querying the artifact, an agent that
-  did not do so SHALL label the claim unverified. An unverified claim is not
-  verified by being repeated from an earlier document, an earlier dispatch, or
-  an earlier agent's report.
-- Tool output is not self-authenticating. A search tool can return a value that
-  does not mean what it appears to mean — a `-SimpleMatch`-style flag silently
-  ignored, a result column printing a different field than the one queried, a
-  count of raw substring matches that includes prose, docstrings, comments, or
-  headers. When a tool's output is the sole basis for a claim, the agent SHALL
-  state which tool produced it, SHALL state what the returned value actually
-  measures, and SHALL NOT treat a zero or a total as conclusive without a
-  second, differently-shaped query that would fail if the first result were
-  wrong. Where the tool's own semantics are the uncertainty, the second query
-  SHALL NOT be the same tool with the same flags.
-- A claim asserted in a dispatch brief propagates. A subagent cannot see the
-  conversation that produced its brief, so a false premise in that brief will be
-  returned in the subagent's report as though the brief were a source. A lead
-  that asserts a fact in a brief SHALL ground that assertion the same way it
-  requires of the report receiving it, and SHALL state in the brief which claims
-  are read, which are counted, and which are unverified.
-- The failure these rules address has one shape: inferring an artifact's content
-  or existence from a tool's metadata instead of opening and reading the region
-  in question. Five observed instances, compressed:
-  1. A search for a specific line missed the word "Caveat" in that line, and the
-     miss was recorded as "no such caveat exists" — the caveat paragraph was
-     present and bolded in the file.
-  2. A subagent inferred a "Dated correction block" from a `git diff` hunk
-     header and reported it as file content; no such block existed.
-  3. A directory listing run from the wrong working directory returned empty,
-     and the emptiness was recorded as "that directory was not pulled into the
-     repo" — the directory existed with two files in it.
-  4. A section header was quoted from memory instead of read, the actual file
-     said something different, and the remembered header was stated as the
-     REASON for a placement decision that happened to be correct anyway.
-  5. A `git status` listing and a `git diff --numstat` listing were compared, a
-     discrepancy was recorded between them and labeled as counted, and a
-     programmatic set comparison later proved the two lists one-to-one
-     identical. The disagreement did not exist; it had been inferred from the
-     shape of the two outputs, and it propagated into a later report because it
-     sat in a dispatch brief.
+- A claim that something exists, was changed, or contains specific text SHALL be
+  backed by an actual read. A search result, a tool's return value, or the absence
+  of a match is not a read.
+- The absence of a match is not evidence of absence; a search returning nothing
+  supports only that the search returned nothing.
+- Metadata is not content: a diff hunk header, filename, path, directory listing,
+  cross-reference, commit subject, or citation states something about an artifact,
+  not what the artifact says. None SHALL be reported or quoted as its contents.
+- Where a claim is checkable by opening or querying the artifact, an agent that did
+  not do so SHALL label it unverified; repetition from an earlier document,
+  dispatch, or report does not verify it.
+- Tool output is not self-authenticating: state which tool produced a value and what
+  it measures, and treat a zero or a total as inconclusive without a second,
+  differently-shaped query that would fail if the first were wrong. Where the tool's
+  own semantics are the uncertainty, do not repeat the same tool with the same flags.
 
 ## Extracting git objects for comparison
-- Any extraction of a git object — a blob, a tree, or a file revision — for the
-  purpose of comparing it against a working-tree file SHALL use a byte-exact
-  method. An extractor that is not byte-exact does not produce a copy of the
-  artifact; it produces a new document that differs from the artifact in ways
-  that have nothing to do with the question being asked.
-- Forbidden extraction methods. Each is forbidden because it rewrites the
-  bytes, not because it is merely unfashionable:
-  - Text-mode redirection of git output in PowerShell — `git show ... > file`,
-    `Out-File -Encoding utf8`, `Set-Content`, and any `| Out-File` pipeline —
-    is FORBIDDEN. It is LOSSY: it rewrites LF line endings to CRLF and
-    prepends a UTF-8 BOM. MEASURED on this repository: a 118,618-byte blob
-    became 121,865 bytes under `Out-File -Encoding utf8`, and the
-    transformation MANUFACTURED a non-empty diff between HEAD and the working
-    tree where the two were in fact identical.
-  - PowerShell's `>` redirection operator, which in some configurations
-    defaults to UTF-16, mangles non-ASCII content outright rather than merely
-    changing its line endings.
-- Consequence. A diff produced from a lossily-extracted copy is not evidence
-  about the artifact, because part of the diff is an artifact of the extractor.
-  A phantom diff of this shape can invent a divergence between two copies of a
-  document that does not exist — the same failure the section above prohibits:
-  recording a discrepancy that was inferred from tooling rather than read from
-  the artifact. A phantom diff is worse than no comparison, because it arrives
-  as a finding and is then cited as one.
-- Required discipline. Use a byte-exact extraction: `git hash-object` for an
-  identity comparison, `git diff --no-index` between two real paths, or a
-  byte-exact write. Where identity is the actual question, compare object IDs
-  or hashes rather than file text — a hash answers the identity question
-  directly and cannot be perturbed by encoding, line-ending, or BOM drift.
-- Declaring the extraction method. Any dispatch brief that asks a member to
-  diff a git object against a working-tree file SHALL state which extraction
-  method is to be used, and the resulting report SHALL state which method was
-  actually used. This puts a phantom-diff cause in the report, where it can be
-  seen, instead of leaving it to surface as an unexplained disagreement between
-  two numbers.
-- Same class as the isolated-index defect. A stale index entry that produced
-  the appearance of a three-way document disagreement and a lossy extraction
-  that produced a phantom diff are the same defect: a tooling artifact
-  masquerading as a content finding. Both were fixed permanently rather than
-  by a remembered caution, and this section is the permanent fix for the
-  second.
-- Naming the two endpoints of a delta. Any report of a line-count or content
-  delta SHALL state which two specific revisions or states it is comparing. A
-  delta between two states is not interchangeable with a delta between two
-  other states. In particular, "HEAD vs working tree" — a line-count difference
-  between a commit and the current file — SHALL NOT be reported as "committed vs
-  uncommitted," the size of a pending change, and a clean HEAD SHALL NOT be
-  reported as a clean working tree. The number means nothing without its two
-  endpoints named.
-  - Basis. On this project a ~369-line figure was reported as an uncommitted
-    single-copy exposure when the measured uncommitted delta was 75 lines across
-    3 files; the difference was a HEAD-to-worktree line-count delta being
-    reported as a pending-change delta. The rule fired correctly — a snapshot
-    was warranted — but the exposure was overstated roughly 5x. The same
-    conflation appeared earlier as a clean HEAD being repeated as a clean
-    working tree. These are the same defect this section already prohibits:
-    recording a discrepancy inferred from tooling, or from the shape of a
-    measurement, rather than measured from the artifact with its endpoints
-    named.
+- Extraction of a git object (blob, tree, or file revision) for comparison against a
+  working-tree file SHALL be byte-exact; a non-byte-exact extractor yields a new
+  document, not a copy.
+- Forbidden, because each rewrites the bytes: text-mode redirection of git output in
+  PowerShell (`git show ... > file`, `Out-File -Encoding utf8`, `Set-Content`, any
+  `| Out-File`) — lossy; it rewrites LF to CRLF and prepends a UTF-8 BOM — and
+  PowerShell's `>` operator, which can default to UTF-16 and mangle non-ASCII
+  content.
+- A diff from a lossily-extracted copy is not evidence; part of it is an artifact of
+  the extractor. A phantom diff is worse than none, because it arrives as a finding
+  and is then cited as one.
+- Required methods: `git hash-object` for identity, `git diff --no-index` between
+  two real paths, or a byte-exact write. Where identity is the question, compare
+  hashes, not file text.
+- A dispatch brief asking for a git-object diff SHALL name the extraction method; the
+  report SHALL state which method was used.
+- Any line-count or content delta SHALL name the two revisions or states compared. A
+  HEAD-to-worktree line-count delta SHALL NOT be reported as "committed vs
+  uncommitted," a pending-change size, or a dirty working tree.
