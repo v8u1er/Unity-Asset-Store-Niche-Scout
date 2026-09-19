@@ -1,7 +1,7 @@
 ---
 description: Implements one planned chunk that has real logic (identity, sampling, metrics, scoring, pipeline, adapters) with tests. Thinking model.
 mode: subagent
-model: deepseek-compat/flash-think
+model: nano-gpt/deepseek/deepseek-v4.1-flash:thinking
 color: "#059669"
 steps: 100
 permission:

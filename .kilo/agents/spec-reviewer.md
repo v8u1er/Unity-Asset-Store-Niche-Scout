@@ -1,7 +1,7 @@
 ---
 description: Independent, read-only review of a chunk's code and tests against the SRS and plan. Returns VERDICT PASS or FAIL with ranked findings.
 mode: subagent
-model: deepseek-compat/flash-max
+model: nano-gpt/deepseek/deepseek-v4.1-flash:thinking
 color: "#F59E0B"
 steps: 40
 permission:

@@ -1,7 +1,7 @@
 ---
 description: Implements one planned chunk of straightforward work (scaffolding, persistence, rendering, CLI) with tests. Fast, non-thinking model.
 mode: subagent
-model: deepseek-compat/flash
+model: nano-gpt/deepseek/deepseek-v4.1-flash
 color: "#10B981"
 steps: 80
 permission:

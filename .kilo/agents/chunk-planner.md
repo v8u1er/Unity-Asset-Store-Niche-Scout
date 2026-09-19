@@ -1,7 +1,7 @@
 ---
 description: Plans one implementation chunk from the SRS and dependency map and writes the plan file. Writes only plan and interface docs, never code.
 mode: subagent
-model: deepseek-compat/flash-think
+model: nano-gpt/deepseek/deepseek-v4.1-flash:thinking
 color: "#3B82F6"
 steps: 40
 permission:

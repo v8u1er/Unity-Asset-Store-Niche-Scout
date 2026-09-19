@@ -1,7 +1,7 @@
 ---
 description: Runs an implementation chunk end to end by dispatching planner, test-author, implementer and reviewer subagents. Say "do chunk 4A".
 mode: primary
-model: deepseek-compat/flash
+model: nano-gpt/deepseek/deepseek-v4.1-flash
 color: "#8B5CF6"
 permission:
   task:

@@ -1,7 +1,7 @@
 ---
 description: Writes tests and golden vectors for a chunk from the SRS and plan, before and independently of the implementation. Edits only under tests/.
 mode: subagent
-model: deepseek-compat/flash-think
+model: nano-gpt/deepseek/deepseek-v4.1-flash:thinking
 color: "#EC4899"
 steps: 50
 permission:
