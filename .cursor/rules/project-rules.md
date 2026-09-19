@@ -168,6 +168,17 @@ These are deliberate human checkpoints, not implementation gaps.
   hunks — a 68-line/6-line working-tree delta — were lost this way, and they
   could not be restored because no copy existed anywhere. A commit is what makes
   the delta recoverable, so it belongs before the edit, not after it.
+- The fix scope for a propagated citation is the full transmission path, not the
+  origin point. (Adopted 2026-09-19.) When a locant, name, or claim is found to
+  be wrong and other text relies on it, correcting the point where it was born
+  is not the fix: an agent SHALL trace FORWARD from the false citation to every
+  place that cited it or relied on it, and correct each of those too. A
+  downstream reader absorbs the wrong fact secondhand from the citing text even
+  after the origin has been repaired, so a correction that stops at the origin
+  leaves the defect live and merely hides its source. On this project a single
+  mis-derived count propagated into a plan, an interface file, and a dispatch
+  brief before anyone followed it forward; the origin was fixed first and the
+  inherited copies kept circulating.
 - This section applies to any task that authors or audits a countable claim,
   including in-flight dispatches.
 - Any count that is written into a frozen document — a plan, an interface file,
