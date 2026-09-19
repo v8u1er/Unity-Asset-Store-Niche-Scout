@@ -323,3 +323,21 @@ These are deliberate human checkpoints, not implementation gaps.
   masquerading as a content finding. Both were fixed permanently rather than
   by a remembered caution, and this section is the permanent fix for the
   second.
+- Naming the two endpoints of a delta. Any report of a line-count or content
+  delta SHALL state which two specific revisions or states it is comparing. A
+  delta between two states is not interchangeable with a delta between two
+  other states. In particular, "HEAD vs working tree" — a line-count difference
+  between a commit and the current file — SHALL NOT be reported as "committed vs
+  uncommitted," the size of a pending change, and a clean HEAD SHALL NOT be
+  reported as a clean working tree. The number means nothing without its two
+  endpoints named.
+  - Basis. On this project a ~369-line figure was reported as an uncommitted
+    single-copy exposure when the measured uncommitted delta was 75 lines across
+    3 files; the difference was a HEAD-to-worktree line-count delta being
+    reported as a pending-change delta. The rule fired correctly — a snapshot
+    was warranted — but the exposure was overstated roughly 5x. The same
+    conflation appeared earlier as a clean HEAD being repeated as a clean
+    working tree. These are the same defect this section already prohibits:
+    recording a discrepancy inferred from tooling, or from the shape of a
+    measurement, rather than measured from the artifact with its endpoints
+    named.
