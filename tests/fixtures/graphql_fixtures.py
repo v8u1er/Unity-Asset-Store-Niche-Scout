@@ -984,6 +984,12 @@ class _RecordingTransportBase:
         #: The status each queued response declared, per call.
         self.statuses_declared: list[int] = []
 
+    def _record(self, request: Any, headers: Mapping[str, str]) -> tuple[Any, Mapping[str, str]]:
+        """Record one ``(request, headers)`` call pair, in call order."""
+        pair = (request, headers)
+        self.calls.append(pair)
+        return pair
+
     @property
     def call_count(self) -> int:
         """Return how many times the transport was called."""
@@ -1057,7 +1063,7 @@ class RecordingTransport(_RecordingTransportBase):
 
     def __call__(self, request: Any, headers: Mapping[str, str]) -> gql.GraphQLBatchResponse:
         """Return the next queued response, or raise the next queued exception."""
-        self.calls.append((request, headers))
+        self._record(request, headers)
         return self._materialize(self._next())
 
 
@@ -1072,7 +1078,7 @@ class RecordingTransportStatusOverride(_RecordingTransportBase):
 
     def __call__(self, request: Any, headers: Mapping[str, str]) -> gql.GraphQLBatchResponse:
         """Return the next queued response with the forced effective status."""
-        self.calls.append((request, headers))
+        self._record(request, headers)
         return self._materialize(self._next())
 
 

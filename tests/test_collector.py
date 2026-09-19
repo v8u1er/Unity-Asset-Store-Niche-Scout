@@ -1483,6 +1483,20 @@ def gql_exchange(
     return transport, sleeper, outcome
 
 
+def gql_exchange_keyword_transport(responses: Sequence[object], **kwargs: Any):
+    """Run one ``enrich_asset`` exchange against a recording fake transport.
+
+    The keyword-form twin of :func:`gql_exchange`, kept as its own helper for the
+    node that asserts the adapter's whole public surface is one identity wide.
+    "Keyword" names the *fixture's* transport: the adapter's own scope-widening
+    argument form would have to be a keyword argument on ``enrich_asset``, and
+    this helper drives the exchange that way so the assertion is not made through
+    a positional call. Returns ``gql_exchange``'s ``(transport, sleeper,
+    (result, draft))`` triple.
+    """
+    return gql_exchange(responses, **kwargs)
+
+
 def gql_request_objects(body_json: str) -> tuple[Any, ...]:
     """Return a request body's operation objects as a tuple."""
     decoded = json.loads(body_json)

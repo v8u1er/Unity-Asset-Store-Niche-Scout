@@ -1179,7 +1179,11 @@ def validate_product_detail_payload(
         identity_comparison=None,
     )
 
-    failure_class = _classify_product_detail_failure(issues, missing_identity)
+    failure_class = _classify_product_detail_failure(
+        issues,
+        missing_identity,
+        identity_usable=(graphql_id is not None or product_id is not None),
+    )
     return GraphQLOperationValidation(
         is_valid=failure_class is GraphQLFailureClass.NONE,
         failure_class=failure_class,
@@ -1190,11 +1194,24 @@ def validate_product_detail_payload(
 
 
 def _classify_product_detail_failure(
-    issues: Sequence[ValidationIssue], missing_identity: bool
+    issues: Sequence[ValidationIssue],
+    missing_identity: bool,
+    *,
+    identity_usable: bool = True,
 ) -> GraphQLFailureClass:
-    """Map a ``ProductDetail`` payload's issues to its single failure class."""
+    """Map a ``ProductDetail`` payload's issues to its single failure class.
+
+    ``LREQ-GQL-040`` lists "wrong data shape" and "missing identity" as peer
+    operation errors and fixes no order between them, so a payload that
+    qualifies as both is resolved toward the one the SRS names specifically:
+    *no usable identity alias at all* is a missing identity first, and only then
+    a shape complaint. ``identity_usable`` carries that fact, so an absent
+    required alias (``response_missing_required_member``) does not mask a
+    ``MISSING_IDENTITY`` verdict. A payload whose identity is usable and whose
+    shape is not is still ``WRONG_DATA_SHAPE``.
+    """
     codes = {issue.code for issue in issues}
-    if missing_identity or "response_missing_identity" in codes:
+    if missing_identity or "response_missing_identity" in codes or not identity_usable:
         return GraphQLFailureClass.MISSING_IDENTITY
     if "invalid_state_value" in codes:
         return GraphQLFailureClass.INVALID_STATE_VALUE
@@ -1985,6 +2002,32 @@ def _build_result_from_items(
             payload = item
 
         if operation_name == PRODUCT_DETAIL_OPERATION_NAME:
+            # A ProductDetail item carries bare data (its own top level is the
+            # payload) or the batch envelope, not the envelope keys
+            # ``_operation_level_errors`` reads. An absent ``data`` member under
+            # that envelope is the keyless twin of a JSON ``null``: both mean no
+            # payload was returned, so both are ``NULL_REQUIRED_DATA``
+            # (LREQ-GQL-040: "null required data ... SHALL be recorded as an
+            # operation error") rather than a wrong container kind.
+            if _is_operation_envelope(item) and _operation_data(item)[0] is None:
+                operation_results.append(
+                    _failed_operation_result(
+                        operation_name,
+                        GraphQLFailureClass.NULL_REQUIRED_DATA,
+                        correlation_key=correlation_key,
+                        mode=correlation.mode,
+                        issues=(
+                            _issue(
+                                "response_null_required_member",
+                                "the operation returned null data; a null value is "
+                                "unavailable and is not substituted with a default",
+                                member="data",
+                                field="data",
+                            ),
+                        ),
+                    )
+                )
+                continue
             validation = validate_product_detail_payload(payload)
             if not validation.is_valid or validation.product_detail is None:
                 operation_results.append(
