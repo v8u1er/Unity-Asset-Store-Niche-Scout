@@ -475,14 +475,34 @@ verbatim and never computes or rewrites them (§12.11).
 
 ## 7. Task breakdown
 
-Three boxes in this list — `:590`, `:603`, and `:626` — carry open `- [ ]`
-openers but declare work **Chunk 5 owns**, not this chunk: the first records
-interface values consumed rather than edited, and the other two declare test
-obligations in Chunk 5's files. They are left as they stand in this pass and are
-not a second instruction to edit `collector_graphql.py`; see the Status footnote
-at `:4-47` and the dated correction at `:1676-1709`, which record that their
-conversion into this plan's §12 obligation/§6 "Not touched" convention is a
-deferred, separately-committed change.
+Three boxes in this list carry open `- [ ]` openers but declare work **Chunk 5
+owns**, not this chunk: the first records interface values consumed rather than
+edited, and the other two declare test obligations in Chunk 5's files. All three
+are named here by their bolded lead-in rather than by a line number — the
+identity-mapping-rule constant (`IDENTITY_MAPPING_RULE_VERSION = "1.0.1"`), the
+`PRODUCT_DETAIL_REQUIRED_MEMBERS` ruling, and the node-6 metadata test — because
+a line number written here is invalidated by any later insertion above this list,
+which is a defect this paragraph's own earlier drafts kept re-introducing. They
+are left as they stand in this pass and are not a second instruction to edit
+`collector_graphql.py`; see the Status footnote at `:4-47` and the dated
+correction headed "**Dated correction — the Status region was amended to carry a
+footnote, so that `VERIFIED` stops reading as a green-suite claim (recorded
+2026-09-18).**", whose "**What is recorded, and where.**" sub-bullet is the
+record this sentence means (that sub-bullet itself names these three `- [ ]`
+boxes and states that their conversion into this plan's §12 obligation/§6 "Not
+touched" convention is a deferred, separately-committed change). Both anchors
+above are cited by their heading text, not by a locant, so they survive an
+insertion anywhere in this file. **The following are superseded prior figures,
+retained as history and not citable:** the three box locants were `:590`,
+`:603`, and `:626` at revision `9772018`, then `:587`, `:600`, and `:623` after
+this pass's first two edits; and the dated correction the sentence above cites
+was headed at `:1705` with its `What is recorded, and where.` sub-bullet
+spanning `:1718-1733` when this paragraph's earlier draft resolved it — all nine
+figures were measured above this pass's third edit and the file has grown since,
+so every one of them is a superseded prior state rather than a citation. None of
+them is kept as a way of locating anything below this paragraph; §12's record of
+the same figures keeps the text, and the anchors the sentence above uses are its
+heading quotations.
 
 - [ ] Declare the module's frozen constants: endpoint + organization id,
   `COVEO_TEMPLATE_PATH`, `COVEO_VISITOR_ID_PLACEHOLDER`, the required header set
@@ -1722,10 +1742,12 @@ correction; this entry records that it was made and why.
   after this edit as six verbatim gate bullets followed by a four-line
   non-scoring note recording that they were not re-scored.
 - **What is recorded, and where.** This entry is the kind §12's preamble
-  describes at `:920-946`: an entry that adds notation to the record without
-  closing a scope question. The §7 defect flagged alongside this correction —
-  three `- [ ]` boxes at `:590`, `:603`, and `:626` describing work in Chunk 5's
-  files, which this plan's own convention would put in §12 and §6 instead — is
+  describes in §12's own framing of an entry that adds notation to the record
+  without closing a scope question. The §7 defect flagged alongside this
+  correction — three `- [ ]` boxes describing work in Chunk 5's
+  files (the incoming `IDENTITY_MAPPING_RULE_VERSION` value, the
+  `PRODUCT_DETAIL_REQUIRED_MEMBERS` ruling, and the node-6 metadata test), which
+  this plan's own convention would put in §12 and §6 instead — is
   **not** part of this correction, by the same ruling: it is deferred and
   travels in its own commit. No source file, test, fixture, `traceability.json`
   entry, or §10 bullet is touched by this entry; the only file this correction
@@ -1747,13 +1769,14 @@ not deleted; the paragraphs above are quoted, not rewritten, and nothing in
 
 - **The Status footnote's extent is `:4-47`; the earlier locant `:4-27` was
   stale.** Three live paragraphs cite the footnote as `:4-27` — the exclusion
-  list at `:144`, the §7 preamble at `:483`, and the §10 preamble at `:865`.
-  Read now, the footnote opens at `:4` and its last line is `:47` ("documents
+  list above §7, the §7 preamble, and the §10 preamble. Read now, the footnote
+  opens at `:4` and its last line is `:47` ("documents
   the exact suite composition that produced it."); `:48` is
   `Published contract:`, the next front-matter field. The footnote grew past
   `:27` at the 2026-09-18 correction pass that the footnote's own second line
   records, so `:4-27` now ends mid-sentence rather than at a boundary. The
-  correct citation is `:4-47`. **The earlier draft of this correction asserted
+  correct citation is the four-line status-footnote region itself, or `:4-47`
+  dated 2026-09-19. **The earlier draft of this correction asserted
   four such occurrences and also that the footnote "cites itself" at `:4-27`;
   both are wrong** — a substring query over the whole file (unit: occurrences
   of the literal `:4-27`) returns exactly **11** at revision `5c0aa51`, the
@@ -1762,37 +1785,80 @@ not deleted; the paragraphs above are quoted, not rewritten, and nothing in
   contains no `:4-27` string at all. The three live occurrences are `:4-27`
   occurrences in the current text; the claim that they are *live* prose rather
   than retained-as-superseded text is this note's own reading of those lines,
-  not a query result.
+  not a query result (this note's first bullet re-derives the occurrences it
+  names, since two of them sat below this note at revision `9772018` and no
+  figure is asserted here from that revision's count).
 - **The dated correction at the end of §12 that the §7 preamble cites as
-  `:1676-1709` is actually `:1673-1732`.** The `:1676-1709` range resolves
-  inside a *different* correction: `:1676-1683` is the first bullet of the
-  entry headed at `:1673` ("**Dated corrections — two locant/name errors in
-  this plan's own review reasoning (recorded 2026-09-18; the earlier text is
-  quoted, not deleted).**"), and `:1705` is the hard-wrapped last line of that
+  `:1676-1709` is actually the entry headed "**Dated correction — the Status
+  region was amended to carry a footnote, so that `VERIFIED` stops reading as a
+  green-suite claim (recorded 2026-09-18).**".** The `:1676-1709` range resolves
+  inside a *different* correction: it opens inside the first bullet of the entry
+  headed "**Dated corrections — two locant/name errors in this plan's own review
+  reasoning (recorded 2026-09-18; the earlier text is quoted, not deleted).**",
+  and its `:1709` end is the hard-wrapped last line of that
   entry's second bullet — the citation therefore stops one line short of the
   entry it names. The block the §7 preamble *describes* — the entry that
   records "their conversion into this plan's §12 obligation/§6 'Not touched'
   convention is a deferred, separately-committed change" — is the entry headed
-  at `:1705` ("**Dated correction — the Status region was amended to carry a
+  "**Dated correction — the Status region was amended to carry a
   footnote, so that `VERIFIED` stops reading as a green-suite claim (recorded
-  2026-09-18).**"), which runs to `:1732` and is followed by the unnumbered
-  placement paragraph at `:1734-1738`. The correct citation is `:1705-1732`.
+  2026-09-18).**", which runs through its three bullets and is followed by the
+  unnumbered placement paragraph ("**Placement, and why this entry is
+  unnumbered.**"). Two
+  locants measured before this note's own edits — `:1673`, the entry that
+  range opens inside, and `:1705`, the entry the §7 preamble means and which was
+  at that time the heading line of the Status-region correction — are retained
+  as superseded figures only, not as citations. The correct citation is the
+  entry's heading text, quoted above.
   Two further candidate ranges proposed during the same review are also
-  recorded and rejected here: `:1724-1730` is a sub-bullet of the `:1705` entry
-  (the deferred-§7 paragraph, not the entry), and `:1750-1794` lies past this
-  file's end (its last line is `:1739`).
+  recorded and rejected here: the sub-bullet whose bolded lead-in reads
+  "**`Status: VERIFIED` was retained
+  deliberately, not by inattention.**" is a sub-bullet of the Status-region
+  entry (the deferred-§7 paragraph, not the entry), and the range `:1750-1794`
+  proposed in the same review lies past this file's end (**superseded
+  2026-09-19: this bullet previously asserted, as a
+  live claim about this document, both that the range `:1750-1794` lies past this
+  file's end and that its last line is `:1739`. Both were measured at an earlier
+  revision and the document grew past them when this note was appended, so both
+  are retained as superseded prior states, not live claims. Read now, the
+  document's last line is `:1864`, which also supersedes the `:1798` figure this
+  note's own first draft supplied in place of `:1739`; the last line is best
+  re-derived by reading the file's final line rather than by trusting any figure
+  here, since appending this very note moves it. The comparison this bullet
+  makes is unaffected and still holds: the rejected range lies within this file,
+  not past its end, whichever of the three last-line figures is used.**).
 - **Two locants reported in the earlier investigation are not present in this
   document at all** and are recorded here only so a later reader does not
-  re-import them as citations: a sub-bullet at `:1785-1788` (past this file's
-  end) and the commit hash `6ea65ce`. Both were reported by an earlier
-  investigation and are **not** present in this document. No content behind
+  re-import them as citations: a sub-bullet at `:1785-1788` (**superseded
+  2026-09-19: this bullet previously asserted that `:1785-1788` lies past this
+  file's end. Re-derived by reading, that range is live and in range now.
+  The earlier report that put a sub-bullet there is still correct in locating a
+  sub-bullet in that region; what was wrong, and is corrected here, is the claim
+  that the locant does not exist in this document — the file's extent grew below
+  it during this pass's own edits, after that figure was measured**) and the
+  commit hash `6ea65ce` (**this half is unaffected by that correction: the hash
+  is not present in this document's text, which is a claim this bullet already
+  states below and not a past-this-file's-end claim**). Both were reported by an
+  earlier investigation and are **not** present in this document. No content behind
   them is recorded here as lost, recovered, or reconstructed: the working-tree
   delta those reports described was independently confirmed to have been
   superseded by committed content, so there is no content to restore.
 - **Re-runnable reads for every locant above.** `grep -c ':4-27'` over this
   file (unit: occurrences) = 11 at revision `5c0aa51`; `grep -c ':4-47'` (unit:
   occurrences) = 4 at revision `5c0aa51`, which counts the live Status-footnote
-  citations as well as this note's own mentions of the corrected locant.
-  `:1673`, `:1705`, `:1732`, and `:1734` were each confirmed by reading those
-  lines. The current revision is 1,798 lines (unit: line count obtained by
-  splitting the file's 1,797 newlines, i.e. `wc -l` = 1,797).
+  citations as well as this note's own mentions of the corrected locant. The
+  four-line status-footnote region the footnote's first bullet pins (its first
+  line, its last line, and the line after it) and the placement paragraph named
+  in the second bullet were each confirmed by reading those lines. The current
+  revision is 1,864 lines (counted 2026-09-19 after this
+  pass's edits: `(Get-Content <path>).Count` → 1,864, and the file's raw LF
+  byte count → 1,864 with 0 CR bytes; corrected 2026-09-19: this sentence
+  previously read "1,798 lines (unit: line count obtained by splitting the
+  file's 1,797 newlines, i.e. `wc -l` = 1,797)", the figure measured before
+  this pass's edits and after the revision that last set it; that retained
+  figure is a superseded prior state, not a live claim. The `1,813` and `1,824`
+  figures two earlier drafts of this pass carried are likewise superseded.
+  Neither is a
+  citation: any figure here is invalidated by an insertion above it, so the
+  document's extent SHALL be re-derived by reading its final line, and no
+  count in this sentence is used as a locant).
