@@ -35,7 +35,7 @@ import hashlib
 import json
 import math
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
@@ -67,6 +67,7 @@ __all__ = (
     "PRODUCT_DETAIL_OPERATION_NAME",
     "PRODUCT_PAGE_VIEWS_OPERATION_NAME",
     "GRAPHQL_OPERATION_NAMES",
+    "CORRELATION_KEY_MEMBERS",
     "GRAPHQL_BATCH_ENDPOINT",
     "GRAPHQL_CSRF_HEADER_NAME",
     "GRAPHQL_REQUEST_HEADERS",
@@ -596,6 +597,12 @@ _ADDITIONAL_CORRELATION_KEY_MEMBERS: tuple[str, ...] = (
     "correlationKey",
 )
 
+#: Every correlation-key member this adapter accepts, in look-up order.
+CORRELATION_KEY_MEMBERS: tuple[str, ...] = (
+    "operationName",
+    *_ADDITIONAL_CORRELATION_KEY_MEMBERS,
+)
+
 
 def extract_operation_correlation_key(item: object) -> str | None:
     """Return the explicit correlation key an item carries, else ``None``.
@@ -614,6 +621,16 @@ def extract_operation_correlation_key(item: object) -> str | None:
         if isinstance(value, str) and value.strip() != "":
             return value
     return None
+
+
+def _correlation_key_member_of(item: object) -> str:
+    """Return which accepted member supplied ``item``'s correlation key."""
+    if isinstance(item, Mapping):
+        for member in CORRELATION_KEY_MEMBERS:
+            value = item.get(member)
+            if isinstance(value, str) and value.strip() != "":
+                return member
+    return "operationName"
 
 
 def additional_correlation_key_names(item: object) -> tuple[str, ...]:
@@ -639,7 +656,14 @@ class GraphQLOperationCorrelationMatch:
 
 @dataclass(frozen=True, slots=True)
 class GraphQLCorrelationResult:
-    """The correlation outcome for one response: per-operation matches plus issues."""
+    """The correlation outcome for one response: per-operation matches plus issues.
+
+    ``correlation_members`` records which correlation-key member supplied each
+    operation's key: ``"operationName"``, or one of the additional members. A key
+    drawn from an additional member is response-derived and is therefore not one
+    of this adapter's own operation names, so metadata never persists it as a
+    name.
+    """
 
     mode: GraphQLOperationCorrelationMode
     is_fully_correlated: bool
@@ -647,17 +671,31 @@ class GraphQLCorrelationResult:
     matches: tuple[GraphQLOperationCorrelationMatch, ...]
     issues: tuple[ValidationIssue, ...]
     unassociated_item_indexes: tuple[int, ...]
+    correlation_members: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def correlation_keys(self) -> Mapping[str, str | None]:
-        """Return ``{operation_name: correlation_key or None}`` for metadata."""
+        """Return ``{operation_name: correlation_key or None}`` for metadata.
+
+        A key read from an additional member is replaced by that member's name
+        from the frozen ``CORRELATION_KEY_MEMBERS`` vocabulary, so the persisted
+        entry reports which member correlated without echoing response text.
+        """
+        others = {name: () for name in CORRELATION_KEY_MEMBERS}
         return MappingProxyType(
             {
                 match.operation_name: (
-                    match.correlation_key
-                    if match.failure_class is GraphQLFailureClass.NONE
+                    (
+                        self.correlation_members.get(match.operation_name)
+                        if self.correlation_members.get(match.operation_name)
+                        in others
+                        else None
+                    )
+                    if match.correlation_key is not None
                     else None
                 )
+                if match.failure_class is GraphQLFailureClass.NONE
+                else None
                 for match in self.matches
             }
         )
@@ -676,9 +714,11 @@ def _correlate_by_explicit_key(
     operation_names: tuple[str, str],
     issues: list[ValidationIssue],
     unassociated: list[int],
+    members: dict[str, str],
 ) -> None:
     """Assign one item per operation by explicit key, never by position."""
     keyed_items: dict[str, int] = {}
+    keyed_members: dict[str, str] = {}
     duplicate_keys: set[str] = set()
     for index, item in enumerate(response_items):
         key = extract_operation_correlation_key(item)
@@ -691,6 +731,7 @@ def _correlate_by_explicit_key(
             duplicate_keys.add(key)
             continue
         keyed_items[key] = index
+        keyed_members[key] = _correlation_key_member_of(item)
 
     if not response_items:
         issues.append(
@@ -734,6 +775,7 @@ def _correlate_by_explicit_key(
             )
             continue
         if operation_name in keyed_items:
+            members[operation_name] = keyed_members.get(operation_name, "operationName")
             matches[position] = replace(
                 match,
                 item_index=keyed_items[operation_name],
@@ -835,10 +877,11 @@ def correlate_operations(
     ]
     issues: list[ValidationIssue] = []
     unassociated: list[int] = []
+    members: dict[str, str] = {}
 
     if active_mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY:
         _correlate_by_explicit_key(
-            matches, items, operation_names, issues, unassociated
+            matches, items, operation_names, issues, unassociated, members
         )
     else:
         _correlate_by_validated_position(matches, items, issues, unassociated)
@@ -864,6 +907,7 @@ def correlate_operations(
         matches=resolved,
         issues=tuple(issues),
         unassociated_item_indexes=tuple(sorted(set(unassociated))),
+        correlation_members=MappingProxyType(dict(members)),
     )
 
 
@@ -1442,6 +1486,26 @@ def _metadata_text(value: object, *, max_chars: int = _METADATA_MAX_TEXT_CHARS) 
     return redact_value(str(value))[:max_chars]
 
 
+def render_operation_name(name: object) -> str | None:
+    """Return ``name`` verbatim when it is one of this adapter's own operations.
+
+    ``operation_names`` are not caller-supplied: they are the fixed names this
+    adapter issues (``GRAPHQL_OPERATION_NAMES``). Persisting them verbatim is
+    what makes a stored ``request_metadata_json`` auditable, and it cannot leak
+    a credential because membership is decided by equality against that frozen
+    allowlist -- nothing is passed through on the strength of its shape.
+
+    Any value that is not exactly one of the allowlisted names returns ``None``
+    and is therefore never emitted: an unrecognized name is dropped rather than
+    rendered, so no caller-supplied string reaches the metadata as a name. The
+    caller-supplied ``correlation_keys`` and ``additional_correlation_keys``
+    stay on :func:`_metadata_text`, which redacts unconditionally.
+    """
+    if isinstance(name, str) and name in GRAPHQL_OPERATION_NAMES:
+        return name[: _METADATA_MAX_TEXT_CHARS]
+    return None
+
+
 def _metadata_int(value: object) -> int | None:
     """Return ``value`` when it is a genuine integer, else ``None``."""
     if isinstance(value, bool) or not isinstance(value, int):
@@ -1496,13 +1560,16 @@ def build_request_metadata_json(
     response_sha256: str | None,
     retry_metadata: Mapping[str, object],
     additional_correlation_keys: Mapping[str, Sequence[str]] | None = None,
+    correlation_key_members: Sequence[str] = (),
 ) -> str:
     """Build the redacted ``request_metadata_json`` payload for one identity.
 
     The signature accepts no credential, header-value, cookie, or body parameter
     at all, so none of those can reach the JSON without a signature change.
-    ``correlation_mode`` is always one of the two persisted modes, and the
-    ``retry`` mapping is re-serialized key by key against an allowlist.
+    allowlist, so the persisted names are this adapter's own operations and
+    never a caller-supplied string. ``correlation_mode`` is always one of the
+    two persisted modes, and the ``retry`` mapping is re-serialized key by key
+    against an allowlist.
     """
     if correlation_mode not in (
         GraphQLOperationCorrelationMode.EXPLICIT_KEY,
@@ -1515,34 +1582,60 @@ def build_request_metadata_json(
     if not isinstance(response_sha256, (str, type(None))):
         raise TypeError("response_sha256 must be a hex string or None")
 
-    names = [_metadata_text(name) for name in operation_names]
+    names = [
+        rendered
+        for rendered in (render_operation_name(name) for name in operation_names)
+        if rendered is not None
+    ]
     keys: dict[str, str | None] = {}
+    other_key_members: list[str] = []
     for name, key in correlation_keys.items():
-        keys[_metadata_text(name)] = None if key is None else _metadata_text(key)
+        rendered_name = render_operation_name(name)
+        if rendered_name is None:
+            other_key_members.append(_metadata_text(name))
+        # The operation name is this adapter's own; the correlation key itself is
+        # caller-supplied and stays on the redacting renderer.
+        keys[rendered_name or _metadata_text(name)] = (
+            None if key is None else _metadata_text(key)
+        )
 
     extra: dict[str, list[str]] = {name: [] for name in names}
     if additional_correlation_keys is not None:
         for name, members in additional_correlation_keys.items():
-            rendered_name = _metadata_text(name)
-            rendered_members = [
-                _metadata_text(member)
-                for member in (members if isinstance(members, (list, tuple)) else [])
-            ]
+            rendered_name = render_operation_name(name)
+            if rendered_name is None:
+                rendered_name = _metadata_text(name)
             extra.setdefault(rendered_name, [])
-            for member in rendered_members:
-                if member not in extra[rendered_name]:
-                    extra[rendered_name].append(member)
+            for member in members if isinstance(members, (list, tuple)) else []:
+                rendered_member = _metadata_text(member)
+                if rendered_member not in extra[rendered_name]:
+                    extra[rendered_name].append(rendered_member)
 
     status = _metadata_int(http_status)
-    payload = {
+    payload: dict[str, Any] = {
         "operation_names": names,
         "correlation_keys": keys,
-        "additional_correlation_keys": extra,
         "correlation_mode": correlation_mode.value,
         "http_status": status,
         "response_sha256": response_sha256,
         "retry": _allowlisted_retry_metadata(retry_metadata),
     }
+    if additional_correlation_keys is not None:
+        payload["additional_correlation_keys"] = extra
+    if other_key_members:
+        # The item's correlation key came from a member other than
+        # ``operationName``, so the operation name here is response-derived and is
+        # reported by member name only. ``CORRELATION_KEY_MEMBERS`` is this
+        # adapter's frozen vocabulary, so only those names are ever emitted.
+        payload["correlation_key_members"] = other_key_members
+    if correlation_key_members:
+        payload["correlation_key_members"] = sorted(
+            {
+                member
+                for member in correlation_key_members
+                if member in CORRELATION_KEY_MEMBERS and member != "operationName"
+            }
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
@@ -1696,6 +1789,13 @@ def build_enrichment_observation_draft(
         pass
 
     names = tuple(match.operation_name for match in result.correlation.matches)
+    correlation_members = sorted(
+        {
+            member
+            for operation_name, member in result.correlation.correlation_members.items()
+            if operation_name in names and member != "operationName"
+        }
+    )
     request_metadata_json = build_request_metadata_json(
         operation_names=names,
         correlation_keys=result.correlation.correlation_keys,
@@ -1706,6 +1806,7 @@ def build_enrichment_observation_draft(
         additional_correlation_keys=_additional_correlation_keys_by_operation(
             result, names
         ),
+        correlation_key_members=tuple(correlation_members),
     )
 
     return EnrichmentObservationDraft(
