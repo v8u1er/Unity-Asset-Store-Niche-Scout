@@ -1128,7 +1128,14 @@ def validate_product_detail_payload(
     )
     graphql_id = _usable_string(payload.get("id"))
     product_id = _usable_string(payload.get("productId"))
-    if not missing_identity and graphql_id is None and product_id is None:
+    # ``response_missing_required_member`` fires for an ABSENT member, but the
+    # identity group check in ``validate_response_shape`` stays silent for it: one
+    # omitted alias leaves the group saturated. An absent alias is therefore
+    # identity-unusable too, and saying so here lets
+    # ``_classify_product_detail_failure`` reach ``MISSING_IDENTITY`` by the
+    # LREQ-GQL-040 route instead of falling through to the required-member route.
+    absent_alias = any(member not in payload for member in PRODUCT_DETAIL_ALIAS_MEMBERS)
+    if not missing_identity and (absent_alias or (graphql_id is None and product_id is None)):
         issues.append(
             _issue(
                 "response_missing_identity",
