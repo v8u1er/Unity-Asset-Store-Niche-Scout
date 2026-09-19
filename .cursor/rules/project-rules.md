@@ -116,6 +116,16 @@ plan, not something an agent performs mid-task to satisfy a counter.
   explicitly asks for it to be kept.
 - Never place product databases, fixtures used by `tests/`, or copies of
   frozen plan/interface/SRS text in `.scratch/`.
+- No diagnostic or exploratory probe SHALL name a real artifact path as its
+  source or as its destination. A probe that tests whether a destructive flag is
+  refused, tests overwrite semantics, or tests a move SHALL name a scratch
+  source and a scratch destination, both under `.scratch/`. A real plan,
+  interface, source, test, or fixture path is never the probe's input, its
+  target, or its output. This rule is not weakened by the probe's purpose: on
+  this project a probe that tested `Move-Item -Force` semantics against a real
+  plan file destroyed that file. The probe succeeded — `-Force` was not
+  refused — and the artifact was the casualty, which is exactly why a probe's
+  value never justifies pointing it at something not reproducible.
 
 ## Chunk pipeline auto-chaining
 When Project mode runs a chunk's pipeline (plan-writer → plan-reviewer →
@@ -149,6 +159,15 @@ These are deliberate human checkpoints, not implementation gaps.
   correct because an earlier pass agreed with it.
 - Agreement between passes is not verification. Repetition of a number from an
   earlier document is not evidence for it; only a count of the artifact is.
+- No agent SHALL dispatch or perform a write or edit against a repository path
+  whose working-tree delta is uncommitted and has no second copy. Commit the
+  file first. A pending change survives on exactly one copy, so any later
+  operation that destroys the working-tree file destroys the change with it;
+  `git diff` output is a description of what changed, not a copy of the changed
+  content, and cannot restore a deleted hunk. On this project six uncommitted
+  hunks — a 68-line/6-line working-tree delta — were lost this way, and they
+  could not be restored because no copy existed anywhere. A commit is what makes
+  the delta recoverable, so it belongs before the edit, not after it.
 - This section applies to any task that authors or audits a countable claim,
   including in-flight dispatches.
 - Any count that is written into a frozen document — a plan, an interface file,
@@ -168,6 +187,18 @@ These are deliberate human checkpoints, not implementation gaps.
   as confirmation. Where a claim about an artifact is checkable by opening or
   querying that artifact, a reviewer that did not do so SHALL label the claim
   unverified rather than pass it.
+- A record is not neutral history. A transcript, todo list, or working note that
+  contains both a claim and a prior refutation of that claim SHALL NOT be read
+  as settled: the refutation SHALL be surfaced at the point where the claim is
+  next dispatched or acted on, not merely left present upstream. A
+  completed-but-wrong item sitting unflagged next to its own correction
+  re-enters circulation, because an agent reading the list sees a completed item
+  as decided. The failure is distinct from never having checked — the check was
+  performed and recorded, and the record was not then consulted. When briefing
+  or reviewing work, a lead SHALL state, for each fact it asserts, whether that
+  fact has already been refuted anywhere in its own record, and SHALL surface
+  the refutation rather than restate the original claim. Where a claim and its
+  refutation coexist in one list, the refutation SHALL be the operative entry.
 
 ## Verification of existence, change, and content
 - Any claim about whether something EXISTS, was CHANGED, or CONTAINS specific
