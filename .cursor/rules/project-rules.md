@@ -126,6 +126,21 @@ plan, not something an agent performs mid-task to satisfy a counter.
   plan file destroyed that file. The probe succeeded — `-Force` was not
   refused — and the artifact was the casualty, which is exactly why a probe's
   value never justifies pointing it at something not reproducible.
+- A single-copy uncommitted delta of more than roughly a few hundred lines SHALL
+  be committed as a DRAFT/WIP snapshot as soon as it is noticed, whether or not
+  its content is finished. (Adopted 2026-09-19.) Completeness is not a
+  precondition for a snapshot commit: replicating the delta into git costs
+  nothing and takes one command, while the alternative — holding it uncommitted
+  on one copy — has already caused one irreversible loss on this project, where
+  six working-tree hunks existed in no other form and could not be restored from
+  anywhere. A document that self-declares DRAFT makes the snapshot an accurate
+  record of its actual state rather than a premature claim of readiness, so
+  finishing the work is not a reason to wait and amending or superseding the
+  snapshot once the work finishes is a normal follow-on commit, not a redo.
+  This rule sits with the scratch-space rules because it governs the same
+  exposure the probe-path rule above was written against — a valuable artifact
+  surviving on exactly one copy — and a scratch-space probe is one of the ways
+  that copy is lost.
 
 ## Chunk pipeline auto-chaining
 When Project mode runs a chunk's pipeline (plan-writer → plan-reviewer →
