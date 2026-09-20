@@ -144,4 +144,16 @@ ruling left it untouched.
 
 ## Review stage — round 2
 
-Re-dispatched `spec-reviewer` on the fixed tree; awaiting verdict.
+`spec-reviewer` returned **`VERDICT: PASS`**. It independently re-derived the
+round-1 Blocker as refuted (`pytest -q -m lreq` → 34 passed, 1 deselected; the
+three named nodes pass under `-m lreq`; matrix entries match AST marker sets
+exactly), confirmed both Majors fixed, and found no surviving Blocker or Major.
+It also read the full `d987294→57628de` test diff and confirmed no assertion was
+deleted, loosened, or retargeted. Three Minors remain (all outside the chunk or
+cosmetic): (a) the Chunk-0 tool's mislabeled note text at
+`tools/validate_traceability.py:175-178` — outside plan §6 scope, recorded for a
+tooling pass; (b) `sampling.py` docstring citing `SAMPLE_PER_STRATUM` while the
+code compares the `per_stratum_target` parameter (identical at defaults);
+(c) an audit note that `enrichment_identity_keys` has no set-order dependence.
+Reviewer UNVERIFIED `ruff` only because its sandbox denied the command; the lead
+ran it (clean) at round 1 and again after the fix.
