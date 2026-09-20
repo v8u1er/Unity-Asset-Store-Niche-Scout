@@ -262,10 +262,15 @@ def o6_expected_sample_fractions() -> dict[str, float]:
     Census ``N == 3``: every asset is selected, so the SRS §5.1 census rule
     gives exactly ``1.0``.
     Large ``N == 101``: ``SAMPLE_PER_STRATUM == 25`` and the four strata
-    (``1..25``, ``26..50``, ``51..75``, ``76..101``) hold 25/25/25/26 members;
-    the last stratum is reduced and contributes all 26, so
-    ``enriched_sample_count == 25 + 25 + 25 + 26 == 101 - 1 == 100`` and the
-    fraction is exactly ``100 / 101``.
+    (``1..25``, ``26..50``, ``51..75``, ``76..101``) hold 25/25/25/26 assets. The
+    last stratum holds 26 but is not reduced (26 >= 25, LREQ-SMP-090) and
+    contributes 25, so ``enriched_sample_count == 25 + 25 + 25 + 25 == 100`` and
+    the fraction is exactly ``100 / 101``.
+
+    Lead correction 2026-09-20 by human ruling (a): the pre-ruling text said the
+    last stratum "is reduced and contributes all 26" and then wrote the total as
+    ``25 + 25 + 25 + 26 == 100``, which is arithmetically self-contradictory
+    (that sum is 101). The returned values below were already correct.
     """
     return {
         CENSUS_CATEGORY: 1.0,
@@ -300,11 +305,21 @@ def o7_categories() -> dict[str, tuple[dict, ...]]:
 # Fixture O8: per-stratum ``N_h``/``n_h`` and boundaries at ``N == 101``.
 #
 # Derived from SRS §5.1 LREQ-SMP-050: ``start = floor(h*N/4) + 1``,
-# ``end = floor((h+1)*N/4)``, final stratum takes the remainder:
+# ``end = floor((h+1)*N/4)``, final stratum takes the boundary remainder.
+# LREQ-SMP-090 thresholds the reduced case at "fewer than 25 assets", so the
+# 26-asset final stratum is NOT reduced (26 >= SAMPLE_PER_STRATUM) and selects 25
+# (LREQ-SMP-050 "select 25 assets from each stratum"):
 #   h=0: floor(101/4)=25  -> 1..25   (N_h 25, n_h 25)
 #   h=1: floor(202/4)=50  -> 26..50  (N_h 25, n_h 25)
 #   h=2: floor(303/4)=75  -> 51..75  (N_h 25, n_h 25)
-#   h=3: floor(404/4)=101 -> 76..101 (N_h 26, n_h 26, reduced)
+#   h=3: floor(404/4)=101 -> 76..101 (N_h 26, n_h 25, not reduced)
+#
+# Lead correction 2026-09-20 by human ruling (a) on the 4B fixture dispute:
+# the previous h=3 line read "(N_h 26, n_h 26, reduced)" and the table entry was
+# (3, 76, 101, 26, 26). That contradicted LREQ-SMP-050, LREQ-SMP-090's numeric
+# threshold, the frozen 4A interface and engine, the 4A tests, and this module's
+# own o6_expected_selected_counts() == 100. The 4A engine and 4B persistence are
+# correct; only this fixture literal was wrong. No source change.
 # --------------------------------------------------------------------------
 
 #: ``(stratum_index, start, end, N_h, n_h)`` for ``N == 101``.
@@ -312,7 +327,7 @@ O8_EXPECTED_STRATA_N101: tuple[tuple[int, int, int, int, int], ...] = (
     (0, 1, 25, 25, 25),
     (1, 26, 50, 25, 25),
     (2, 51, 75, 25, 25),
-    (3, 76, 101, 26, 26),
+    (3, 76, 101, 26, 25),
 )
 
 

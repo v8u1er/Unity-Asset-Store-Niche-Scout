@@ -622,8 +622,23 @@ Test-first (routing: `impl-deep`; test-author before implementation).
   `discovered_population_count 0`, `sample_fraction None`, `strata == ()`,
   `members == ()`, `stratum_statistics_json == "[]"`.
 - **Fixture O8 — per-stratum N_h/n_h.** `N=101` strata expected
-  `(1,25,25,25)`, `(1,26,50,25)`, `(2,51,75,25)`, `(3,76,101,26)` as
+  `(0,1,25,25,25)`, `(1,26,50,25,25)`, `(2,51,75,25,25)`, `(3,76,101,26,25)` as
   `(stratum_index, start, end, N_h, n_h)`.
+  > **Lead correction applied 2026-09-20 (human ruling (a) on the 4B fixture dispute).**
+  > The pre-ruling text read `(1,25,25,25)`, `(1,26,50,25)`, `(2,51,75,25)`,
+  > `(3,76,101,26)` — malformed (4-tuples labelled as 5 fields) and with the
+  > first entry's stratum index wrong — and it asserted the `N=101` final stratum
+  > `n_h == 26`. That was an imported error. The final stratum holds 26 and is
+  > **not reduced** (26 ≥ `SAMPLE_PER_STRATUM` = 25, SRS §5.1 LREQ-SMP-090, which
+  > thresholds at "fewer than 25"), and LREQ-SMP-050 requires 25 from each
+  > stratum; so `n_h == 25`, `selected_count == 25`, `is_reduced False`
+  > (`sampling.py:412/:414`), total 100 members, `sample_fraction == 100/101`.
+  > This matches §5.2's `n_h == SamplingStratum.selected_count`, the frozen
+  > `Documents/interfaces/chunk-4A.md`, the passing 4A tests, and the sibling
+  > 4B fixture values (`o6_expected_selected_counts` → 100). The frozen fixture
+  > (`tests/fixtures/sampling_persistence_fixtures.py`
+  > `O8_EXPECTED_STRATA_N101` and the `o6_expected_sample_fractions` comment) was
+  > corrected to match. No source, contract, or traceability change.
 - **Fixture O9 — pending JSON vector.** The exact serialized
   `stratum_statistics_json` for the census `N=1` category is
   `[{"N_h":1,"eligibility_rule":null,"n_h":1,"stratum_end_ordinal":1,"stratum_index":0,"stratum_start_ordinal":1,"u_demand_h":null,"u_quality_h":null,"u_recent_h":null,"usable_status":"pending"}]`
