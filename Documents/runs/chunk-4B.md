@@ -141,3 +141,76 @@ ruling (a) corrected it (commit `a02f971`).
 - `Documents/interfaces/chunk-4A.md` does **not** exist (interface dir holds
   chunk-00/01/02/03/05 only); the 4A run log records `GATE: PASSED`
   (`Documents/runs/chunk-4A.md:184`). (read)
+
+### Review stage — round 1: `VERDICT: PASS`
+
+`spec-reviewer` reviewed the additive blocks, the 31 tests, the fixture correction, and the
+plan/interface contracts, independently re-ran the suite, and returned **`VERDICT: PASS`**
+with **no Blocker and no Major**. It confirmed: the six gate bullets hold;
+`upsert_sampling_summary`'s INSERT column list and ON CONFLICT assignment list both exclude
+the category-level `usable_*_sample_count`/`unique_enrichment_count` and every scoring-phase
+column (a genuinely absent row raises `InvalidRecordValueError` for the missing
+`discovery_status` rather than inventing one); `sample_fraction`/`overlap_sample_percentage`
+round-trip as SQL `NULL` for `None`; overlap never inflates an enrichment count;
+`sampling.py` stays pure; the diff is additive-only with no schema/enum/`SCHEMA_VERSION`/
+pragma/signature change; and the ruling-(a) fixture value is consistent with SRS §5.1
+LREQ-SMP-050/090 and `sampling.py:412/:414`.
+
+Reviewer's independent commands: `pytest tests/test_sampling_persistence.py -q` → 31 passed;
+`pytest tests -q` → 216 passed; `validate_traceability` → exit 0. It could not re-run
+`check_import_boundaries` (denied) and labelled that one result UNVERIFIED; the lead re-ran it
+after the review → exit 0.
+
+**Minors (recorded, no fix round — they do not affect the verdict):**
+1. `tests/fixtures/sampling_persistence_fixtures.py:34` re-declares
+   `CENSUS_POPULATION_THRESHOLD = 100` but no node asserts a `≥/≤ 100` boundary against it;
+   the value is a read-only mirror and no requirement is violated.
+2. `test_upsert_sampling_summary_updates_only_sampling_columns` passes
+   `pf.O9_STRATUM_STATISTICS_JSON` as its argument and asserts only non-`None`; the
+   *computed* pending JSON is proven by the round-trip nodes instead.
+
+**Lead UNVERIFIED items resolved after the review:**
+- `check_import_boundaries` → exit 0 (re-run by the lead).
+- Traceability count, independently re-derived from the JSON file rather than read from the
+  tool: `31` keys contain `test_sampling_persistence.py`, all distinct, and every value is
+  exactly `["LREQ-SMP-080"]` (lead query on `tests/traceability.json`).
+- Clock scan: `src/niche_scout/sampling.py` has 0 occurrences of `datetime.now(`/`utcnow(`/
+  `time.time(`; `database.py` has exactly 1, `database.py:928`
+  `applied_at = datetime.now(timezone.utc).isoformat()` — the pre-existing
+  `initialize_schema` metastore bootstrap, present identically at HEAD (lead counted
+  `git show HEAD:src/niche_scout/database.py`), outside the additive 4B block. The 4B public
+  functions read no clock.
+
+### Gate — Chunk 4B
+
+Gate bullets walked one by one from `Documents/requirements-dependency-map.md` §3 Chunk 4B
+(lines 628–635). All commands re-run by the lead on `30cf98b`+ (tree clean at
+`30cf98b`; the gate record is appended after it).
+
+| Gate bullet | Result | Evidence |
+|---|---|---|
+| 1. Every selected sample has a persisted membership or reproducible digest | PASS | `persist_run_sampling` writes one `sample_members` row per 4A member through `upsert_sample_members`; `test_persist_writes_one_membership_per_selected_member` (O6: 3 + 100 rows) and `test_persisted_digest_is_reproducible` (stored digest equals the pure member digest and the independently recomputed digest); `test_duplicate_membership_is_rejected_and_does_not_duplicate` (`upsert_sample_members` cannot create a second membership and the PK rejects a hand-built duplicate insert). Plan §5.3/§8. |
+| 2. Per-category and per-stratum summaries survive a database round trip | PASS | `test_census_summary_round_trips`, `test_large_category_summary_round_trips`, `test_stratum_statistics_json_round_trips_n_h_and_boundaries`, `test_stratum_statistics_json_matches_frozen_schema`, verified by read-back in `verify_persisted_sampling`; `test_persisted_values_verify_against_pure_result` asserts `mismatches == ()`. The corrected O8 literal (`n_h == 25` for the 26-asset final stratum) is the SRS-conforming value per ruling (a). |
+| 3. Before enrichment, usable-count fields are explicitly marked pending rather than presented as measured | PASS | Per-stratum `u_demand_h`/`u_recent_h`/`u_quality_h` serialize as JSON `null` with `usable_status == "pending"` and `eligibility_rule == null` (`serialize_stratum_statistics`); `test_pending_usable_placeholders_before_enrichment`, `test_pending_usable_status_token_is_pending`, `test_stratum_statistics_json_matches_frozen_schema`. Category-level columns are excluded from the INSERT and the ON CONFLICT lists: `test_category_level_usable_counts_are_non_authoritative_placeholders`, `test_unique_enrichment_count_is_not_written_by_4b`, `test_upsert_sampling_summary_updates_only_sampling_columns`, `test_verification_does_not_assert_category_usable_counts`. |
+| 4. Overlap is calculated from unique canonical identities after all samples are selected | PASS | `compute_overlap(run: RunSamplingResult)` takes the completed run and builds per-category identity sets (`sampling.py:631-648`); O1/O2/O3/O4/O5 nodes plus `test_compute_overlap_does_not_inflate_enrichment_counts` (3-member pair keeps `enriched_sample_count == 3`, union is one identity in O5) and `test_member_overlap_repeats_category_overlap_values` / `test_persisted_overlap_columns_match_pure_overlap`. |
+| 5. Persisted sample fraction is distinct from per-stratum eligibility coverage | PASS | `sample_fraction` is written from the 4A result and round-trips as SQL `NULL` (never `0.0`) for a zero population (`test_zero_population_sample_fraction_is_null_not_zero`); the three `*_stratum_eligibility_coverage` columns are absent from `_SAMPLING_PHASE_COLUMNS` and are not written by 4B; `test_sample_fraction_distinct_from_eligibility_coverage`. |
+| 6. A pure sampling test cannot pass this gate without a corresponding persistence verification | PASS | Every overlap/selection value is verified through `persist_run_sampling` + `verify_persisted_sampling` read-back, with a negative control (`test_verification_reports_a_tampered_value` detects a tampered value) and an explicit non-assertion control (`test_verification_does_not_assert_category_usable_counts`). `sampling.compute_overlap` itself is covered by the pure tests, but no persistence claim rests on a pure test alone. |
+
+Supporting evidence: `python -m pytest -q` → **216 passed, 0 failed**;
+`python -m pytest tests/test_sampling_persistence.py -q` → **31 passed**;
+`python -m niche_scout.tools.validate_traceability` → exit 0 (207 matrix nodes, 89 LREQ IDs,
+31 of them the 4B keys, each exactly `["LREQ-SMP-080"]`);
+`python -m niche_scout.tools.check_import_boundaries` → exit 0;
+`ruff check`/`ruff format --check` clean on `src/niche_scout/sampling.py`,
+`tests/test_sampling_persistence.py`, `tests/fixtures/sampling_persistence_fixtures.py`,
+`tests/fixtures/__init__.py`; `database.py` carries only its 6 pre-existing E501s (verified
+1:1 against HEAD's long-line set `[580, 689, 1076, 1234, 1445, 1647]`).
+
+**GATE: PASSED**
+
+Open items carried forward (not gate failures): reviewer Minors 1–2 above; the frozen plan's
+§13 claim labels (`quoted`/`read`) are the planner's, not re-verified by the reviewer; the
+pre-existing repo-wide `ruff` debt outside this chunk; `Documents/interfaces/chunk-4B.md`
+must be created from plan §5 before Chunk 6B's plan is written (a lead action, not a 4B gate
+item); the parallel Chunk 7A merge and the `LREQ-SMP-080`/`LREQ-MET-*` closure remain open
+until the branches merge.
