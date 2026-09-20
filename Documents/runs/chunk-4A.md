@@ -100,3 +100,48 @@ observation mappings so the run-level fixture tests pass unchanged.
   chunk (81 src errors incl. an `F821 Undefined name CoveoPageOutcome` in
   `collector_coveo.py`, 277 total); `src/niche_scout/sampling.py` is clean. Fixing
   other chunks' files is out of scope; recorded, not fixed.
+
+## Review stage — round 1 (VERDICT: FAIL), dispositions
+
+`spec-reviewer` returned `VERDICT: FAIL` with 1 Blocker, 2 Majors, 2 Minors.
+Lead rulings, evidence attached:
+
+1. **Blocker (marker/traceability for 3 nodes) — NOT A DEFECT.** The reviewer's
+   premise is that the validator's "carry no lreq marker" note means those nodes
+   lack markers. Read `src/niche_scout/tools/validate_traceability.py`: the note at
+   `:153`/`:175-178` is populated from `unmarked_tests = {node for node, markers in
+   tests.items() if not markers}`, i.e. the *opposite* condition from
+   `missing_nodes` (`:144-146`) and `marker_mismatch` (`:147-151`), which fire when
+   markers are present. Both problems-filters are empty (validator exits 0), so the
+   three named nodes demonstrably carry markers; the note is a mislabel of the
+   no-marker set (it lists all 7 unmarked nodes, including the exempt AST gate and
+   three long-standing `test_collector.py` nodes). Lead independently re-parsed
+   `tests/test_sampling.py` with `ast` and compared to `tests/traceability.json`:
+   zero marker/matrix mismatches; the only node with an empty marker set is
+   `test_sampling_module_imports_are_pure`. Blocker dismissed with evidence.
+2. **Major (census docstring vs `is_reduced`) — FIXED.** `build_strata`'s docstring
+   now states `target_count == N`, `is_reduced = size < SAMPLE_PER_STRATUM`, and the
+   LREQ-SMP-090/§9.2 Fixture D basis; the code was already correct per the Q-3 ruling.
+3. **Major (stratum boundaries not frozen literals) — FIXED.** Added frozen literal
+   tuples `EXPECTED_STRATA_N101/N105/N200/N24/N1` to
+   `tests/fixtures/sampling_fixtures.py` and asserted them (and the independent
+   formula restatement) in the three strata tests.
+4. **Minor (`_project_records` permissive mapping coerce) — accepted, no change.**
+   It is required by the frozen plan's run-level API and the committed fixture tests.
+5. **Minor (literal `"1.0.0"` pin) — accepted, no change.** It is a deliberate pin of
+   the frozen `SAMPLING_RULE_VERSION` value, not a duplication defect.
+
+Lead re-verification after fixes: `pytest -q` → **185 passed**; sampling-only →
+35 passed; `validate_traceability` → exit 0; `ruff check` on
+`src/niche_scout/sampling.py`, `tests/test_sampling.py`,
+`tests/fixtures/sampling_fixtures.py` → "All checks passed!"; `ruff format` → unchanged.
+
+Also verified the reviewer's UNVERIFIED items: repo-wide `ruff check src/ tests/`
+reports pre-existing debt (81 src errors incl. `F821 Undefined name CoveoPageOutcome`
+at `collector_coveo.py:1871`; 277 total) outside this chunk; `check_import_boundaries`
+is not run here, but `interfaces/chunk-00.md` §1 declares it Chunk 0's and the Q-8
+ruling left it untouched.
+
+## Review stage — round 2
+
+Re-dispatched `spec-reviewer` on the fixed tree; awaiting verdict.

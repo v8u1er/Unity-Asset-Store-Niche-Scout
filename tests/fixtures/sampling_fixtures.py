@@ -265,6 +265,24 @@ def expected_stratum_boundaries(n: int) -> tuple:
     )
 
 
+#: Frozen stratum boundaries, hand-derived from the SRS §5.1 LREQ-SMP-050 floor
+#: formula and asserted as literals so a defect in :func:`expected_stratum_boundaries`
+#: cannot hide behind itself. Derivation (``start = floor(h*N/4)+1``,
+#: ``end = floor((h+1)*N/4)``, final stratum takes the remainder):
+#:   N = 101: floor(101/4)=25  -> 1..25;  floor(202/4)=50  -> 26..50;
+#:            floor(303/4)=75  -> 51..75; floor(404/4)=101 -> 76..101
+#:   N = 105: floor(105/4)=26  -> 1..26;  floor(210/4)=52  -> 27..52;
+#:            floor(315/4)=78  -> 53..78; floor(420/4)=105 -> 79..105
+#:   N = 200: floor(200/4)=50  -> 1..50;  floor(400/4)=100 -> 51..100;
+#:            floor(600/4)=150 -> 101..150; floor(800/4)=200 -> 151..200
+#:   census N = 24: one stratum 1..24; N = 1: one stratum 1..1.
+EXPECTED_STRATA_N101: tuple = ((1, 25), (26, 50), (51, 75), (76, 101))
+EXPECTED_STRATA_N105: tuple = ((1, 26), (27, 52), (53, 78), (79, 105))
+EXPECTED_STRATA_N200: tuple = ((1, 50), (51, 100), (101, 150), (151, 200))
+EXPECTED_STRATA_N24: tuple = ((1, 24),)
+EXPECTED_STRATA_N1: tuple = ((1, 1),)
+
+
 def expected_digest(rule_version: str, category: str, asset_identity_key: str) -> str:
     """Restate the SRS §5.1 LREQ-SMP-060 digest formula independently."""
     raw = f"{rule_version}\x00{category}\x00{asset_identity_key}"

@@ -16,15 +16,12 @@ from __future__ import annotations
 
 import ast
 import inspect
-import math
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-
 from fixtures import sampling_fixtures as fx
 
+import niche_scout.sampling as sampling
 from niche_scout.models import (
     ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY,
     SAMPLE_PER_STRATUM,
@@ -32,8 +29,6 @@ from niche_scout.models import (
     SAMPLING_RULE_VERSION,
     SamplingBasis,
 )
-
-import niche_scout.sampling as sampling
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLING_SOURCE = REPO_ROOT / "src" / "niche_scout" / "sampling.py"
@@ -86,7 +81,18 @@ FORBIDDEN_IMPORTS = frozenset(
 )
 
 CLOCK_ATTRIBUTES = frozenset(
-    {"now", "utcnow", "today", "time", "time_ns", "monotonic", "perf_counter", "localtime", "gmtime", "sleep"}
+    {
+        "now",
+        "utcnow",
+        "today",
+        "time",
+        "time_ns",
+        "monotonic",
+        "perf_counter",
+        "localtime",
+        "gmtime",
+        "sleep",
+    }
 )
 
 
@@ -107,7 +113,8 @@ def build_records(mappings):
 def sampled_summary(result):
     """Return a deterministic digest of the selected members for repeat checks."""
     return tuple(
-        (m.stratum_index, m.asset_identity_key, m.selection_digest) for m in result.members
+        (m.stratum_index, m.asset_identity_key, m.selection_digest)
+        for m in result.members
     )
 
 
@@ -133,7 +140,9 @@ def test_digest_matches_nul_delimited_sha256_literal():
     # 25-byte input: 5 (rule) + 1 (NUL) + 13 (category) + 1 (NUL) + 5 (key).
     assert len(fx.DIGEST_F_BYTES) == 25
     assert len(expected) == 64 and expected == expected.lower()
-    assert fx.DIGEST_F_HEX == expected, "frozen Fixture F literal drifted from its bytes"
+    assert fx.DIGEST_F_HEX == expected, (
+        "frozen Fixture F literal drifted from its bytes"
+    )
 
     actual = sampling.selection_digest(
         fx.DIGEST_FIXTURE_CATEGORY,
@@ -212,9 +221,9 @@ def test_repeated_selection_is_identical():
     assert first.sampling_basis == second.sampling_basis
 
     # And the digest helper itself is a pure function.
-    assert sampling.selection_digest(fx.LARGE_CATEGORY, "asset-0000") == sampling.selection_digest(
+    assert sampling.selection_digest(
         fx.LARGE_CATEGORY, "asset-0000"
-    )
+    ) == sampling.selection_digest(fx.LARGE_CATEGORY, "asset-0000")
 
 
 @pytest.mark.lreq("LREQ-SMP-060", "LREQ-ARCH-020")
@@ -226,7 +235,9 @@ def test_no_randomness_module_used():
     of the purity check; the import-boundary half is the unmarked AST test
     ``test_sampling_module_imports_are_pure``.
     """
-    tree = ast.parse(SAMPLING_SOURCE.read_text(encoding="utf-8"), filename=str(SAMPLING_SOURCE))
+    tree = ast.parse(
+        SAMPLING_SOURCE.read_text(encoding="utf-8"), filename=str(SAMPLING_SOURCE)
+    )
     imported = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -234,8 +245,9 @@ def test_no_randomness_module_used():
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[-1])
 
-    assert not (imported & {"random", "secrets", "uuid", "time"}), (
-        f"sampling.py must not import an RNG or clock module: {imported & {'random', 'secrets', 'uuid', 'time'}}"
+    forbidden_present = imported & {"random", "secrets", "uuid", "time"}
+    assert not forbidden_present, (
+        f"sampling.py must not import an RNG or clock module: {forbidden_present}"
     )
 
     clock_calls = [
@@ -283,8 +295,14 @@ def test_census_population_sizes_zero_one_99_100(n):
 @pytest.mark.lreq("LREQ-SMP-040")
 def test_census_selects_all_assets():
     """Fixture A: every canonical identity is selected, once, in census."""
-    for records in (fx.census_one_records(), fx.census_99_records(), fx.census_100_records()):
-        result = sampling.select_category_sample(build_records(records), category=fx.CATEGORY)
+    for records in (
+        fx.census_one_records(),
+        fx.census_99_records(),
+        fx.census_100_records(),
+    ):
+        result = sampling.select_category_sample(
+            build_records(records), category=fx.CATEGORY
+        )
         expected_keys = {item["asset_identity_key"] for item in records}
         assert {m.asset_identity_key for m in result.members} == expected_keys
         assert len(result.members) == len(expected_keys)
@@ -337,7 +355,9 @@ def test_four_strata_boundaries_at_101():
     Each non-reduced stratum selects 25; the final stratum has 26 assets, so 100
     of 101 are selected: ``sample_fraction == 100/101``, which is < 1.0.
     """
-    assert fx.expected_stratum_boundaries(101) == ((1, 25), (26, 50), (51, 75), (76, 101))
+    # Frozen literal (fixtures) plus the independent SRS-formula restatement.
+    assert fx.EXPECTED_STRATA_N101 == ((1, 25), (26, 50), (51, 75), (76, 101))
+    assert fx.expected_stratum_boundaries(101) == fx.EXPECTED_STRATA_N101
 
     result = sampling.select_category_sample(
         build_records(fx.large_101_records()), category=fx.LARGE_CATEGORY
@@ -371,11 +391,20 @@ def test_four_strata_boundaries_at_200():
     Derivation: h=0..3 -> start in {1, 51, 101, 151}, end in {50, 100, 150, 200};
     no remainder. ``sample_fraction == 100/200 == 0.5``.
     """
+    assert fx.EXPECTED_STRATA_N200 == ((1, 50), (51, 100), (101, 150), (151, 200))
+    assert fx.expected_stratum_boundaries(200) == fx.EXPECTED_STRATA_N200
+
     result = sampling.select_category_sample(
         build_records(fx.large_200_records()), category=fx.LARGE_CATEGORY
     )
     observed = tuple(
-        (s.stratum_index, s.start_ordinal, s.end_ordinal, s.population_count, s.selected_count)
+        (
+            s.stratum_index,
+            s.start_ordinal,
+            s.end_ordinal,
+            s.population_count,
+            s.selected_count,
+        )
         for s in result.strata
     )
     assert observed == (
@@ -405,7 +434,9 @@ def test_strata_are_contiguous_and_cover_population(n):
     assert strata[-1].end_ordinal == n
     for previous, current in zip(strata, strata[1:]):
         assert current.start_ordinal == previous.end_ordinal + 1
-    covered = [ordinal for s in strata for ordinal in range(s.start_ordinal, s.end_ordinal + 1)]
+    covered = [
+        ordinal for s in strata for ordinal in range(s.start_ordinal, s.end_ordinal + 1)
+    ]
     assert covered == list(range(1, n + 1))
 
 
@@ -542,9 +573,14 @@ def test_reduced_stratum_selects_all_and_reports_reduced_count():
     reduced_24 = sampling.select_category_sample(
         build_records(fx.census_24_records()), category=fx.CATEGORY
     )
+    assert fx.EXPECTED_STRATA_N24 == ((1, 24),)
     assert len(reduced_24.strata) == 1
     stratum = reduced_24.strata[0]
-    assert (stratum.stratum_index, stratum.start_ordinal, stratum.end_ordinal) == (0, 1, 24)
+    assert (stratum.stratum_index, stratum.start_ordinal, stratum.end_ordinal) == (
+        0,
+        1,
+        24,
+    )
     assert stratum.population_count == 24
     assert stratum.target_count == 24
     assert stratum.selected_count == 24
@@ -563,12 +599,14 @@ def test_reduced_stratum_selects_all_and_reports_reduced_count():
     single = sampling.select_category_sample(
         build_records(fx.census_one_records()), category=fx.CATEGORY
     )
+    assert fx.EXPECTED_STRATA_N1 == ((1, 1),)
     assert single.strata[0].target_count == 1
     assert single.strata[0].is_reduced is True
 
     large_105 = sampling.select_category_sample(
         build_records(fx.large_105_records()), category=fx.LARGE_CATEGORY
     )
+    assert fx.EXPECTED_STRATA_N105 == ((1, 26), (27, 52), (53, 78), (79, 105))
     assert tuple((s.start_ordinal, s.end_ordinal) for s in large_105.strata) == (
         (1, 26),
         (27, 52),
@@ -596,7 +634,8 @@ def test_early_middle_late_positions_represented():
         build_records(fx.large_101_records()), category=fx.LARGE_CATEGORY
     )
     ordinals_by_key = {
-        item["asset_identity_key"]: i + 1 for i, item in enumerate(fx.large_101_records())
+        item["asset_identity_key"]: i + 1
+        for i, item in enumerate(fx.large_101_records())
     }
     ranges = ((1, 25), (26, 50), (51, 75), (76, 101))
     for low, high in ranges:
@@ -668,14 +707,24 @@ def test_default_constants_are_not_configurable():
     assert models.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY == 100
     assert models.SAMPLE_STRATA == 4
     assert models.SAMPLE_PER_STRATUM == 25
-    assert models.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY == models.SAMPLE_STRATA * models.SAMPLE_PER_STRATUM
+    assert (
+        models.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+        == models.SAMPLE_STRATA * models.SAMPLE_PER_STRATUM
+    )
 
     # The sampling module re-exports the same frozen values.
-    assert sampling.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+    assert (
+        sampling.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+        == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+    )
     assert sampling.SAMPLE_STRATA == SAMPLE_STRATA
     assert sampling.SAMPLE_PER_STRATUM == SAMPLE_PER_STRATUM
     assert sampling.SAMPLING_RULE_VERSION == SAMPLING_RULE_VERSION == "1.0.0"
-    assert sampling.CENSUS_POPULATION_THRESHOLD == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY == 100
+    assert (
+        sampling.CENSUS_POPULATION_THRESHOLD
+        == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+        == 100
+    )
     assert sampling.NUL_DELIMITER == "\x00"
 
     # Production entry point exposes no stratum/allocation override.
@@ -695,7 +744,10 @@ def test_default_constants_are_not_configurable():
     build_strata_parameters = inspect.signature(sampling.build_strata).parameters
     assert build_strata_parameters["sample_strata"].default == SAMPLE_STRATA
     assert build_strata_parameters["per_stratum_target"].default == SAMPLE_PER_STRATUM
-    assert build_strata_parameters["census_threshold"].default == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+    assert (
+        build_strata_parameters["census_threshold"].default
+        == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
+    )
 
 
 # --------------------------------------------------------------------------
@@ -751,11 +803,19 @@ def test_no_duplicate_membership_within_category():
     SRS §5.1 LREQ-SMP-010/020: the population is identity-unique and selection
     draws from it once.
     """
-    for records in (fx.census_100_records(), fx.large_101_records(), fx.exclusion_records()):
-        result = sampling.select_category_sample(build_records(records), category=fx.CATEGORY)
+    for records in (
+        fx.census_100_records(),
+        fx.large_101_records(),
+        fx.exclusion_records(),
+    ):
+        result = sampling.select_category_sample(
+            build_records(records), category=fx.CATEGORY
+        )
         keys = [m.asset_identity_key for m in result.members]
         assert len(keys) == len(set(keys))
-        assert len(result.population.identity_keys) == len(set(result.population.identity_keys))
+        assert len(result.population.identity_keys) == len(
+            set(result.population.identity_keys)
+        )
 
 
 @pytest.mark.lreq("LREQ-SMP-010")
@@ -818,7 +878,7 @@ def test_shared_identity_appears_in_both_categories():
 
 @pytest.mark.lreq("LREQ-SMP-080")
 def test_sample_fraction_distinct_from_stratum_aggregates():
-    """``sample_fraction`` is its own field; no stratum coverage or usable count is emitted.
+    """``sample_fraction`` is its own field; no coverage or usable count emitted.
 
     SRS §5.1 LREQ-SMP-080 (``sample_fraction`` is distinct from stratum
     eligibility coverage) and plan §2/§5.3 (no ``u_*`` counts, no overlap).
@@ -881,14 +941,18 @@ def test_census_member_ranks_follow_digest_order():
         build_records(fx.census_100_records()), category=fx.CATEGORY
     )
     for stratum in result.strata:
-        members = [m for m in result.members if m.stratum_index == stratum.stratum_index]
+        members = [
+            m for m in result.members if m.stratum_index == stratum.stratum_index
+        ]
         assert [m.sample_rank_within_stratum for m in members] == list(
             range(1, len(members) + 1)
         )
         ordered = sorted(
             members, key=lambda m: (m.selection_digest, m.asset_identity_key)
         )
-        assert [m.asset_identity_key for m in members] == [m.asset_identity_key for m in ordered]
+        assert [m.asset_identity_key for m in members] == [
+            m.asset_identity_key for m in ordered
+        ]
         assert all(
             (members[i].selection_digest, members[i].asset_identity_key)
             < (members[i + 1].selection_digest, members[i + 1].asset_identity_key)
@@ -910,7 +974,9 @@ def test_census_member_digest_is_standard_nul_digest():
     )
     for member in result.members:
         assert member.selection_digest == sampling.selection_digest(
-            category, member.asset_identity_key, sampling_rule_version=SAMPLING_RULE_VERSION
+            category,
+            member.asset_identity_key,
+            sampling_rule_version=SAMPLING_RULE_VERSION,
         )
         assert len(member.selection_digest) == 64
         assert member.selection_digest == member.selection_digest.lower()
@@ -928,8 +994,13 @@ def test_sampling_module_imports_are_pure():
     Asserts the module imports no forbidden package/IO/network/clock/randomness
     module and performs no clock read. This replaces the ``PURE_MODULES``
     registration edit that the Q-8 ruling removed.
+
+    NOT an analytical test: deliberately no ``@pytest.mark.lreq`` and no
+    ``tests/traceability.json`` entry (plan §9.3).
     """
-    tree = ast.parse(SAMPLING_SOURCE.read_text(encoding="utf-8"), filename=str(SAMPLING_SOURCE))
+    tree = ast.parse(
+        SAMPLING_SOURCE.read_text(encoding="utf-8"), filename=str(SAMPLING_SOURCE)
+    )
 
     imported: set[str] = set()
     for node in ast.walk(tree):
@@ -950,7 +1021,10 @@ def test_sampling_module_imports_are_pure():
         if isinstance(node, ast.Attribute)
         and node.attr in CLOCK_ATTRIBUTES
         and (
-            (isinstance(node.value, ast.Name) and node.value.id in {"datetime", "date", "time", "dt"})
+            (
+                isinstance(node.value, ast.Name)
+                and node.value.id in {"datetime", "date", "time", "dt"}
+            )
             or (
                 isinstance(node.value, ast.Attribute)
                 and isinstance(node.value.value, ast.Name)
