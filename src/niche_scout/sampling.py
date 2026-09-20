@@ -34,13 +34,16 @@ __all__ = [
     "CENSUS_POPULATION_THRESHOLD",
     "NUL_DELIMITER",
     "CanonicalPopulation",
+    "CategoryOverlap",
     "CategorySamplingResult",
     "DiscoveryPopulationRecord",
+    "RunOverlapResult",
     "RunSamplingResult",
     "SampledMember",
     "SamplingStratum",
     "build_canonical_population",
     "build_strata",
+    "compute_overlap",
     "select_category_sample",
     "select_run_sample",
     "select_stratum_members",
@@ -568,3 +571,93 @@ def select_run_sample(
             for category, records in categories.items()
         ),
     )
+
+
+# --------------------------------------------------------------------------
+# Cross-category overlap (LREQ-SMP-080, SRS §6.5)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryOverlap:
+    """Overlap of one category's sample with all other categories' samples.
+
+    Per SRS §6.5. ``overlap_category_count`` counts OTHER categories sharing at
+    least one sampled canonical identity; ``overlap_sample_percentage`` is
+    ``100 * (<this category's sampled identities that appear in at least one
+    other category>) / enriched_sample_count``. It is ``None`` iff
+    ``enriched_sample_count == 0``; a non-empty sample with no shared identity is
+    ``0.0`` (a measured zero), never ``None``. The value is stored unrounded.
+    """
+
+    category: str
+    overlap_category_count: int
+    overlap_sample_percentage: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunOverlapResult:
+    """Overlap for every category, in the ``RunSamplingResult`` category order."""
+
+    run_id: str
+    categories: tuple[CategoryOverlap, ...]
+
+    @property
+    def by_category(self) -> Mapping[str, CategoryOverlap]:
+        """Map each category to its overlap in ``RunSamplingResult`` order."""
+        return {entry.category: entry for entry in self.categories}
+
+
+def compute_overlap(run: RunSamplingResult) -> RunOverlapResult:
+    """Per-category cross-category overlap (SRS §6.5).
+
+    Input is the completed ``RunSamplingResult``; overlap is computed from unique
+    canonical identities after all samples are selected. A category's members
+    are already identity-unique (4A), so a shared identity is counted once per
+    category regardless of how many categories contain it. Category order is
+    preserved; an empty run yields ``categories == ()``. Pure: no RNG, no clock,
+    no I/O, no mutation. ``overlap_sample_percentage`` is unrounded ``float64``
+    (Q-7): rounding is a display concern only.
+
+    ``overlap_category_count`` is the number of OTHER categories whose sample
+    contains at least one identity in this category's sample. The percentage
+    numerator counts this category's sampled identities that appear in at least
+    one other category; the denominator is this category's
+    ``enriched_sample_count``. A zero-member category yields count ``0`` and
+    percentage ``None`` (never ``0.0``); a non-empty category with no shared
+    identity yields a measured ``0.0``. This function never increases an
+    enrichment or preflight count; the input is not modified.
+    """
+    identities_by_category: dict[str, frozenset[str]] = {}
+    for result in run.categories:
+        identities_by_category[result.category] = frozenset(
+            member.asset_identity_key for member in result.members
+        )
+
+    categories: list[CategoryOverlap] = []
+    for result in run.categories:
+        own_identities = identities_by_category[result.category]
+        shared_identities: set[str] = set()
+        overlap_category_count = 0
+        for other in run.categories:
+            if other.category == result.category:
+                continue
+            shared = own_identities & identities_by_category[other.category]
+            if shared:
+                overlap_category_count += 1
+                shared_identities.update(shared)
+
+        if result.enriched_sample_count == 0:
+            percentage: float | None = None
+        else:
+            percentage = 100.0 * len(shared_identities) / result.enriched_sample_count
+
+        categories.append(
+            CategoryOverlap(
+                category=result.category,
+                overlap_category_count=overlap_category_count,
+                overlap_sample_percentage=percentage,
+            )
+        )
+
+    return RunOverlapResult(run_id=run.run_id, categories=tuple(categories))
