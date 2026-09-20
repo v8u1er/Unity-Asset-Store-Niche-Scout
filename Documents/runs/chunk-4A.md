@@ -75,3 +75,28 @@ plan §9.3's LREQ lists and §9.4's example entries disagree for 3 nodes
 the validator's exact marker-set == matrix-entry requirement). The plan must be
 reconciled so §9.3 and §9.4 agree. Does not block implementation: the marker sets
 are the plan's own §9.3 assignment and the validator passes.
+
+## Implementation stage — DONE
+
+`impl-deep` replaced the stub with the pure engine in
+`src/niche_scout/sampling.py` (554 lines, now 570 after the lead's lint refactor).
+It reported only one resolved ambiguity: plan §5.3's literal `is_reduced iff
+population_count < target_count` would make every census stratum non-reduced
+(census target = N), contradicting §5.4/§8/§9.2 Fixture D and LREQ-SMP-090; it
+applied `is_reduced = population_count < SAMPLE_PER_STRATUM`, which every stated
+expected vector and the test agree with. Also, `select_run_sample` coerces raw
+observation mappings so the run-level fixture tests pass unchanged.
+
+**Lead verification (step 6):**
+- `python -m pytest -q` → **185 passed** (150 pre-existing + 35 sampling).
+- `python -m niche_scout.tools.validate_traceability` → exit 0, 176 matrix nodes,
+  89 defined LREQ IDs.
+- `python -m ruff format --check src/niche_scout/sampling.py` → "1 file already
+  formatted"; `python -m ruff check src/niche_scout/sampling.py` → clean.
+- Lead-read `sampling.py` and made three lint-only edits (pure refactor + `__all__`):
+  `del run_id` instead of `_ = run_id` (F841), `start_index` extracted (E501), and
+  an explicit `__all__`. Re-ran: 185 passed, sampling-only 35 passed, lint clean.
+- Repo-wide `ruff check src/ tests/` reports **pre-existing** debt outside this
+  chunk (81 src errors incl. an `F821 Undefined name CoveoPageOutcome` in
+  `collector_coveo.py`, 277 total); `src/niche_scout/sampling.py` is clean. Fixing
+  other chunks' files is out of scope; recorded, not fixed.
