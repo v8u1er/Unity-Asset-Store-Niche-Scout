@@ -12,6 +12,7 @@ from fixtures import (
     coveo_discovery,
     graphql_fixtures,
     sampling_fixtures,
+    sampling_persistence_fixtures,
     validation_fixtures,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "coveo_discovery",
     "graphql_fixtures",
     "sampling_fixtures",
+    "sampling_persistence_fixtures",
     "validation_fixtures",
 ]
