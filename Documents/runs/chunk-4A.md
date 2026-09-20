@@ -54,3 +54,24 @@ line 3 `Status: FROZEN`; §6 no longer lists
 `src/niche_scout/tools/check_import_boundaries.py` as touched (remaining
 mentions are the correction note and the explicit-prohibition list). Commit to
 follow. Routing for 4A: test-author first, then impl-deep.
+
+## Test stage — DONE (with one recorded DISPUTE)
+
+`test-author` wrote `tests/test_sampling.py` and `tests/fixtures/sampling_fixtures.py`,
+modified `tests/fixtures/__init__.py` and `tests/traceability.json`. 35 nodes
+collected, 28 traceability entries, all 33 analytical nodes carry a marker and fail
+only with `AttributeError: module 'niche_scout.sampling' has no attribute ...` (one
+node, `test_sampling_module_imports_are_pure`, is the unmarked AST purity gate).
+Lead verification: `pytest tests/test_sampling.py -q` → 33 failed, 2 passed, no
+syntax or collection errors; `validate_traceability` → exit 0, "176 matrix nodes,
+89 defined LREQ IDs" (was 148 nodes); full suite → 33 failed, 152 passed (the 150
+pre-existing tests still pass). Fixture F byte string
+`b"1.0.0\x003D/Characters\x0012345"` → `20c3b87100bb44ce9c198328ef98b894e0773afb4f03ff99ed3f7cc1439feebb`.
+
+**DISPUTE (open, sent to planner for adjudication):** the test-author reports that
+plan §9.3's LREQ lists and §9.4's example entries disagree for 3 nodes
+(`test_repeated_selection_is_identical`, `test_no_randomness_module_used`,
+`test_sampling_basis_and_census_flag`); it applied §9.3's fuller lists (which match
+the validator's exact marker-set == matrix-entry requirement). The plan must be
+reconciled so §9.3 and §9.4 agree. Does not block implementation: the marker sets
+are the plan's own §9.3 assignment and the validator passes.
