@@ -157,3 +157,32 @@ code compares the `per_stratum_target` parameter (identical at defaults);
 (c) an audit note that `enrichment_identity_keys` has no set-order dependence.
 Reviewer UNVERIFIED `ruff` only because its sandbox denied the command; the lead
 ran it (clean) at round 1 and again after the fix.
+
+## Gate — Chunk 4A
+
+Gate bullets walked from `Documents/requirements-dependency-map.md` §3 Chunk 4A
+(lines 594–601), each with evidence (all commands re-run on `bce4e06`):
+
+| Gate bullet | Result | Evidence |
+|---|---|---|
+| Repeated selection is identical | PASS | `tests/test_sampling.py::test_repeated_selection_is_identical` (`pytest -q` → 185 passed, 0 failed); `sampling.py:422-470` sorts on `(digest, asset_identity_key)` and `:240` on `(ordinal, is_none, key)` — no set/dict-order dependence |
+| Changing the sampling-rule version changes the digest/selection | PASS | `test_digest_changes_with_rule_version`; `selection_digest` (`sampling.py:265-282`) joins `(rule_version, category, key)` with NUL before SHA-256; fixture `DIGEST_F_HEX` pinned at `sampling_fixtures.py:56`, cross-checked by the test's own hash of the 25 bytes |
+| Populations 0, 1, 99, 100, >100 behave as specified | PASS | `test_census_population_sizes_zero_one_99_100`, `test_census_selects_all_assets`, `test_four_strata_boundaries_at_101`; census when `size <= 100` (`sampling.py:385`), `sample_fraction is None` iff 0 (`:518-522`) |
+| Early, middle, and late discovery positions represented | PASS | `test_early_middle_late_positions_represented`, `test_sample_is_not_first_page_prefix`; all four strata select (`:398-413` loop) |
+| Sample fraction distinct from stratum eligibility coverage | PASS | `test_sample_fraction_distinct_from_stratum_aggregates`; `sample_fraction` is one field (`CategorySamplingResult`, `sampling.py:163-172`); no coverage/coverage-like field and no `u_*`/overlap field exists |
+| Pure result carries all values for later persistence; no SQLite claim | PASS | Structures at `sampling.py:69-208` carry `sampling_basis`, `sample_is_census`, `N_h`/`n_h`/target/boundaries, keys, per-member digests and ranks; no `sqlite3`/database import; reviewer confirmed no materialization |
+| Property (certified by the dependency map in this section) | PASS | `tests/test_sampling.py::test_sampling_module_imports_are_pure` — AST check of imports and clock attributes; module imports only `hashlib`, `collections.abc`, `dataclasses`, `niche_scout.models` (`sampling.py:19-31`) |
+
+Requirement closure and suite state:
+- `python -m pytest -q` → **185 passed, 0 failed**.
+- `python -m pytest tests/test_sampling.py -q` → **35 passed**; `-m lreq` → 34 passed, 1 deselected (the Q-8-exempt AST gate).
+- `python -m niche_scout.tools.validate_traceability` → exit 0, 176 matrix nodes, 89 defined LREQ IDs (the "no lreq marker" note is the Chunk-0 tool's mislabel recorded above).
+- `tests/traceability.json` holds **28** sampling nodes referencing 10 distinct LREQs: SMP-010, 020, 030, 040, 050, 060, 070, 080, 090 plus ARCH-020. `LREQ-SMP-080` is present as the plan's boundary case only (its primary owner is Chunk 4B).
+- `python -m ruff format --check` → "3 files already formatted"; `python -m ruff check` on the chunk's three files → "All checks passed!".
+- `git status` → "nothing to commit, working tree clean". Branch `chunk-4A`, commits `a2de9ab` plan, `d987294` tests, `15ee5f9` implementation, `57628de` review fixes, `bce4e06` review record.
+
+**GATE: PASSED**
+
+Open items carried forward (not gate failures): reviewer Minors (a)–(c) above;
+the pre-existing repo-wide `ruff` debt outside this chunk (81 src errors incl.
+`collector_coveo.py` F821) and the Chunk-0 tool note-text defect.
