@@ -36,7 +36,39 @@ Started 2026-09-20. Branch: `chunk-4B` (created from `chunk-4A`). Tree clean at 
 - `python -m ruff check src/niche_scout/sampling.py` → clean. `src/niche_scout/database.py` → 6 E501s, all **pre-existing at HEAD**: HEAD's long-line set is `[580, 689, 1076, 1234, 1445, 1647]` and maps 1:1 to the current `[583, 692, 1079, 1237, 1576, 1778]`; the additive 4B block introduced none. Lead counted HEAD's set by reading `git show HEAD:src/niche_scout/database.py` through Python and taking `len(line) > 88`, and the current set from `ruff check`. Not fixed (whole-file reformat is outside this chunk's file scope).
 - Working tree clean at `f8000d1`.
 
-### DISPUTE (open): `test_stratum_statistics_json_round_trips_n_h_and_boundaries`
+### DISPUTE (RESOLVED 2026-09-20 by human ruling (a)): `test_stratum_statistics_json_round_trips_n_h_and_boundaries`
+
+**Ruling: resolution (a) — the fixture literal and the plan's Fixture O8 prose were
+wrong; the 4A engine and 4B persistence were right. Not a 50/50 call.** The dispute
+text below is retained as the record of what was raised; the ruling supersedes its
+"neither uniquely forced" framing. The decisive artifacts the ruling adds are the
+content-read `Documents/interfaces/chunk-4A.md` (`is_reduced` is `True` iff
+`population_count < SAMPLE_PER_STRATUM`) and the passing 4A tests
+(`test_four_strata_boundaries_at_101`, `test_large_category_targets_25_per_stratum`),
+plus the fixture's own arithmetically self-contradictory comment
+(`25 + 25 + 25 + 26 == 100` sums to 101). Resolution (b) would contradict LREQ-SMP-050,
+LREQ-SMP-090's numeric threshold, the frozen 4A contract and tests, and SRS §5.1's
+"normally below 1.0" for a large category — and was not actionable inside 4B anyway.
+
+**Corrections applied by the lead (commit `a02f971`), with no source, contract, or
+traceability change:**
+- `tests/fixtures/sampling_persistence_fixtures.py` `O8_EXPECTED_STRATA_N101`:
+  `(3, 76, 101, 26, 26)` → `(3, 76, 101, 26, 25)`; the `h=3` derivation comment's
+  "n_h 26, reduced" → "n_h 25, not reduced" with the LREQ-SMP-090/050 basis; the
+  `o6_expected_sample_fractions` docstring's self-contradictory sentence replaced
+  (returned values unchanged).
+- Frozen plan §9 "Fixture O8" prose corrected to the five-field tuples with a dated
+  ruling note (it had printed 4-tuples and a wrong first stratum index). No agent
+  amended the frozen plan alone; the human ruling carried the edit.
+- `sampling.py`, `database.py`, `interfaces/chunk-4A.md`, 4A's tests, and 4A's gate:
+  untouched. `tests/traceability.json`: untouched (node ID unchanged).
+
+**Re-verification after the corrections:** `pytest tests/test_sampling_persistence.py -q`
+→ **31 passed**; `pytest tests -q` → **216 passed**; `validate_traceability` → exit 0
+(207 nodes, 89 LREQ IDs); `check_import_boundaries` → exit 0; `ruff check` /
+`ruff format --check` on the corrected fixture → clean.
+
+### Dispute as originally raised (superseded)
 
 Observed vs fixture, verbatim from the failing assertion:
 
@@ -67,8 +99,9 @@ Lead evidence, each verified by running the live engine and reading the files:
   `n_h = selected_count`) and is forbidden to recompute it; the 4B test file and fixtures
   are frozen and were not edited.
 
-Two self-consistent resolutions exist and neither is uniquely forced by the artifacts read,
-so the lead did not pick one:
+Two resolutions were considered (this paragraph is the pre-ruling framing; the human
+ruling (a) above supersedes it and rejects the "neither uniquely forced" claim — (b) is
+not a defensible reading of the SRS):
 - **(a) Fixture is wrong, live 4A is right.** `n_h` for stratum 3 is 25 and the 26-member
   stratum is not reduced (SRS §5.1 LREQ-SMP-090; `o6_expected_selected_counts` 100 is
   consistent). Fix requires editing the frozen fixture
@@ -85,7 +118,8 @@ so the lead did not pick one:
 The 4B gate bullet "Per-category and per-stratum summaries survive a database round trip"
 **does** hold: the round trip is verified against the pure `RunSamplingResult` by
 `test_persisted_values_verify_against_pure_result` and by `persist_run_sampling`'s read-back.
-Only the fixture's fixed `n_h` literal for the `N=101` final stratum is in dispute.
+Only the fixture's fixed `n_h` literal for the `N=101` final stratum was in dispute, and
+ruling (a) corrected it (commit `a02f971`).
 
 ### Lead spot-checks of the blocking facts (2026-09-20)
 
