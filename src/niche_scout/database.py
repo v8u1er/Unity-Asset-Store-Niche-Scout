@@ -18,9 +18,11 @@ only — never a record value, an identity string, a header, or a token.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping, Optional, Protocol, Sequence
@@ -47,6 +49,7 @@ from .models import (
     ScoreState,
     ensure_utc,
 )
+from .sampling import CategorySamplingResult, RunSamplingResult, compute_overlap
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -1378,6 +1381,134 @@ class SqliteRepository:
         """Re-materialize summary columns on the existing membership row."""
         return self._upsert_rows("sample_members", members)
 
+    # -- sampling summaries (Chunk 4B) -------------------------------------
+
+    # The eight sampling-phase ``category_scores`` columns this method owns
+    # (Q-2 option (a)). Every scoring-phase column is deliberately absent.
+    _SAMPLING_PHASE_COLUMNS: tuple[str, ...] = (
+        "discovered_population_count",
+        "enriched_sample_count",
+        "sample_is_census",
+        "sampling_basis",
+        "sample_fraction",
+        "overlap_category_count",
+        "overlap_sample_percentage",
+        "stratum_statistics_json",
+    )
+
+    def upsert_sampling_summary(
+        self,
+        run_id: str,
+        category: str,
+        *,
+        discovered_population_count: int,
+        enriched_sample_count: int,
+        sample_is_census: bool,
+        sampling_basis: str,
+        sample_fraction: float | None,
+        overlap_category_count: int,
+        overlap_sample_percentage: float | None,
+        stratum_statistics_json: str,
+        computed_at_utc: datetime,
+        discovery_status: str | None = None,
+    ) -> None:
+        """Write only the sampling-phase ``category_scores`` columns (Q-2 option (a)).
+
+        Creates the ``(run_id, category)`` row if absent, filling every other
+        ``NOT NULL`` column from the module's pre-scoring default table
+        (``_IMPLICIT_NOT_NULL_DEFAULTS["category_scores"]``) and binding the
+        supplied sampling-phase values; on conflict it updates **only** the eight
+        sampling-phase columns — ``discovered_population_count``,
+        ``enriched_sample_count``, ``sample_is_census``, ``sampling_basis``,
+        ``sample_fraction``, ``overlap_category_count``,
+        ``overlap_sample_percentage``, and ``stratum_statistics_json``. Every
+        scoring-phase column, and ``unique_enrichment_count`` / the three
+        ``usable_*_sample_count`` columns, are left untouched on the update path.
+        ``sampling_basis`` is validated against ``SamplingBasis``.
+        ``computed_at_utc`` is required and caller-supplied; this module reads no
+        clock and writes nothing on ``None``.
+
+        **Create-if-absent is a defensive fallback (lead ruling 2026-09-20).**
+        ``category_scores.discovery_status`` is ``TEXT NOT NULL`` and is the one
+        non-sampling ``NOT NULL`` column absent from the module's default table,
+        so this method SHALL NOT invent it. ``persist_run_sampling`` forwards the
+        ``discovery_status`` it reads from ``get_category_scores``; the Chunk 3
+        runtime path always creates the row before 4B runs. If no
+        ``(run_id, category)`` row exists and no ``discovery_status`` is
+        supplied, the method raises ``InvalidRecordValueError`` naming the table
+        and column only. The Q-2 restriction to sampling-phase columns governs
+        the **update** path, which is unchanged.
+        """
+        self._check_open()
+        _validate_enum("category_scores", "sampling_basis", sampling_basis)
+        if computed_at_utc is None:
+            raise InvalidRecordValueError(
+                "category_scores.computed_at_utc: value is required and is not "
+                "read from the system clock"
+            )
+
+        if discovery_status is None:
+            # No value supplied: only an existing row can yield one. A missing
+            # row is exactly the case the column's ``NOT NULL`` has no answer
+            # for, so the fallback refuses rather than inventing a status.
+            existing = self._connection.execute(
+                "SELECT discovery_status FROM category_scores "
+                "WHERE run_id = ? AND category = ?",
+                (run_id, category),
+            ).fetchone()
+            if existing is None:
+                raise InvalidRecordValueError(
+                    "category_scores.discovery_status: value is required when no "
+                    "category_scores row exists"
+                )
+            discovery_status = existing[0]
+        _validate_enum("category_scores", "discovery_status", discovery_status)
+
+        defaults = _IMPLICIT_NOT_NULL_DEFAULTS["category_scores"]
+        supplied: dict[str, object] = {
+            "run_id": run_id,
+            "category": category,
+            "discovery_status": discovery_status,
+            "computed_at_utc": computed_at_utc,
+            "discovered_population_count": discovered_population_count,
+            "enriched_sample_count": enriched_sample_count,
+            "sample_is_census": sample_is_census,
+            "sampling_basis": sampling_basis,
+            "sample_fraction": sample_fraction,
+            "overlap_category_count": overlap_category_count,
+            "overlap_sample_percentage": overlap_sample_percentage,
+            "stratum_statistics_json": stratum_statistics_json,
+        }
+        # Every ``NOT NULL`` column is either caller-supplied or filled from the
+        # module's pre-scoring default table; nullable scoring columns are left
+        # out entirely so the insert leaves them SQL ``NULL`` and the update
+        # leaves them untouched.
+        columns = tuple(
+            column
+            for column in TABLE_COLUMNS["category_scores"]
+            if column in supplied or column in defaults
+        )
+        assignments = ", ".join(
+            f"{column} = excluded.{column}" for column in self._SAMPLING_PHASE_COLUMNS
+        )
+        statement = (
+            f"INSERT INTO category_scores ({', '.join(columns)}) "
+            f"VALUES ({', '.join('?' for _ in columns)}) "
+            f"ON CONFLICT (run_id, category) DO UPDATE SET {assignments}"
+        )
+        values = tuple(
+            _encode_column(
+                "category_scores",
+                column,
+                supplied[column] if column in supplied else defaults[column],
+            )
+            for column in columns
+        )
+        try:
+            self._connection.execute(statement, values)
+        except sqlite3.IntegrityError as exc:
+            raise _integrity_error("category_scores", exc, 0) from None
+
     # -- enrichment observations -------------------------------------------
 
     def insert_enrichment_observations(
@@ -1797,3 +1928,374 @@ def _integrity_error(
 for _table_name in TABLE_COLUMNS:
     if not _TABLE_NAME_PATTERN.fullmatch(_table_name):
         raise RuntimeError(f"unexpected table name in the frozen DDL: {_table_name}")
+
+
+# --------------------------------------------------------------------------
+# Chunk 4B — sampling summary serializer, persistence, and verification
+# --------------------------------------------------------------------------
+
+#: The frozen ten-key per-stratum object schema (plan §5.2). Serialization uses
+#: ``json.dumps(value, sort_keys=True, separators=(",", ":"))``, so the key set
+#: is the contract and the key order is ``sort_keys``-determined.
+STRATUM_STATISTICS_KEYS: tuple[str, ...] = (
+    "N_h",
+    "eligibility_rule",
+    "n_h",
+    "stratum_end_ordinal",
+    "stratum_index",
+    "stratum_start_ordinal",
+    "u_demand_h",
+    "u_quality_h",
+    "u_recent_h",
+    "usable_status",
+)
+
+#: The four-token ``usable_status`` vocabulary frozen by Chunk 4B (Q-4).
+USABLE_STATUS_VOCABULARY: tuple[str, ...] = (
+    "pending",
+    "usable",
+    "unavailable",
+    "invalid",
+)
+
+#: The token Chunk 4B writes while enrichment eligibility is unknown.
+PENDING_USABLE_STATUS = "pending"
+
+_STRATUM_STATISTICS_KEY_SET = frozenset(STRATUM_STATISTICS_KEYS)
+
+
+def serialize_stratum_statistics(category: CategorySamplingResult) -> str:
+    """Serialize one category's strata into the frozen JSON summary (plan §5.2).
+
+    One object per stratum, sorted by ascending ``stratum_index``, with exactly
+    the ten keys of :data:`STRATUM_STATISTICS_KEYS`. ``N_h`` is the stratum's
+    discovered population (``population_count``); ``n_h`` is the selected count
+    (``selected_count``) that the pure 4A result carries and is persisted as-is,
+    never recalculated here; ``u_demand_h``, ``u_recent_h``, ``u_quality_h`` and
+    ``eligibility_rule`` are JSON ``null`` while pending; ``usable_status`` is
+    ``"pending"``. An empty population serializes to ``"[]"``. Deterministic:
+    ``json.dumps(value, sort_keys=True, separators=(",", ":"))``, with no
+    dependence on dict/set iteration order.
+    """
+    payload = [
+        {
+            "stratum_index": stratum.stratum_index,
+            "stratum_start_ordinal": stratum.start_ordinal,
+            "stratum_end_ordinal": stratum.end_ordinal,
+            "N_h": stratum.population_count,
+            "n_h": stratum.selected_count,
+            "u_demand_h": None,
+            "u_recent_h": None,
+            "u_quality_h": None,
+            "usable_status": PENDING_USABLE_STATUS,
+            "eligibility_rule": None,
+        }
+        for stratum in sorted(category.strata, key=lambda item: item.stratum_index)
+    ]
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def parse_stratum_statistics(payload: str) -> tuple[dict[str, object], ...]:
+    """Parse a ``stratum_statistics_json`` value into its per-stratum objects.
+
+    A read-back helper for verification: returns the object list exactly as
+    stored, preserving serialized values (JSON ``null`` stays ``None``). Raises
+    :class:`DatabaseError` when the stored text is not a JSON array of objects,
+    when an object does not carry exactly the frozen ten-key schema, or when a
+    ``usable_status`` token is outside the frozen vocabulary.
+    """
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise DatabaseError(
+            "category_scores.stratum_statistics_json: stored value is not valid JSON"
+        ) from exc
+    if not isinstance(decoded, list) or not all(
+        isinstance(entry, dict) for entry in decoded
+    ):
+        raise DatabaseError(
+            "category_scores.stratum_statistics_json: stored value is not a JSON "
+            "array of objects"
+        )
+    for entry in decoded:
+        if set(entry) != _STRATUM_STATISTICS_KEY_SET:
+            raise DatabaseError(
+                "category_scores.stratum_statistics_json: stratum object does not "
+                "carry the frozen ten-key schema"
+            )
+        if entry["usable_status"] not in USABLE_STATUS_VOCABULARY:
+            raise DatabaseError(
+                "category_scores.stratum_statistics_json: usable_status is outside "
+                "the frozen vocabulary"
+            )
+    return tuple(decoded)
+
+
+@dataclass(frozen=True, slots=True)
+class SamplingPersistenceReport:
+    """Outcome of a 4B persist or verify pass.
+
+    ``sample_members_written`` is the rows written by ``persist_run_sampling``
+    and the rows read by ``verify_persisted_sampling``; ``categories_written``
+    is the summaries written or read; ``mismatches`` is empty when verified and
+    otherwise names only the column and category (never an identity string).
+    """
+
+    run_id: str
+    sample_members_written: int
+    categories_written: int
+    mismatches: tuple[str, ...]
+
+
+def persist_run_sampling(
+    repository: SqliteRepository,
+    run: RunSamplingResult,
+    *,
+    computed_at_utc: datetime,
+) -> SamplingPersistenceReport:
+    """Materialize ``run`` into ``sample_members`` and the per-category summary.
+
+    ``computed_at_utc`` is required and caller-supplied; this chunk reads no
+    clock, so ``None`` raises and writes nothing. Overlap is computed once with
+    ``sampling.compute_overlap`` and written to both ``sample_members`` (each
+    member row repeats its category's ``CategoryOverlap`` values per Q-3) and the
+    category summary (via ``upsert_sampling_summary``). Members are written
+    through ``upsert_sample_members``, so re-materializing a run is idempotent
+    and can never create a second membership for a
+    ``(run_id, category, identity)``; a hand-built duplicate insert is still
+    rejected by the primary key (``UniqueConstraintViolation``). Every member
+    carries ``preflight_selected=False`` (Q-5). ``runs.sampling_rule_version`` is
+    not rewritten. ``u_demand_h``/``u_recent_h``/``u_quality_h`` are written as
+    explicit pending placeholders in ``stratum_statistics_json``; the
+    category-level ``usable_*`` and ``unique_enrichment_count`` columns are not
+    written. A missing ``runs`` row raises ``ForeignKeyConstraintViolation``.
+    Returns the counts actually written; ``mismatches`` is empty.
+    """
+    if computed_at_utc is None:
+        raise InvalidRecordValueError(
+            "category_scores.computed_at_utc: value is required and is not "
+            "read from the system clock"
+        )
+
+    overlap_by_category = compute_overlap(run).by_category
+    statuses = {
+        row.category: row.discovery_status
+        for row in repository.get_category_scores(run.run_id)
+    }
+
+    members_written = 0
+    for category_result in run.categories:
+        category_overlap = overlap_by_category[category_result.category]
+        records = tuple(
+            SampleMemberRecord(
+                run_id=run.run_id,
+                category=member.category,
+                asset_identity_key=member.asset_identity_key,
+                stratum_index=member.stratum_index,
+                stratum_start_ordinal=member.stratum_start_ordinal,
+                stratum_end_ordinal=member.stratum_end_ordinal,
+                sample_rank_within_stratum=member.sample_rank_within_stratum,
+                sample_is_census=member.sample_is_census,
+                selection_digest=member.selection_digest,
+                overlap_category_count=category_overlap.overlap_category_count,
+                overlap_sample_percentage=category_overlap.overlap_sample_percentage,
+                preflight_selected=False,
+            )
+            for member in category_result.members
+        )
+        members_written += repository.upsert_sample_members(records)
+        repository.upsert_sampling_summary(
+            run.run_id,
+            category_result.category,
+            discovered_population_count=category_result.discovered_population_count,
+            enriched_sample_count=category_result.enriched_sample_count,
+            sample_is_census=category_result.sample_is_census,
+            sampling_basis=category_result.sampling_basis.value,
+            sample_fraction=category_result.sample_fraction,
+            overlap_category_count=category_overlap.overlap_category_count,
+            overlap_sample_percentage=category_overlap.overlap_sample_percentage,
+            stratum_statistics_json=serialize_stratum_statistics(category_result),
+            computed_at_utc=computed_at_utc,
+            discovery_status=statuses.get(category_result.category),
+        )
+
+    return SamplingPersistenceReport(
+        run_id=run.run_id,
+        sample_members_written=members_written,
+        categories_written=len(run.categories),
+        mismatches=(),
+    )
+
+
+def _mismatch(category: str, column: str) -> str:
+    """A redaction-safe mismatch string naming only the category and column."""
+    return f"{category}: {column} does not match the pure sampling result"
+
+
+def verify_persisted_sampling(
+    repository: SqliteRepository,
+    run: RunSamplingResult,
+) -> SamplingPersistenceReport:
+    """Read back and compare persisted values against the pure 4A result.
+
+    Deterministic: reads ``get_sample_members``, ``get_category_scores``, and
+    ``get_run``, then compares membership (identity set, stratum/rank, census
+    flag, ``selection_digest``), the category summary
+    (``discovered_population_count``, ``enriched_sample_count``,
+    ``sample_is_census``, ``sampling_basis``, ``sample_fraction`` — including
+    ``None`` for a zero population and the ``sample_fraction`` ≠
+    eligibility-coverage distinction), the overlap fields (category-level on both
+    ``sample_members`` and the summary), the per-stratum ``N_h``/``n_h`` and the
+    frozen ``stratum_statistics_json`` schema/status tokens (§5.2), and
+    ``runs.sampling_rule_version`` against ``run.sampling_rule_version``. It does
+    **not** assert the category-level ``usable_*_sample_count`` or
+    ``unique_enrichment_count`` as measured values. Returns ``mismatches == ()``
+    when every compared value equals the pure result; mismatch strings name the
+    column and category only — never an identity string or a secret.
+    ``sample_members_written``/``categories_written`` report the rows read.
+    """
+    mismatches: list[str] = []
+    overlap_by_category = compute_overlap(run).by_category
+
+    run_record = repository.get_run(run.run_id)
+    if run_record is None:
+        mismatches.append(
+            f"{run.run_id}: runs row is missing; sampling_rule_version cannot be "
+            "verified"
+        )
+    elif run_record.sampling_rule_version != run.sampling_rule_version:
+        mismatches.append(
+            f"{run.run_id}: runs.sampling_rule_version does not match the pure "
+            "sampling result"
+        )
+
+    summaries = {
+        row.category: row for row in repository.get_category_scores(run.run_id)
+    }
+
+    members_read = 0
+    categories_read = 0
+    for category_result in run.categories:
+        category = category_result.category
+        category_overlap = overlap_by_category[category]
+
+        stored_members = repository.get_sample_members(run.run_id, category)
+        members_read += len(stored_members)
+
+        pure_by_key = {
+            member.asset_identity_key: member for member in category_result.members
+        }
+        stored_by_key = {row.asset_identity_key: row for row in stored_members}
+        if set(pure_by_key) != set(stored_by_key):
+            mismatches.append(_mismatch(category, "sample_members.membership"))
+        for identity_key in sorted(set(pure_by_key) & set(stored_by_key)):
+            pure_member = pure_by_key[identity_key]
+            stored_member = stored_by_key[identity_key]
+            if stored_member.stratum_index != pure_member.stratum_index:
+                mismatches.append(_mismatch(category, "sample_members.stratum_index"))
+            if stored_member.stratum_start_ordinal != pure_member.stratum_start_ordinal:
+                mismatches.append(
+                    _mismatch(category, "sample_members.stratum_start_ordinal")
+                )
+            if stored_member.stratum_end_ordinal != pure_member.stratum_end_ordinal:
+                mismatches.append(
+                    _mismatch(category, "sample_members.stratum_end_ordinal")
+                )
+            if (
+                stored_member.sample_rank_within_stratum
+                != pure_member.sample_rank_within_stratum
+            ):
+                mismatches.append(
+                    _mismatch(category, "sample_members.sample_rank_within_stratum")
+                )
+            if stored_member.sample_is_census != pure_member.sample_is_census:
+                mismatches.append(
+                    _mismatch(category, "sample_members.sample_is_census")
+                )
+            if stored_member.selection_digest != pure_member.selection_digest:
+                mismatches.append(
+                    _mismatch(category, "sample_members.selection_digest")
+                )
+            if (
+                stored_member.overlap_category_count
+                != category_overlap.overlap_category_count
+            ):
+                mismatches.append(
+                    _mismatch(category, "sample_members.overlap_category_count")
+                )
+            if not _percentages_equal(
+                stored_member.overlap_sample_percentage,
+                category_overlap.overlap_sample_percentage,
+            ):
+                mismatches.append(
+                    _mismatch(category, "sample_members.overlap_sample_percentage")
+                )
+
+        summary = summaries.get(category)
+        if summary is None:
+            mismatches.append(_mismatch(category, "category_scores row is missing"))
+            continue
+        categories_read += 1
+        if (
+            summary.discovered_population_count
+            != category_result.discovered_population_count
+        ):
+            mismatches.append(
+                _mismatch(category, "category_scores.discovered_population_count")
+            )
+        if summary.enriched_sample_count != category_result.enriched_sample_count:
+            mismatches.append(
+                _mismatch(category, "category_scores.enriched_sample_count")
+            )
+        if summary.sample_is_census != category_result.sample_is_census:
+            mismatches.append(_mismatch(category, "category_scores.sample_is_census"))
+        if summary.sampling_basis != category_result.sampling_basis.value:
+            mismatches.append(_mismatch(category, "category_scores.sampling_basis"))
+        if not _fractions_equal(
+            summary.sample_fraction, category_result.sample_fraction
+        ):
+            mismatches.append(_mismatch(category, "category_scores.sample_fraction"))
+        if summary.overlap_category_count != category_overlap.overlap_category_count:
+            mismatches.append(
+                _mismatch(category, "category_scores.overlap_category_count")
+            )
+        if not _percentages_equal(
+            summary.overlap_sample_percentage,
+            category_overlap.overlap_sample_percentage,
+        ):
+            mismatches.append(
+                _mismatch(category, "category_scores.overlap_sample_percentage")
+            )
+        expected_strata = serialize_stratum_statistics(category_result)
+        if summary.stratum_statistics_json != expected_strata:
+            mismatches.append(
+                _mismatch(category, "category_scores.stratum_statistics_json")
+            )
+        else:
+            try:
+                parse_stratum_statistics(summary.stratum_statistics_json)
+            except DatabaseError:
+                mismatches.append(
+                    _mismatch(category, "category_scores.stratum_statistics_json")
+                )
+
+    return SamplingPersistenceReport(
+        run_id=run.run_id,
+        sample_members_written=members_read,
+        categories_written=categories_read,
+        mismatches=tuple(mismatches),
+    )
+
+
+def _percentages_equal(left: float | None, right: float | None) -> bool:
+    """Compare two nullable overlap percentages exactly, preserving ``None``."""
+    if left is None or right is None:
+        return left is None and right is None
+    return left == right
+
+
+def _fractions_equal(left: float | None, right: float | None) -> bool:
+    """Compare two nullable sample fractions exactly, preserving ``None``."""
+    if left is None or right is None:
+        return left is None and right is None
+    return left == right
