@@ -98,14 +98,13 @@ CATEGORY_ORDER_FULL_RUN: tuple[str, ...] = tuple(
 #: (``component_d = None``) so only ``REQUIRED_DEMAND_DATA_UNAVAILABLE`` fires.
 MIXED_RUN_DEMAND_NONE_CATEGORY: str = "c-3"
 
-#: No rankable surface exists in this chunk: sensitivity outputs, final
-#: ``evidence_grade``, and final ``rankability_status`` are Chunk 9B's. The test
-#: asserts none of these names is exposed by ``niche_scout.scoring``.
-NO_RANKABLE_SURFACE: tuple[str, ...] = (
-    "compute_sensitivity",
-    "final_evidence_grade",
-    "final_rankability_status",
-)
+#: Chunk 9A's absence assertion that survives Chunk 9B: the sensitivity entry
+#: point is ``evaluate_sensitivity`` (Chunk 9B plan §5.2), so
+#: ``compute_sensitivity`` remains absent from ``niche_scout.scoring``. The final
+#: ``evidence_grade`` and ``rankability_status`` names are 9B's own surfaces
+#: (plan §5.4-§5.5, §6) and are no longer asserted absent here. The test asserts
+#: the names in this tuple are not exposed by ``niche_scout.scoring``.
+NO_RANKABLE_SURFACE: tuple[str, ...] = ("compute_sensitivity",)
 
 #: The public Chunk 9A callables that must carry type hints and docstrings
 #: (LREQ-NFR-040; plan §7 bullet 8).

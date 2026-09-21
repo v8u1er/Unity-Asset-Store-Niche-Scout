@@ -553,7 +553,9 @@ def test_sensitivity_warning_top_three_boundary() -> None:
     assert not (at_boundary.top_3_stability < 2.0 / 3.0)
     assert at_boundary.warning is False
     assert all(row.warning is False for row in at_boundary.categories)
-    assert stable["expected_max_rank_displacement"] <= stable["displacement_threshold"]
+    assert (
+        stable["expected_maximum_rank_displacement"] <= stable["displacement_threshold"]
+    )
 
     top_three = SENSITIVITY_VECTORS_BY_LABEL["top_three"]
     _, _, _, _, warns = _diagnostics("top_three")
@@ -562,7 +564,7 @@ def test_sensitivity_warning_top_three_boundary() -> None:
     assert warns.warning is True
     assert all(row.warning is True for row in warns.categories)
     assert (
-        top_three["expected_max_rank_displacement"]
+        top_three["expected_maximum_rank_displacement"]
         <= top_three["displacement_threshold"]
     )
 
