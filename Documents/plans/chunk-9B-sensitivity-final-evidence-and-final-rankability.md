@@ -667,8 +667,12 @@ exercises the rank-displacement *breach* needs at least 8 base candidates so a
   base candidates, so `reference_set_size = run_category_count - 1 = 20` and
   `displacement_threshold = max(3, 0.25 * 20) = 5.0`; every category warning is
   `False`.
-- **Top-3-only warning vector (5 candidates; every candidate also breaches the
-  displacement clause — not the isolated top-3 vector).** `R = Q = 0.5` for all,
+- **Top-3 warning vector (5 candidates; the displacement clause is applicable but
+  does not fire — not the isolated second-clause vector).** Plan correction
+  2026-09-21 by the lead: the numbers below give `maximum_rank_displacement = 4`
+  with threshold `5.0` and `c3 = 0`, so no candidate breaches the displacement
+  clause; the original "every candidate also breaches" wording contradicted the
+  table and is removed. `R = Q = 0.5` for all,
   `(D, C)`: c1 `(1.0, 0.0)`, c2 `(0.8, 0.2)`, c3 `(0.6, 0.4)`, c4 `(0.4, 0.6)`,
   c5 `(0.2, 0.8)`. Hand-computed scores: balanced `c1 0.525, c2 0.515,
   c3 0.505, c4 0.495, c5 0.485`; demand-heavy `c1 0.625, c2 0.575, c3 0.525,
@@ -678,8 +682,8 @@ exercises the rank-displacement *breach* needs at least 8 base candidates so a
   `top_5_stability = 1.0`; displacement `c1=4, c2=2, c3=0, c4=2, c5=4`,
   `maximum_rank_displacement = 4`; `maximum_score_delta = 0.100`. With
   `reference_set_size = 20` the threshold is `5.0`; every base candidate is
-  `True` because of the top-3 clause (and all five also satisfy the displacement
-  clause), and the run-level warning is `True`. This vector is used by
+  `True` because of the top-3 clause, and the run-level warning is `True`. This
+  vector is used by
   `test_sensitivity_warning_top_three_boundary` to assert the `1/3 < 2/3`
   condition and the run-level OR; it does **not** isolate the first clause.
 - **Displacement-only warning vector (8 candidates; the isolated second clause).**
@@ -688,9 +692,14 @@ exercises the rank-displacement *breach* needs at least 8 base candidates so a
   **no** candidate satisfies the top-3 condition (`2/3` is not `< 2/3`) and every
   warning that is `True` must come from the displacement clause; the fixture
   records `reference_set_size = 20` so `displacement_threshold = 5.0`.
-  Components are chosen so `{T_3,balanced} = {T_3,demand_heavy} =
-  {T_3,competition_heavy}` while one low-ranked candidate climbs into the top
-  ranks under `competition_heavy`. This vector is used by
+  Component choice (plan correction 2026-09-21 by the lead): the plan originally
+  claimed `{T_3,balanced} = {T_3,demand_heavy} = {T_3,competition_heavy}`, which
+  would give `top_3_stability = 3/3`, contradicting the required `2/3`; the
+  fixture instead makes `T_3,balanced = T_3,demand_heavy = {c1, c2, c3}` and
+  `T_3,competition_heavy = {c8, c1, c2}`, so the exact required numbers
+  (`top_3_stability = 2/3`, one candidate's
+  `maximum_rank_displacement = 6 > 5.0`) hold while no candidate satisfies the
+  top-3 condition. This vector is used by
   `test_sensitivity_warning_rank_displacement_threshold` to isolate the second
   clause.
 - **Top-3-inapplicable vector (2 candidates).** `top_3_stability = top_5_stability
@@ -720,7 +729,10 @@ exercises the rank-displacement *breach* needs at least 8 base candidates so a
   `MODERATE` (a `None` warning is never acceptable for `strong`; R6);
   moderate — count `40`, coverages `0.50`, run size 21, warning `False` →
   `MODERATE`;
-  weak — count `39` or a coverage `0.60` with run size 21 → `WEAK`;
+  weak — count `39` (below the 40 non-census moderate minimum, not census) with
+  run size 21 → `WEAK` (plan correction 2026-09-21 by the lead: a coverage of
+  `0.60` alone with a sufficient count is `MODERATE` per SRS §9.2 line 1050, not
+  `WEAK`, so the weak vector uses the sub-40 count alone);
   insufficient — `not_rankable_reasons` non-empty → `INSUFFICIENT`;
   census alternative — `sample_is_census = True`,
   `discovered_population_count = 50`, counts `0` (all four components still
