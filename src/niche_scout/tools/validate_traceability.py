@@ -30,6 +30,9 @@ TRACEABILITY_PATH = TESTS_DIR / "traceability.json"
 
 LREQ_PATTERN = re.compile(r"\bLREQ-[A-Z]+-\d{3}\b")
 WILDCARD_PATTERN = re.compile(r"`(LREQ-[A-Z]+)-\*`")
+#: SRS Appendix B rows list several areas in one cell (e.g. ``LREQ-NRM-*``,
+#: ``LREQ-SCR-*``), so the backtick form is not always ``<prefix>-*``.
+WILDCARD_GROUP_PATTERN = re.compile(r"`(LREQ-[A-Z]+)`")
 LREQ_MARKER = "pytest.mark.lreq"
 
 
@@ -48,6 +51,13 @@ def defined_ids(text: str) -> set[str]:
         raise ValueError("SRS-lean.md is missing Appendix B (traceability matrix)")
     appendix = text.split("## Appendix B", 1)[1]
     prefixes = {match.group(1) for match in WILDCARD_PATTERN.finditer(appendix)}
+    # A cell may group several areas, e.g. "| `LREQ-NRM-*`, `LREQ-SCR-*` |":
+    # the first prefix is caught above, the rest by the bare backtick form.
+    prefixes |= {
+        match.group(1)
+        for match in WILDCARD_GROUP_PATTERN.finditer(appendix)
+        if match.group(1).startswith("LREQ-")
+    }
     return {item for item in individual_ids(text) if item.rsplit("-", 1)[0] in prefixes}
 
 
