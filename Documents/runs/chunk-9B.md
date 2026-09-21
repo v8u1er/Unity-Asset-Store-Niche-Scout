@@ -41,7 +41,64 @@ on Chunk 9A, so the branch was cut from the `chunk-9A` tip rather than `main`.
 | Tests — `test-author` fix dispatch | DONE | Session `ses_f39e6e876ffeNZceazhIS0zpfG` fixed the two artifacts. `pytest tests/test_scoring_sensitivity.py -q` → 39 passed; `tests/test_scoring_evidence.py -q` → 36 passed; full suite → 475 passed. No node ID/marker/traceability entry changed. |
 | Lead verification (step 6) | DONE | `python -m pytest -q` → **475 passed, 0 failed** (re-run by the lead). `validate_traceability` → valid, 461 matrix nodes, 89 defined LREQ IDs (7 pre-existing unmarked collector/sampling tests, none a Chunk 9B node). `check_import_boundaries` → valid for `metrics.py, scoring.py`. `ruff check` on the six changed files → "All checks passed!"; `ruff format --check` → all formatted (lead ran `ruff format tests/test_scoring_sensitivity.py` once; whitespace only, suite re-run green). |
 | Implementation commits | PENDING | source + adjudicated test fixes. |
-| Review — `spec-reviewer` | PENDING | |
+| Review — `spec-reviewer` | DONE | Session `ses_f39e0d219ffes2x2LYlwFqSRxz` returned `VERDICT: PASS`, no Blocker, no Major. It re-read the SRS §9.1–§9.3/§7.3/§6.5/§13/Appendix C, the frozen plan, the implementation, the tests, and the adjudicated edits; independently re-derived the golden vectors; re-ran the suite and tooling. |
+| Fix rounds used | 0 of 2 | No review-fix commit was needed. |
+| Interface produced | DONE | `Documents/interfaces/chunk-9B.md` (Status: VERIFIED) created from the frozen plan §5. Consumers: Chunks 10, 11, 12, 13. |
+| Gate | PASSED | See gate table below. |
+
+### Review (step 7)
+
+| Item | Result |
+|---|---|
+| `spec-reviewer` round 1 | `VERDICT: PASS`, no Blocker, no Major. Commands re-run by the reviewer: `pytest -q` → 475 passed; `pytest tests/test_scoring_sensitivity.py -q` → 39 passed; `validate_traceability` → valid, 461 matrix nodes; `check_import_boundaries` → valid; `ruff check`/`format --check` on the changed files → clean. It verified candidate-set immutability, balanced-score preservation, the null contract, determinism, the R2–R8 warning/evidence/rankability rules, purity, and that no assertion was weakened. |
+| Round-1 Minors | (1) `final_evidence_grade` uses `all(coverage >= …)` and would raise `TypeError` (not a typed `ValueError`) on a `None`/NaN coverage; the frozen `PreSensitivityCategoryInput` types coverages non-nullable and the SRS case is handled by `not_rankable` before grading → **not fixed** (Minor, no loop). (2) The purity test does not directly assert `"sampling"` absent from `scoring.py` imports, though it is absent → **not fixed** (Minor, no loop). (3) The `NO_RANKABLE_SURFACE` reduction was verified justified against the frozen 9A/9B interfaces → **accepted**. |
+| Reviewer UNVERIFIED | The `python -m ruff` invocation form was permission-denied; the reviewer ran the equivalent `ruff` binary on the changed files (clean). Repo-wide pre-existing ruff debt is outside this chunk and unchanged. |
+
+### Gate — Chunk 9B
+
+Gate bullets walked one by one from `Documents/requirements-dependency-map.md` §3 Chunk 9B
+(Gate section, lines 947–954), on commit `711b0cf` (working tree clean except this run log
+and the interface file).
+
+| Gate bullet | Result | Evidence |
+|---|---|---|
+| 1. Sensitivity never adds or removes candidates | PASS | `evaluate_sensitivity` iterates only `base_candidates.base_rankable_candidates` (`src/niche_scout/scoring.py:1452–1458`) and returns `ranked_categories=candidates` unchanged (`:1525`); `ranked_under_policy` ranks exactly the supplied `candidates` (`:1384–1396`). Tests `test_sensitivity_ranks_only_fixed_candidates` and `test_sensitivity_does_not_add_or_remove_candidates` pass. |
+| 2. Sensitivity never modifies the balanced primary score | PASS | The balanced score is recomputed by `ranked_under_policy` and only read from `score_maps` (`scoring.py:1463–1469, 1483`); no `ScoreResult` field is assigned. Tests `test_sensitivity_preserves_balanced_primary_score` (equality within `1e-9`) and `test_sensitivity_warning_does_not_alter_balanced_score` pass. |
+| 3. A sensitivity warning demotes final rankability only as specified | PASS | `final_rankability_status` returns `RANKABLE` iff `sensitivity_warning is False`, else `PROVISIONAL`; `NOT_RANKABLE` is never overridden (`scoring.py:1650–1656`). Tests `test_final_rankability_sensitivity_demotes_to_provisional`, `test_final_rankability_never_demotes_to_not_rankable`, and `test_final_rankability_null_warning_is_provisional` pass. |
+| 4. Insufficient candidate counts produce the explicitly defined null outputs | PASS | Empty set ⇒ every run-level stability/displacement/warning `None` with `categories == ()` (`scoring.py:1475–1476, 1518–1521`); `top_k_stability` is `None` below `k`. Tests `test_sensitivity_top_k_null_when_too_few_candidates`, `test_sensitivity_empty_candidate_set_null_outputs`, and `test_sensitivity_warning_is_none_only_without_candidates` pass. |
+| 5. `final_evidence_grade` and `final_rankability_status` are assigned here after sensitivity; Chunk 10 persists the complete result | PASS | Both functions are implemented (`scoring.py:1537, 1627`) and take `sensitivity_warning` as an input; `scoring.py` performs no persistence/serialization (purity test + `check_import_boundaries` exit 0). Persistence is Chunk 10 per `interfaces/chunk-9B.md` §5. |
+| 6. Final rankability is assigned only after sensitivity is computed | PASS | `final_rankability_status` is a distinct function whose only sensitivity input is the completed `evaluate_sensitivity` warning (`scoring.py:1627–1656`); it is never called from within `evaluate_sensitivity`. Tests `test_sensitivity_high_provisional_clause_completes_evd030` and `test_final_rankability_requires_base_and_sensitivity` pass. |
+
+Supporting evidence: `python -m pytest -q` → **475 passed, 0 failed**;
+`python -m pytest tests/test_scoring_sensitivity.py -q` → **39 passed**;
+`python -m niche_scout.tools.validate_traceability` → valid ("7 Chunk 0 requirements
+mapped, 461 matrix nodes, 89 defined LREQ IDs"; 7 pre-existing unmarked
+collector/sampling tests, none a Chunk 9B node);
+`python -m niche_scout.tools.check_import_boundaries` → exit 0;
+`ruff check` on the changed files → "All checks passed!";
+`ruff format --check` → all formatted.
+
+**GATE: PASSED**
+
+
+### Open items carried forward (not gate failures)
+
+- Reviewer Minors 1–2 (defensive `TypeError` vs `ValueError` on a non-nullable
+  coverage; an indirect `"sampling"`-absence check) are recorded but not fixed.
+- `tests/test_scoring_sensitivity.py` is 1,540 lines and
+  `tests/fixtures/sensitivity_fixtures.py` is 1,089 lines, both past the
+  ~800–1000-line review trigger. Fixtures are exempt (inert data); the test file's
+  one-module scope is plan-fixed, so no split was taken (a split along the
+  `SEN-*` vs `EVD-*` clusters would be a human/plan decision and must not rename a
+  node ID).
+- Chunk 10 must persist `category_scores.sensitivity_warning` and
+  `ranking_sensitivity_json` from `SensitivityDiagnostics`, **not** from the frozen
+  `SensitivityResult` (whose `warning: bool = False` cannot express `None`); and it
+  must supply `SampleEvidenceFacts` from the authoritative persisted columns.
+- The four evidence-grade sample-count literals (80/50/40/20) are SRS §9.2 values
+  held as private `scoring.py` constants (no public config key); Chunk 12's
+  config-precedence chunk should not add a configurable override (out of scope per
+  the fixed Lean v1 weights/thresholds rule).
 
 ### Plan rulings R1–R8 (Chunk 9B)
 
