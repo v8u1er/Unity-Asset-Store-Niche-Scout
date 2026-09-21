@@ -15,6 +15,7 @@ from fixtures import (
     metric_estimator_fixtures,
     sampling_fixtures,
     sampling_persistence_fixtures,
+    scoring_fixtures,
     validation_fixtures,
 )
 
@@ -26,5 +27,6 @@ __all__ = [
     "metric_estimator_fixtures",
     "sampling_fixtures",
     "sampling_persistence_fixtures",
+    "scoring_fixtures",
     "validation_fixtures",
 ]
