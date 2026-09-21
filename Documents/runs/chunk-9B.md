@@ -26,7 +26,16 @@ on Chunk 9A, so the branch was cut from the `chunk-9A` tip rather than `main`.
 | Plan — dispatch 1 | BLOCKED | `chunk-planner` wrote the full 862-line plan (DRAFT) with 8 open questions in §12; commit pending until frozen. |
 | Plan — advisory memo | DONE | Read-only `explore` (`ses_f3a53e1e1ffegEt1R6b8WxD9D0`) researched all 8 questions against the SRS, dependency map, frozen interfaces, and live source; returned cited recommendations for Q1–Q8 with confidence labels. |
 | Plan — lead rulings R1–R8 | DONE | Rulings recorded below; all eight follow the memo. Re-dispatched `chunk-planner` to apply them and freeze. |
-| Plan commit | PENDING | after freeze. |
+| Plan commit | DONE | `b7819ed` — `chunk-9B: plan` (frozen plan + this run log). |
+| Plan — lead consistency fix | DONE | Plan §12 R2 named a non-existent test node; corrected in place before commit (the §9 marker table and `tests/traceability.json` block — which agree with each other — govern). |
+| Tests — `test-author` dispatch 1 | FAILED (empty) | Returned an empty result and wrote no files (session `ses_f3a3b8f65ffepjqolTmgue07I5`). |
+| Tests — `test-author` retry | FAILED (empty) | Same session resumed and one fresh session (`ses_f3a282c4bffevdEZxta4t60oxS`) both returned empty with no files written. |
+| Tests — `test-author` scoped dispatch (fixtures) | DONE | Small-scope session (`ses_f3a1cde9dffeDUzY7d6pJzKWef`) wrote `tests/fixtures/sensitivity_fixtures.py` (1089 lines, data-only); the earlier empties were a task-size/step failure, not a provider outage. Raised 3 plan-vector inconsistencies. |
+| Plan — vector corrections | DONE | Lead corrected the frozen plan in place with dated notes: the §9 top-3 vector's false "every candidate breaches displacement" wording; the displacement vector's self-contradictory equal-top-3-set sentence (now `T3b=T3d={c1,c2,c3}`, `T3c={c8,c1,c2}`); the weak vector's "coverage 0.60 → WEAK" claim (a sufficient count with coverage ≥0.50 is MODERATE per SRS §9.2). |
+| Tests — `test-author` scoped dispatch (test file) | DONE | Session `ses_f39fd7016ffefu4dFJndiU7O5K` wrote `tests/test_scoring_sensitivity.py` (39 nodes), updated `tests/fixtures/__init__.py`, and appended 39 entries to `tests/traceability.json`. Node count corrected to **39** (the plan §9 table and JSON block both have 39 rows; my earlier 38 was an estimate error). |
+| Tests — lead verification (step 4) | DONE | `python -m pytest tests/test_scoring_sensitivity.py -q` → 1 collection ERROR: `ImportError: cannot import name 'CategorySensitivityRank' from 'niche_scout.scoring'` (required missing-implementation shape; module parsed with no syntax error). `python -m pytest tests -q --ignore=tests/test_scoring_sensitivity.py` → 436 passed. `validate_traceability` → valid, 461 matrix nodes. Node/entry counts queried: `^def test_` → 39; `test_scoring_sensitivity.py::` in traceability → 39; names match 1:1. `ruff check` → "All checks passed!"; lead ran `ruff format` (2 files reformatted, whitespace only). |
+| Tests commit | PENDING | |
+| Implementation — `impl-deep` dispatch | PENDING | |
 
 ### Plan rulings R1–R8 (Chunk 9B)
 
