@@ -124,3 +124,50 @@ obligations below.
 - To Chunk 6B's owner: reuse the persisted preflight observations (the
   `(run_id, asset_identity_key)` PK makes `upsert_enrichment_observation` idempotent)
   and call `bulk_enrichment_allowed(status)` before any bulk enrichment.
+
+## Reverification pass (2026-09-21) — branch `chunk-6-verify`
+
+Operator request: the interface had remained `Status: FROZEN` although this run log
+recorded `GATE: PASSED`; confirm the whole of Chunk 6 (6A and 6B) is implemented
+correctly and completely, then certify it. Full detail: `Documents/runs/chunk-6-verify.md`.
+
+- `spec-reviewer` (fresh, independent; resumed once after a step-budget hit):
+  **`VERDICT: PASS`**. Read-conformance of every public 6A symbol to interface
+  §5.1–§5.6, plus selection/truncation, the unique-identity denominator, gate
+  ordering and boundaries, persist-before-gate ordering, the `FAILED` transition
+  with `completed_at_utc` omitted, and the non-clobbering
+  `page_view_semantics_status` write.
+- Lead re-ran on `chunk-6-verify`: `python -m pytest -q` → **400 passed**;
+  `python -m pytest tests/test_identity_preflight.py -q` → **46 passed**;
+  `python -m niche_scout.tools.validate_traceability` → exit 0 (386 matrix nodes,
+  89 defined LREQ IDs); `python -m niche_scout.tools.check_import_boundaries` →
+  exit 0; `ruff check` / `ruff format --check` clean on `pipeline.py`,
+  `tests/test_identity_preflight.py`, and
+  `tests/fixtures/identity_preflight_vectors.py`.
+- Counts re-run: 41 `def test_` nodes, 41 `@pytest.mark.lreq` markers, and 41
+  `tests/traceability.json` keys for this module (name-for-name). The 46 pytest
+  items are the 41 base nodes plus the 5 extra
+  `test_preflight_identity_failure_modes` parameter cases, which map by base node
+  ID. This **closes** the earlier UNVERIFIED count (this log, lines 108–111): there
+  are no unkeyed 6A nodes.
+- Test-integrity ruling: the `test_preflight_persisted_before_gate_returns` rewrite
+  (terminal snapshot plus "`update_run_status` is last") is **accepted**. The
+  every-intermediate-snapshot assertion is unsatisfiable under the frozen §5.4
+  step order, and the node still asserts the ordering guarantee the gate bullet
+  names.
+- `Documents/interfaces/chunk-6A.md` set to `Status: VERIFIED`.
+
+Minors recorded (no fix round per the chunk-lead procedure; none blocks the gate):
+1. `pipeline.py` `_draft_optional_int` falls back to `_safe_int(default=0)` on a
+   non-`to_record` draft mapping — a latent hard-rule-2 hazard, unreachable through
+   the production adapter draft.
+2. `_endpoint_signature_for_draft`'s draft-metadata lookup reads `endpoint`/
+   `endpoint_contract_version`, which Chunk 5 request metadata never emits; the
+   persisted value is still the canonical `GRAPHQL_BATCH_ENDPOINT#ENDPOINT_CONTRACT_VERSION`,
+   so §5.6 and LREQ-ID-040 hold.
+3. With a caller-supplied non-default `endpoint`, the zero-observation summary
+   branch and the observation branch could report different signatures.
+4. `_decode_body_text`'s docstring says an undecodable body is "left as-is" while
+   the code uses `errors="replace"`; no node exercises the `bytes` path.
+
+**GATE: PASSED** re-affirmed; no source or test file changed in this pass.

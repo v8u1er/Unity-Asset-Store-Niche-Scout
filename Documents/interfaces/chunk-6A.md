@@ -1,9 +1,18 @@
 # Chunk 6A — Identity preflight planner and gate (public interface)
 
-Status: FROZEN
+Status: VERIFIED
 Source plan: `Documents/plans/chunk-6A-identity-preflight-planner-and-gate.md`
 (Status: FROZEN; ruled 2026-09-20). This file is the public contract downstream
 chunks (6B, 10, 13) build against. It reproduces §5 of the frozen plan verbatim.
+
+Verified at: 2026-09-21, branch `chunk-6-verify` (from `main` `4f51bf1`).
+`spec-reviewer` `VERDICT: PASS`; the lead re-ran `python -m pytest -q` (400
+passed), `python -m pytest tests/test_identity_preflight.py -q` (46 passed),
+`python -m niche_scout.tools.validate_traceability` (exit 0; 386 matrix nodes,
+89 defined LREQ IDs), `python -m niche_scout.tools.check_import_boundaries`
+(exit 0), and `ruff check` / `ruff format --check` (clean) on the 6A files. Gate
+`GATE: PASSED` re-affirmed. See `Documents/runs/chunk-6A.md` "Reverification
+pass" and `Documents/runs/chunk-6-verify.md` for evidence and recorded Minors.
 
 This chunk is orchestration plus one additive persistence method. It plans and
 executes a deterministic identity preflight through the Chunk 5 adapter,

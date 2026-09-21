@@ -120,3 +120,34 @@ preflight-attempted identity (even a failed one) is not retried in 6B.
 - URI trailing-identifier extraction rule 1.0.1 — still unverified, owner none. 6B does not touch identity extraction.
 - OI-6 CSRF/session sufficiency — owner unassigned. 6B does not construct auth; it calls the Chunk 5 adapter.
 - `runs.taxonomy_sha256` empty-hash rejection — owner Chunk 10. 6B does not construct `RunRecord`.
+
+## Reverification pass (2026-09-21) — branch `chunk-6-verify`
+
+Operator request covered the whole of Chunk 6; 6B was re-reviewed independently.
+
+- `spec-reviewer`: **`VERDICT: PASS`** — `tests/test_enrichment.py` 29 passed;
+  full suite 400 passed; `validate_traceability` exit 0 (386 matrix nodes, 89
+  defined LREQ IDs); `check_import_boundaries` exit 0; the three 6B files clean
+  under `ruff check` / `ruff format --check`. 29 collected base nodes == 29
+  `traceability.json` keys; every entry within
+  `LREQ-GQL-080`/`NFR-020`/`NFR-030`/`SMP-080`.
+- **Public-symbol shadowing check completed** (closes the open item in
+  `Documents/runs/chunk-6A-review-findings.md` lines 69–73): a repo-wide grep for
+  the 6B public names and private helpers matches only `pipeline.py`; no match in
+  `models.py`, `config.py`, `sampling.py`, `validation.py`, `metrics.py`,
+  `scoring.py`, or `collector_graphql.py`.
+- Additional recorded Minors (no fix round per the chunk-lead procedure; none
+  blocks the gate):
+  1. `pipeline.py` `enrich_unique_identities`: `failed_identity_count` counts only
+     observations persisted by the current pass, so a reused preflight observation
+     with a non-`success` status is not counted. Interface §5.3's field prose
+     ("persisted observations") and its gate-not-passed step ("all counts `0`"
+     while reuse rows exist) are internally inconsistent; the implementation chose
+     the reading consistent with the step-1 rule. Needs a future interface
+     clarification, not a code change here.
+  2. `build_enrichment_projection` input validation (`bool` rejection,
+     `ValueError` on non-finite/negative values) has no exercising test node.
+  3. `_draft_optional_int` default-0 fallback (shared with 6A; see chunk-6A log).
+  4. `tests/test_enrichment.py` interval assertion uses a relative
+     `pytest.approx` tolerance while the plan §9 golden asks for `1e-9`.
+  5. `tests/fixtures/enrichment_fixtures.py` retains stale naive-date prose.
