@@ -1381,6 +1381,29 @@ class SqliteRepository:
         """Re-materialize summary columns on the existing membership row."""
         return self._upsert_rows("sample_members", members)
 
+    def mark_preflight_selected(
+        self, run_id: str, asset_identity_keys: Sequence[str]
+    ) -> int:
+        """Set ``sample_members.preflight_selected = True`` for the given keys.
+
+        Scoped to ``(run_id, asset_identity_key)``; returns the number of rows
+        changed. A key absent from the run's ``sample_members`` changes no row:
+        it is never an error and never a fabricated membership row. No other
+        column is assigned and no clock is read.
+        """
+        self._check_open()
+        statement = (
+            "UPDATE sample_members SET preflight_selected = 1 "
+            "WHERE run_id = ? AND asset_identity_key = ?"
+        )
+        changed = 0
+        for asset_identity_key in asset_identity_keys:
+            cursor = self._connection.execute(
+                statement, (run_id, asset_identity_key)
+            )
+            changed += cursor.rowcount
+        return changed
+
     # -- sampling summaries (Chunk 4B) -------------------------------------
 
     # The eight sampling-phase ``category_scores`` columns this method owns
