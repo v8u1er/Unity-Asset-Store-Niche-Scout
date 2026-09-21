@@ -26,9 +26,11 @@ from .metrics import CategoryRawMetrics, RawMetricBundle
 from .models import (
     DEMAND_SUBWEIGHT_MEDIAN,
     DEMAND_SUBWEIGHT_PER_ASSET,
+    MIN_CATEGORIES_PER_RUN,
     MIN_REQUIRED_COMPONENT_COVERAGE,
     RECENT_SUBWEIGHT_AGE,
     RECENT_SUBWEIGHT_SHARE,
+    SENSITIVITY_POLICIES,
     STRONG_COMPONENT_COVERAGE,
     STRONG_REFERENCE_CATEGORY_COUNT,
     W_C,
@@ -1169,3 +1171,486 @@ def build_base_rankable_candidates(
         decisions=tuple(decisions),
         run_category_count=run_category_count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Chunk 9B — sensitivity, final evidence grade, and final rankability status
+# ---------------------------------------------------------------------------
+#
+# The sample-count grade boundaries below are the literals of the SRS-lean §9.2
+# evidence table (lines 1049-1050): ``strong`` needs a minimum component sample
+# count of at least 80 or a census of at least 50; ``moderate`` needs at least 40
+# or a census of at least 20. They are policy thresholds fixed by Lean v1, so
+# they are named here rather than inlined as magic numbers. No sensitivity
+# threshold is added beyond the derived ``max(3, 0.25 * reference_set_size)``
+# that LREQ-SEN-030 names.
+
+#: SRS-lean §9.2 line 1049: non-census ``strong`` component-sample minimum.
+_STRONG_SAMPLE_COUNT: int = 80
+#: SRS-lean §9.2 line 1049: census ``strong`` discovered-population minimum.
+_STRONG_CENSUS_COUNT: int = 50
+#: SRS-lean §9.2 line 1050: non-census ``moderate`` component-sample minimum.
+_MODERATE_SAMPLE_COUNT: int = 40
+#: SRS-lean §9.2 line 1050: census ``moderate`` discovered-population minimum.
+_MODERATE_CENSUS_COUNT: int = 20
+
+#: Fixed policy evaluation order. Keys are exactly the ones in
+#: :data:`models.SENSITIVITY_POLICIES` (SRS-lean §9.3 LREQ-SEN-010); the tuple
+#: fixes iteration order so no mapping iteration determines output.
+SENSITIVITY_POLICY_ORDER: tuple[str, ...] = (
+    "balanced",
+    "demand_heavy",
+    "competition_heavy",
+)
+
+#: Fixed top-k order for the stability statistics (SRS-lean §9.3 LREQ-SEN-020).
+SENSITIVITY_TOP_K: tuple[int, ...] = (3, 5)
+
+
+@dataclass(frozen=True, slots=True)
+class CategorySensitivityRank:
+    """One base candidate's rank/score under every policy plus its displacements.
+
+    ``score_*`` are the alternate-policy composite scores and are never ``None``
+    for a base candidate (all four components are available by the Chunk 9A base
+    rule). ``rank_*`` are 1-based ranks over ``ranked_categories`` (the frozen
+    ``base_rankable_candidates``). ``maximum_score_delta`` is the maximum absolute
+    difference between a non-balanced policy score and ``score_balanced``;
+    ``maximum_rank_displacement`` is the maximum absolute rank difference across
+    all three policies. ``warning`` is ``None`` only when the candidate set is
+    empty (which never yields a row); otherwise it is the explicit boolean of
+    SRS-lean §9.3 LREQ-SEN-030 (plan §5.3).
+    """
+
+    category: str
+    score_balanced: float
+    score_demand_heavy: float
+    score_competition_heavy: float
+    rank_balanced: int
+    rank_demand_heavy: int
+    rank_competition_heavy: int
+    maximum_score_delta: float
+    maximum_rank_displacement: int
+    warning: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class SensitivityDiagnostics:
+    """Run-level sensitivity result over the immutable candidate set.
+
+    ``ranked_categories`` is exactly
+    ``BaseCandidateSet.base_rankable_candidates`` (same order, unchanged set);
+    ``categories`` is 1:1 with it. The five run-level fields mirror the persisted
+    ``category_scores`` names. ``warning`` is the run-level aggregate (plan
+    §5.3). ``reference_set_size`` and ``displacement_threshold`` record the
+    inputs used so Chunk 10 can persist the diagnostics without recomputing them.
+
+    Null contract (plan §5.2/§5.3): with an empty candidate set,
+    ``top_3_stability``, ``top_5_stability``, ``maximum_score_delta``,
+    ``maximum_rank_displacement``, and ``warning`` are all ``None`` and
+    ``categories`` is ``()``; ``top_3_stability`` is additionally ``None`` when
+    fewer than 3 candidates exist and ``top_5_stability`` when fewer than 5. No
+    value is ever padded with an unavailable category.
+    """
+
+    policies: tuple[str, ...]
+    ranked_categories: tuple[str, ...]
+    categories: tuple[CategorySensitivityRank, ...]
+    top_3_stability: float | None
+    top_5_stability: float | None
+    maximum_score_delta: float | None
+    maximum_rank_displacement: int | None
+    warning: bool | None
+    reference_set_size: int
+    displacement_threshold: float
+
+
+@dataclass(frozen=True, slots=True)
+class SampleEvidenceFacts:
+    """The sample/census facts the final evidence grade needs (plan §5.4 R5).
+
+    ``usable_*_sample_count`` mirror the ``CategoryRawMetrics`` fields of the
+    same names; the caller copies them. ``minimum_component_sample_count`` is
+    computed here as their minimum (SRS-lean §9.2 lines 1035-1040). ``0`` is a
+    legitimate explicit count, never "missing". ``discovered_population_count``
+    and ``sample_is_census`` mirror ``sampling.CategorySamplingResult`` and the
+    persisted ``category_scores`` columns of the same names; ``scoring.py``
+    imports neither ``sampling`` nor any I/O module, so the caller supplies them
+    as plain typed values. A verified zero-result category
+    (``discovered_population_count == 0``) is an explicit zero, never a missing
+    value (SRS-lean §7.3). A ``None`` is never used: ``sample_is_census`` is a
+    bool and the three counts are ints.
+    """
+
+    category: str
+    sample_is_census: bool
+    discovered_population_count: int
+    usable_demand_sample_count: int
+    usable_recent_supply_sample_count: int
+    usable_quality_sample_count: int
+
+    @property
+    def minimum_component_sample_count(self) -> int:
+        """Return the minimum of the three usable component sample counts.
+
+        SRS-lean §9.2 lines 1035-1040. An explicit ``0`` is a legitimate count
+        and participates in the minimum; the value is never ``None``.
+        """
+        return min(
+            self.usable_demand_sample_count,
+            self.usable_recent_supply_sample_count,
+            self.usable_quality_sample_count,
+        )
+
+
+def _require_coverage(value: object, *, name: str) -> float:
+    """Validate a coverage/threshold to a finite ``float`` in ``[0, 1]``.
+
+    A non-numeric, ``bool``, non-finite, or out-of-range value is a
+    caller/policy breach and raises ``ValueError``. Mirrors
+    :func:`_require_threshold` for a differently named parameter.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a float")
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or number > 1:
+        raise ValueError(f"{name} must be in [0, 1]")
+    return number
+
+
+def _components_from_score(score: ScoreResult) -> ComponentValues:
+    """Extract the four components of a base candidate's ``ScoreResult``.
+
+    A base candidate is guaranteed four available components by the Chunk 9A
+    base rule; a ``None`` component or ``available_component_count != 4`` here
+    means the caller passed a mismatched ``ScoreResult`` and raises
+    ``ValueError`` rather than fabricating a zero.
+    """
+    if score.available_component_count != 4:
+        raise ValueError(
+            "base candidate ScoreResult must have available_component_count == 4"
+        )
+    components = ComponentValues(
+        demand=score.component_d,
+        competition=score.component_c,
+        recent_supply=score.component_r,
+        quality=score.component_q,
+    )
+    if components.available_component_count != 4:
+        raise ValueError("base candidate ScoreResult must have all four components")
+    return components
+
+
+def _top_k_stability(
+    ranked_by_policy: Mapping[str, tuple[tuple[str, float], ...]],
+    k: int,
+) -> float | None:
+    """Return ``|∩_p T_k,p| / k`` or ``None`` when fewer than ``k`` candidates.
+
+    SRS-lean §9.3 LREQ-SEN-020 lines 1082-1087. The three policy top-k sets are
+    built in the fixed :data:`SENSITIVITY_POLICY_ORDER`; no padding with
+    unavailable categories is performed. The exact float division is returned.
+    """
+    if len(ranked_by_policy["balanced"]) < k:
+        return None
+    common: set[str] = {category for category, _ in ranked_by_policy["balanced"][:k]}
+    for policy in SENSITIVITY_POLICY_ORDER[1:]:
+        common &= {category for category, _ in ranked_by_policy[policy][:k]}
+    return len(common) / k
+
+
+def ranked_under_policy(
+    candidates: Sequence[str],
+    components_by_category: Mapping[str, ComponentValues],
+    *,
+    policy: Mapping[str, float],
+) -> tuple[tuple[str, float], ...]:
+    """Rank exactly ``candidates`` by descending composite under ``policy``.
+
+    Pure and deterministic (LREQ-SEN-010, LREQ-SEN-020, LREQ-ARCH-030). Each
+    candidate's :class:`ComponentValues` is combined with
+    :func:`renormalized_composite`; the returned ``(category, score)`` pairs are
+    sorted by descending score with ties broken by ascending lexical category
+    path, i.e. the sort key is ``(-score, category)``, so no mapping iteration
+    order determines the output. An empty ``candidates`` returns ``()``.
+
+    A category absent from ``components_by_category``, a ``None`` component that
+    leaves fewer than two available components, or a ``policy`` missing a
+    :data:`COMPONENT_WEIGHT_KEYS` key raises ``ValueError`` (caller/policy
+    breach), never a fabricated value. The balanced policy recomputes the same
+    value as :func:`balanced_composite` to within ``1e-9`` and neither reads back
+    nor mutates a stored score.
+    """
+    ranked: list[tuple[str, float]] = []
+    for category in candidates:
+        components = components_by_category.get(category)
+        if components is None:
+            raise ValueError(f"missing ComponentValues for candidate {category!r}")
+        composite = renormalized_composite(components, policy)
+        if composite.market_opportunity_score is None:
+            raise ValueError(
+                f"candidate {category!r} has fewer than two available components"
+            )
+        ranked.append((category, composite.market_opportunity_score))
+    ranked.sort(key=lambda item: (-item[1], item[0]))
+    return tuple(ranked)
+
+
+def evaluate_sensitivity(
+    base_candidates: BaseCandidateSet,
+    all_metrics: Sequence[CategoryRawMetrics],
+    scores: Sequence[ScoreResult],
+    *,
+    reference_set_size: int,
+    min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE,
+) -> SensitivityDiagnostics:
+    """Rank the frozen candidate set under the three fixed policies.
+
+    Pure run-level sensitivity (SRS-lean §9.3 LREQ-SEN-010/-020/-030/-040). The
+    ranked set is exactly ``base_candidates.base_rankable_candidates``; no
+    candidate is added or removed and no ``ScoreResult`` is mutated or read back
+    for the balanced score (the balanced policy is recomputed).
+
+    ``all_metrics`` and ``scores`` must be equal-length and 1:1 category-aligned,
+    and every candidate must appear in ``all_metrics``; a duplicate or missing
+    category, a non-4-component candidate ``ScoreResult``, or a
+    ``reference_set_size`` that differs from
+    ``base_candidates.run_category_count - 1`` raises ``ValueError`` (caller
+    breach, plan §5.2 R3). ``min_required_component_coverage`` is validated as a
+    policy threshold.
+
+    Null contract: an empty candidate set returns every run-level stability,
+    displacement, and warning field as ``None`` with ``categories == ()``, while
+    still recording ``reference_set_size`` and ``displacement_threshold``.
+    ``top_3_stability`` / ``top_5_stability`` are ``None`` when fewer than 3 / 5
+    candidates exist. The per-category ``warning`` is ``None`` only for an empty
+    candidate set; otherwise it is ``True`` iff
+    ``(top_3_stability is not None and top_3_stability < 2/3)`` or the category's
+    ``maximum_rank_displacement`` exceeds
+    ``max(3.0, 0.25 * reference_set_size)``. The run-level ``warning`` is the OR
+    over the candidate rows.
+    """
+    _require_threshold(min_required_component_coverage)
+    if reference_set_size != base_candidates.run_category_count - 1:
+        raise ValueError(
+            "reference_set_size must equal run_category_count - 1: "
+            f"{reference_set_size} != {base_candidates.run_category_count - 1}"
+        )
+    metrics = tuple(all_metrics)
+    score_results = tuple(scores)
+    if len(metrics) != len(score_results):
+        raise ValueError(
+            "all_metrics and scores must have equal length: "
+            f"{len(metrics)}, {len(score_results)}"
+        )
+    score_by_category: dict[str, ScoreResult] = {}
+    for metric, score in zip(metrics, score_results):
+        if metric.category in score_by_category:
+            raise ValueError(f"duplicate category in all_metrics: {metric.category}")
+        score_by_category[metric.category] = score
+
+    candidates = base_candidates.base_rankable_candidates
+    candidate_components: dict[str, ComponentValues] = {}
+    for category in candidates:
+        score = score_by_category.get(category)
+        if score is None:
+            raise ValueError(f"base candidate {category!r} is missing from all_metrics")
+        candidate_components[category] = _components_from_score(score)
+
+    ranked_by_policy: dict[str, tuple[tuple[str, float], ...]] = {}
+    score_maps: dict[str, dict[str, float]] = {}
+    rank_maps: dict[str, dict[str, int]] = {}
+    for policy_name in SENSITIVITY_POLICY_ORDER:
+        ranked = ranked_under_policy(
+            candidates,
+            candidate_components,
+            policy=SENSITIVITY_POLICIES[policy_name],
+        )
+        ranked_by_policy[policy_name] = ranked
+        score_maps[policy_name] = {category: value for category, value in ranked}
+        rank_maps[policy_name] = {
+            category: index + 1 for index, (category, _value) in enumerate(ranked)
+        }
+
+    top_3_stability = _top_k_stability(ranked_by_policy, 3)
+    top_5_stability = _top_k_stability(ranked_by_policy, 5)
+    displacement_threshold = max(3.0, 0.25 * reference_set_size)
+
+    rows: list[CategorySensitivityRank] = []
+    maximum_score_delta: float | None = None
+    maximum_rank_displacement: int | None = None
+    for category in candidates:
+        balanced = score_maps["balanced"][category]
+        row_score_delta = 0.0
+        for policy_name in SENSITIVITY_POLICY_ORDER[1:]:
+            row_score_delta = max(
+                row_score_delta, abs(score_maps[policy_name][category] - balanced)
+            )
+        ranks = [
+            rank_maps[policy_name][category] for policy_name in SENSITIVITY_POLICY_ORDER
+        ]
+        row_rank_displacement = max(ranks) - min(ranks)
+        row_warning = (
+            top_3_stability is not None and top_3_stability < 2.0 / 3.0
+        ) or row_rank_displacement > displacement_threshold
+        rows.append(
+            CategorySensitivityRank(
+                category=category,
+                score_balanced=balanced,
+                score_demand_heavy=score_maps["demand_heavy"][category],
+                score_competition_heavy=score_maps["competition_heavy"][category],
+                rank_balanced=rank_maps["balanced"][category],
+                rank_demand_heavy=rank_maps["demand_heavy"][category],
+                rank_competition_heavy=rank_maps["competition_heavy"][category],
+                maximum_score_delta=row_score_delta,
+                maximum_rank_displacement=row_rank_displacement,
+                warning=row_warning,
+            )
+        )
+        if maximum_score_delta is None or row_score_delta > maximum_score_delta:
+            maximum_score_delta = row_score_delta
+        if (
+            maximum_rank_displacement is None
+            or row_rank_displacement > maximum_rank_displacement
+        ):
+            maximum_rank_displacement = row_rank_displacement
+
+    if len(candidates) == 0:
+        run_warning: bool | None = None
+    else:
+        run_warning = any(row.warning is True for row in rows)
+
+    return SensitivityDiagnostics(
+        policies=SENSITIVITY_POLICY_ORDER,
+        ranked_categories=candidates,
+        categories=tuple(rows),
+        top_3_stability=top_3_stability,
+        top_5_stability=top_5_stability,
+        maximum_score_delta=maximum_score_delta,
+        maximum_rank_displacement=maximum_rank_displacement,
+        warning=run_warning,
+        reference_set_size=reference_set_size,
+        displacement_threshold=displacement_threshold,
+    )
+
+
+def final_evidence_grade(
+    evidence: PreSensitivityCategoryInput,
+    sample: SampleEvidenceFacts,
+    decision: PreSensitivityDecision,
+    *,
+    run_category_count: int,
+    sensitivity_warning: bool | None,
+    min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE,
+    strong_component_coverage: float = STRONG_COMPONENT_COVERAGE,
+) -> EvidenceGrade:
+    """Return the final persisted evidence grade (SRS-lean §9.2 LREQ-EVD-050).
+
+    Precedence, all inputs explicit (plan §5.4):
+
+    1. ``decision.not_rankable_reasons`` non-empty → ``INSUFFICIENT`` (required
+       evidence invalid, unavailable, or contradictory).
+    2. ``STRONG`` iff the minimum component sample count is at least 80 (or the
+       category is a census with ``discovered_population_count >= 50``), every one
+       of the three stratum eligibility coverages is at least
+       ``strong_component_coverage``, discovery is verified and
+       ``COMPLETE``, there is no unresolved/conflicting identity, page-view
+       semantics are not ``CONTRADICTED``, the run has at least
+       ``STRONG_REFERENCE_CATEGORY_COUNT`` categories, **and**
+       ``sensitivity_warning is False``.
+    3. ``MODERATE`` iff the minimum component sample count is at least 40 (or a
+       census of at least 20), every required coverage is at least
+       ``min_required_component_coverage``, the run has at least
+       ``MIN_CATEGORIES_PER_RUN`` categories, and there is no critical identity
+       failure.
+    4. Otherwise ``WEAK``.
+
+    A ``sensitivity_warning`` of ``None`` is **not** acceptable for ``STRONG``
+    (a not-demonstrated sensitivity is never read as ``False``), so such a
+    category falls to ``MODERATE``. ``sample_is_census = False`` means the census
+    alternative is unavailable and only the sample count is used. ``None``
+    coverage or component values are not relevant here (the coverages are
+    explicit floats); a coverage is never treated as ``0.0``. Non-finite or
+    out-of-range thresholds raise ``ValueError``.
+    """
+    required = _require_threshold(min_required_component_coverage)
+    strong_coverage = _require_coverage(
+        strong_component_coverage, name="strong_component_coverage"
+    )
+    if len(decision.not_rankable_reasons) > 0:
+        return EvidenceGrade.INSUFFICIENT
+
+    minimum_sample_count = sample.minimum_component_sample_count
+    coverages = (
+        evidence.demand_stratum_eligibility_coverage,
+        evidence.recent_supply_stratum_eligibility_coverage,
+        evidence.quality_stratum_eligibility_coverage,
+    )
+    verified_discovery = (
+        evidence.discovery_filter_verified is True
+        and evidence.discovery_status is DiscoveryStatus.COMPLETE
+    )
+    no_identity_failure = (
+        evidence.discovery_unresolved_identity_count == 0
+        and evidence.discovery_conflict_count == 0
+    )
+    strong_sample = minimum_sample_count >= _STRONG_SAMPLE_COUNT or (
+        sample.sample_is_census
+        and sample.discovered_population_count >= _STRONG_CENSUS_COUNT
+    )
+    if (
+        strong_sample
+        and all(coverage >= strong_coverage for coverage in coverages)
+        and verified_discovery
+        and no_identity_failure
+        and evidence.page_view_semantics_status
+        is not PageViewSemanticsStatus.CONTRADICTED
+        and run_category_count >= STRONG_REFERENCE_CATEGORY_COUNT
+        and sensitivity_warning is False
+    ):
+        return EvidenceGrade.STRONG
+
+    moderate_sample = minimum_sample_count >= _MODERATE_SAMPLE_COUNT or (
+        sample.sample_is_census
+        and sample.discovered_population_count >= _MODERATE_CENSUS_COUNT
+    )
+    if (
+        moderate_sample
+        and all(coverage >= required for coverage in coverages)
+        and run_category_count >= MIN_CATEGORIES_PER_RUN
+        and no_identity_failure
+    ):
+        return EvidenceGrade.MODERATE
+    return EvidenceGrade.WEAK
+
+
+def final_rankability_status(
+    decision: PreSensitivityDecision,
+    *,
+    sensitivity_warning: bool | None,
+) -> RankabilityStatus:
+    """Map the pre-sensitivity state to the final persisted rankability.
+
+    Pure (SRS-lean §9.1 LREQ-EVD-040, completing LREQ-EVD-030's sensitivity
+    clause; plan §5.5). Sensitivity may demote only to ``PROVISIONAL``:
+
+    * pre-sensitivity ``NOT_RANKABLE`` → ``NOT_RANKABLE`` (never overridden);
+    * pre-sensitivity ``PROVISIONAL`` → ``PROVISIONAL`` (the pre-sensitivity
+      provisional clauses, including an 8-20 category run, remain);
+    * pre-sensitivity ``RANKABLE`` → ``RANKABLE`` iff
+      ``sensitivity_warning is False``; otherwise (``True`` or ``None``)
+      ``PROVISIONAL``.
+
+    A ``None`` warning means the final sensitivity thresholds were not
+    demonstrated to pass, so the conservative outcome is ``PROVISIONAL``, never
+    ``RANKABLE``. Sensitivity never demotes to ``NOT_RANKABLE`` and never changes
+    the candidate set or the balanced primary score. An 8-20 category run has an
+    empty candidate set and is never ``RANKABLE``.
+    """
+    if decision.rankability_state is PreSensitivityRankabilityState.NOT_RANKABLE:
+        return RankabilityStatus.NOT_RANKABLE
+    if decision.rankability_state is PreSensitivityRankabilityState.PROVISIONAL:
+        return RankabilityStatus.PROVISIONAL
+    if sensitivity_warning is False:
+        return RankabilityStatus.RANKABLE
+    return RankabilityStatus.PROVISIONAL
