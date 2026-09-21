@@ -20,9 +20,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import fixtures.date_eligibility_fixtures as dfx
 import fixtures.validation_fixtures as fx
 import pytest
 
+from niche_scout import metrics as m
 from niche_scout import validation as v
 from niche_scout.models import (
     MAX_TAXONOMY_AGE_DAYS,
@@ -1226,3 +1228,940 @@ def test_category_mismatch_and_unverified_map_to_discovery_status_vocabulary() -
     assert mismatched.matched_value_count == 0, (
         "a mismatch never becomes a zero-asset success"
     )
+
+
+# ---------------------------------------------------------------------------
+# LREQ-MET-010 / LREQ-MET-020 / LREQ-GQL-060 / LREQ-GQL-070 — Chunk 7A metric
+# eligibility, date, and page-view primitives
+# ---------------------------------------------------------------------------
+#
+# Every expected float is hand-derived from the SRS formulas, never copied from
+# the implementation: ``age_days_exact`` from SRS-lean.md §7.1 (LREQ-MET-020) and
+# the page-view index ``product_page_views * 7 / age_days_exact`` from §7.2
+# (LREQ-MET-040). Floats are compared with ``pytest.approx(..., abs=1e-9)``.
+# Product-level values are *classified* as unavailable with a distinct reason;
+# only the caller/policy parameters in plan §5.0 raise ``ValueError``
+# (LREQ-MET-010). Reasons are referenced through the module constants, whose
+# frozen §5.1 spellings are pinned by
+# ``test_metric_reason_vocabulary_is_closed_and_malformed_is_unproduced``.
+
+METRICS_PATH = PACKAGE / "metrics.py"
+
+
+@pytest.mark.lreq("LREQ-MET-020")
+def test_metric_timestamp_normalizes_aware_offset_to_utc() -> None:
+    """An aware non-UTC timestamp is converted to UTC, never rejected (SRS §7.1)."""
+    result = m.normalize_metric_timestamp(dfx.DATE_OFFSET_30D)
+
+    assert result.is_available is True
+    assert result.unavailable_reason is None
+    assert result.value_utc == datetime(2025, 1, 1, 0, 0, tzinfo=timezone.utc)
+    assert result.value_utc.tzinfo == timezone.utc
+    assert result.value_utc.utcoffset() == timedelta(0)
+    assert result.value_utc.hour == 0, "19:00-05:00 is 00:00Z, not a local time"
+
+    # The offset-aware value ages exactly like its UTC twin: 30.0 days.
+    offset_age = m.age_days_exact(result.value_utc, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert offset_age.value == pytest.approx(dfx.AGE_30D, abs=1e-9)
+
+    plain = m.normalize_metric_timestamp(dfx.DATE_30D)
+    assert plain.value_utc == result.value_utc
+
+
+@pytest.mark.lreq("LREQ-MET-020")
+def test_metric_timestamp_rejects_naive_date_with_reason() -> None:
+    """A naive datetime is NAIVE_DATE-unavailable, never silently localized."""
+    result = m.normalize_metric_timestamp(dfx.DATE_NAIVE)
+
+    assert result.is_available is False
+    assert result.value_utc is None, "no local astimezone is applied to a naive date"
+    assert result.unavailable_reason == m.METRIC_REASON_NAIVE_DATE
+    assert result.unavailable_reason != m.METRIC_REASON_NULL
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_metric_timestamp_wrong_type_is_unavailable_not_raised() -> None:
+    """A str/date/int timestamp is WRONG_TYPE, never a fabricated timestamp."""
+    for name, value in dfx.WRONG_TYPE_TIMESTAMP_VECTORS:
+        result = m.normalize_metric_timestamp(value)
+        assert result.is_available is False, name
+        assert result.value_utc is None, name
+        assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
+        assert result.value_utc != datetime(1970, 1, 1, tzinfo=timezone.utc), name
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_metric_timestamp_null_is_unavailable_never_zero() -> None:
+    """None is NULL-unavailable, never a fabricated timestamp or a zero."""
+    result = m.normalize_metric_timestamp(None)
+
+    assert result.is_available is False
+    assert result.value_utc is None
+    assert result.unavailable_reason == m.METRIC_REASON_NULL
+    assert result.unavailable_reason != m.METRIC_REASON_NAIVE_DATE
+    assert result.unavailable_reason != m.METRIC_REASON_WRONG_TYPE
+
+
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_uses_fractional_days() -> None:
+    """Exact fractional age: ``(cutoff - date).total_seconds() / 86400`` (§7.1)."""
+    # 2025-01-31T00:00Z - 2025-01-01T00:00Z = 2_592_000 s; / 86400 = 30.0.
+    thirty = m.age_days_exact(dfx.DATE_30D, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert thirty.is_available is True
+    assert thirty.unavailable_reason is None
+    assert thirty.value == pytest.approx(30.0, abs=1e-9)
+
+    # 2025-01-30T12:00Z is 43_200 s before the cutoff; / 86400 = 0.5.
+    half = m.age_days_exact(dfx.DATE_HALF_DAY, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert half.value == pytest.approx(0.5, abs=1e-9)
+
+    # 2025-01-01T01:00Z is 2_588_400 s before the cutoff; / 86400 = 29.9583...
+    # The age is not floored: the floor is display-only (SRS §7.1).
+    fractional = m.age_days_exact(dfx.DATE_29D_1H, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert fractional.value == pytest.approx(dfx.AGE_29D_1H, abs=1e-9)
+    assert fractional.value != pytest.approx(29.0, abs=1e-9)
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_at_cutoff_is_valid_zero_not_future() -> None:
+    """An age of exactly 0.0 is a valid zero, not a future date (decision 4)."""
+    result = m.age_days_exact(dfx.DATE_AT_CUTOFF, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+
+    assert result.is_available is True
+    assert result.value is not None, "an explicit zero age is available"
+    assert result.value == 0.0
+    assert result.value == pytest.approx(dfx.AGE_AT_CUTOFF, abs=1e-9)
+    assert result.unavailable_reason is None
+    assert result.unavailable_reason != m.METRIC_REASON_FUTURE_DATE
+    assert result.value >= 0.0, "only age < 0 is future"
+
+
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_future_date_is_unavailable_distinct_reason() -> None:
+    """A date later than the cutoff is FUTURE_DATE, never a negative value."""
+    result = m.age_days_exact(dfx.DATE_FUTURE, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+
+    assert result.is_available is False
+    assert result.value is None, "a future date is never a metric value"
+    assert result.unavailable_reason == m.METRIC_REASON_FUTURE_DATE
+    assert result.unavailable_reason != m.METRIC_REASON_NULL
+
+    one_second_later = dfx.CUTOFF_UTC + timedelta(seconds=1)
+    later = m.age_days_exact(one_second_later, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert later.unavailable_reason == m.METRIC_REASON_FUTURE_DATE
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_naive_and_null_are_distinct_reasons() -> None:
+    """NAIVE_DATE and NULL are distinct unavailable outcomes (SRS §1.2)."""
+    naive = m.age_days_exact(dfx.DATE_NAIVE, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    null = m.age_days_exact(None, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+
+    for result in (naive, null):
+        assert result.is_available is False
+        assert result.value is None
+    assert naive.unavailable_reason == m.METRIC_REASON_NAIVE_DATE
+    assert null.unavailable_reason == m.METRIC_REASON_NULL
+    assert naive.unavailable_reason != null.unavailable_reason
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_wrong_type_date_is_unavailable() -> None:
+    """A str/date/int first-published date is WRONG_TYPE, never raised."""
+    for name, value in dfx.WRONG_TYPE_TIMESTAMP_VECTORS:
+        result = m.age_days_exact(value, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+        assert result.is_available is False, name
+        assert result.value is None, name
+        assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
+
+
+@pytest.mark.lreq("LREQ-ARCH-020")
+@pytest.mark.lreq("LREQ-MET-020")
+def test_age_days_exact_requires_aware_utc_cutoff() -> None:
+    """A naive or non-UTC cutoff is a caller/policy breach: ``ValueError``."""
+    with pytest.raises(ValueError):
+        m.age_days_exact(dfx.DATE_30D, scoring_cutoff_utc=dfx.CUTOFF_NAIVE)
+    with pytest.raises(ValueError):
+        m.age_days_exact(dfx.DATE_30D, scoring_cutoff_utc=dfx.CUTOFF_NON_UTC)
+
+    # A UTC cutoff is accepted; the aware-offset product date is normalized.
+    accepted = m.age_days_exact(dfx.DATE_OFFSET_30D, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert accepted.value == pytest.approx(dfx.AGE_30D, abs=1e-9)
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_uses_seven_over_age_days() -> None:
+    """Index = ``product_page_views * 7 / age_days_exact`` (SRS §7.2)."""
+    for views, age, expected in dfx.INDEX_VECTORS:
+        assert age == pytest.approx(dfx.AGE_30D, abs=1e-9)
+        result = m.age_normalized_page_view_index(
+            views, dfx.DATE_30D, **dfx.index_kwargs()
+        )
+        assert result.is_available is True, views
+        assert result.unavailable_reason is None, views
+        assert result.value == pytest.approx(expected, abs=1e-9), views
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_zero_views_is_usable_zero() -> None:
+    """An explicit page-view zero is usable and yields an index of 0.0 (§7.2)."""
+    result = m.age_normalized_page_view_index(0, dfx.DATE_30D, **dfx.index_kwargs())
+
+    assert result.is_available is True
+    assert result.unavailable_reason is None
+    assert result.value is not None
+    assert result.value == 0.0
+    assert result.value == pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-MET-010")
+def test_page_view_index_missing_views_is_unavailable_not_zero() -> None:
+    """None page views are PAGE_VIEWS_UNAVAILABLE, never 0.0 (SRS §1.2)."""
+    result = m.age_normalized_page_view_index(None, dfx.DATE_30D, **dfx.index_kwargs())
+
+    assert result.is_available is False
+    assert result.value is None, "missing is not zero"
+    assert result.value != 0.0
+    assert result.unavailable_reason == m.METRIC_REASON_PAGE_VIEWS_UNAVAILABLE
+    assert result.unavailable_reason != m.METRIC_REASON_NULL
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_rejects_bool_negative_and_non_finite() -> None:
+    """bool/negative/non-finite page views are classified, never raised, never 0."""
+    expected = {
+        "bool": m.METRIC_REASON_WRONG_TYPE,
+        "negative": m.METRIC_REASON_NEGATIVE,
+        "nan": m.METRIC_REASON_NON_FINITE,
+        "infinity": m.METRIC_REASON_NON_FINITE,
+    }
+    for name, value in dfx.PAGE_VIEW_INVALID_VECTORS:
+        if name not in expected:
+            continue
+        result = m.age_normalized_page_view_index(
+            value, dfx.DATE_30D, **dfx.index_kwargs()
+        )
+        assert result.is_available is False, name
+        assert result.value is None, name
+        assert result.value != 0.0, name
+        assert result.unavailable_reason == expected[name], name
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_rejects_non_numeric_views_and_accepts_integral_float() -> None:
+    """A str/list is WRONG_TYPE; a finite float with zero fraction is the integer."""
+    for name, value in dfx.PAGE_VIEW_INVALID_VECTORS:
+        if name not in {"negative_string", "list"}:
+            continue
+        result = m.age_normalized_page_view_index(
+            value, dfx.DATE_30D, **dfx.index_kwargs()
+        )
+        assert result.is_available is False, name
+        assert result.value is None, name
+        assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
+
+    # 1.0 * 7 / 30 = 7/30 = 0.23333333333333334, the same as the integer 1.
+    integral_float = m.age_normalized_page_view_index(
+        1.0, dfx.DATE_30D, **dfx.index_kwargs()
+    )
+    integer = m.age_normalized_page_view_index(1, dfx.DATE_30D, **dfx.index_kwargs())
+    assert integral_float.is_available is True
+    assert integral_float.value == pytest.approx(0.23333333333333334, abs=1e-9)
+    assert integral_float.value == integer.value
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_wrong_type_date_is_unavailable() -> None:
+    """A str/date first-published value is WRONG_TYPE (precedence step 7)."""
+    for name, value in dfx.WRONG_TYPE_TIMESTAMP_VECTORS:
+        result = m.age_normalized_page_view_index(10, value, **dfx.index_kwargs())
+        assert result.is_available is False, name
+        assert result.value is None, name
+        assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-MET-030")
+def test_page_view_index_age_threshold_boundary() -> None:
+    """The MIN_AGE_DAYS_FOR_RATE boundary is inclusive at 30.0 (SRS §7.2, §14)."""
+    # 2025-01-01T00:00Z is exactly 30.0 days old:
+    # 10 * 7 / 30 = 70/30 = 2.3333333333333335.
+    at_threshold = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs()
+    )
+    assert at_threshold.is_available is True
+    assert at_threshold.value == pytest.approx(2.3333333333333335, abs=1e-9)
+
+    # 2025-01-01T01:00Z is 29.9583333... days old; below the inclusive minimum.
+    below = m.age_normalized_page_view_index(
+        10, dfx.DATE_29D_1H, **dfx.index_kwargs()
+    )
+    assert below.value is None
+    assert below.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
+
+    # Age 0.0 (date == cutoff) is below the minimum, not a future date.
+    zero_age = m.age_normalized_page_view_index(
+        10, dfx.DATE_AT_CUTOFF, **dfx.index_kwargs()
+    )
+    assert zero_age.value is None
+    assert zero_age.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
+    assert zero_age.unavailable_reason != m.METRIC_REASON_FUTURE_DATE
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-MET-030")
+def test_page_view_index_never_divides_by_zero_at_threshold() -> None:
+    """``min_age_days_for_rate < 1`` is a breach, so no zero-age division occurs."""
+    with pytest.raises(ValueError):
+        m.age_normalized_page_view_index(
+            10, dfx.DATE_30D, **dfx.index_kwargs(min_age_days_for_rate=0)
+        )
+    with pytest.raises(ValueError):
+        m.age_normalized_page_view_index(
+            10, dfx.DATE_30D, **dfx.index_kwargs(min_age_days_for_rate=-3)
+        )
+
+    # With an explicit minimum of 1, the threshold is inclusive at age 1.0:
+    # 10 * 7 / 1.0 = 70.0. Age 0.0 stays AGE_BELOW_MINIMUM, so the division is
+    # never evaluated at age zero (SRS §7.2; plan §5.3 step 10).
+    one_day = m.age_normalized_page_view_index(
+        10, dfx.DATE_ONE_DAY, **dfx.index_kwargs(min_age_days_for_rate=1)
+    )
+    assert one_day.is_available is True
+    assert one_day.value == pytest.approx(70.0, abs=1e-9)
+
+    zero_age = m.age_normalized_page_view_index(
+        10, dfx.DATE_AT_CUTOFF, **dfx.index_kwargs(min_age_days_for_rate=1)
+    )
+    assert zero_age.value is None
+    assert zero_age.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
+
+
+@pytest.mark.lreq("LREQ-GQL-060")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_rejects_state_excluded_and_unknown() -> None:
+    """A non-published state is excluded; a missing/unparsable state is unknown."""
+    excluded = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(state=dfx.STATE_DRAFT)
+    )
+    assert excluded.is_available is False
+    assert excluded.value is None
+    assert excluded.unavailable_reason == m.METRIC_REASON_STATE_EXCLUDED
+
+    coming_soon = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(state=dfx.STATE_COMING_SOON)
+    )
+    assert coming_soon.unavailable_reason == m.METRIC_REASON_STATE_EXCLUDED
+
+    unknown = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(state=None)
+    )
+    assert unknown.value is None
+    assert unknown.unavailable_reason == m.METRIC_REASON_STATE_UNKNOWN
+
+    # A wrong-typed state is state-unknown via Chunk 1's annotation, not a
+    # re-derived rule (plan §5.3 step 12).
+    wrong_typed = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(state=dfx.STATE_WRONG_TYPE_INT)
+    )
+    assert wrong_typed.unavailable_reason == m.METRIC_REASON_STATE_UNKNOWN
+
+    # Chunk 1's annotation matches the state vocabulary case-insensitively, so a
+    # mixed-case published state stays eligible (plan §9.2 correction).
+    mixed_case = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(state=dfx.STATE_MIXED_CASE_PUBLISHED)
+    )
+    assert mixed_case.is_available is True
+    assert mixed_case.value == pytest.approx(2.3333333333333335, abs=1e-9)
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_page_view_index_rejects_identity_mismatch() -> None:
+    """``id_mapping_mismatch`` is IDENTITY_MISMATCH and excludes the index."""
+    mismatch = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(id_mapping_mismatch=True)
+    )
+    assert mismatch.is_available is False
+    assert mismatch.value is None
+    assert mismatch.unavailable_reason == m.METRIC_REASON_IDENTITY_MISMATCH
+    assert mismatch.unavailable_reason != m.METRIC_REASON_STATE_EXCLUDED
+
+    # Identity is checked before published state (plan §5.3 steps 11-12): a
+    # mismatch combined with a draft state still reports the identity reason.
+    both = m.age_normalized_page_view_index(
+        10,
+        dfx.DATE_30D,
+        **dfx.index_kwargs(id_mapping_mismatch=True, state=dfx.STATE_DRAFT),
+    )
+    assert both.unavailable_reason == m.METRIC_REASON_IDENTITY_MISMATCH
+
+
+@pytest.mark.lreq("LREQ-GQL-060")
+def test_metric_state_eligibility_published_excluded_unknown() -> None:
+    """Published is eligible; present non-published is excluded; unusable is unknown."""
+    published = m.metric_state_eligibility(dfx.STATE_PUBLISHED)
+    assert published.eligible is True
+    assert published.unavailable_reason is None
+    assert published.is_available is True
+
+    for state in dfx.STATE_EXCLUDED_VECTORS:
+        excluded = m.metric_state_eligibility(state)
+        assert excluded.eligible is False, state
+        assert excluded.unavailable_reason == m.METRIC_REASON_STATE_EXCLUDED, state
+
+    unknown = m.metric_state_eligibility(None)
+    assert unknown.eligible is False
+    assert unknown.unavailable_reason == m.METRIC_REASON_STATE_UNKNOWN
+
+    wrong_typed = m.metric_state_eligibility(dfx.STATE_WRONG_TYPE_INT)
+    assert wrong_typed.eligible is False
+    assert wrong_typed.unavailable_reason == m.METRIC_REASON_STATE_UNKNOWN
+
+    # The verdict follows Chunk 1's annotation, including the mixed-case
+    # published state (case-insensitive vocabulary match).
+    annotation = v.annotate_state_eligibility(dfx.STATE_MIXED_CASE_PUBLISHED)
+    mixed_case = m.metric_state_eligibility(dfx.STATE_MIXED_CASE_PUBLISHED)
+    assert annotation.is_published is True
+    assert mixed_case.eligible is True
+    assert mixed_case.unavailable_reason is None
+
+
+@pytest.mark.lreq("LREQ-GQL-060")
+def test_state_excluded_assets_remain_available_for_nothing_but_breadth() -> None:
+    """7A emits no breadth field; breadth stays Chunk 1's annotation (GQL-060)."""
+    annotation = v.annotate_state_eligibility(dfx.STATE_DRAFT)
+    assert annotation.state_excluded is True
+    assert annotation.remains_in_discovered_breadth is True
+
+    verdict = m.metric_state_eligibility(dfx.STATE_DRAFT)
+    assert verdict.eligible is False
+    assert verdict.unavailable_reason == m.METRIC_REASON_STATE_EXCLUDED
+    assert not hasattr(verdict, "remains_in_discovered_breadth")
+    assert not hasattr(verdict, "in_discovered_breadth")
+
+    unknown = v.annotate_state_eligibility(None)
+    assert unknown.state_unknown is True
+    assert unknown.remains_in_discovered_breadth is True
+    assert m.metric_state_eligibility(None).eligible is False
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_identity_mismatch_marks_all_demand_recent_quality_unavailable() -> None:
+    """The identity-mismatch exclusion applies on the index and quality paths."""
+    index = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(id_mapping_mismatch=True)
+    )
+    assert index.is_available is False
+    assert index.value is None
+    assert index.unavailable_reason == m.METRIC_REASON_IDENTITY_MISMATCH
+
+    quality = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(id_mapping_mismatch=True)
+    )
+    assert quality.eligible is False
+    assert quality.unavailable_reason == m.METRIC_REASON_IDENTITY_MISMATCH
+
+    # Everything else held: the same inputs with a matched identity are usable,
+    # so the exclusion is the mismatch flag and not a fabricated zero.
+    matched = m.age_normalized_page_view_index(10, dfx.DATE_30D, **dfx.index_kwargs())
+    assert matched.is_available is True
+    assert m.quality_observation_eligibility(**dfx.quality_kwargs()).eligible is True
+
+
+@pytest.mark.lreq("LREQ-MET-080")
+def test_within_recent_window_is_inclusive_at_boundaries() -> None:
+    """``0 <= age <= RECENT_WINDOW_DAYS`` is inclusive at both ends (SRS §7.4)."""
+    for age, expected in dfx.RECENT_WINDOW_VECTORS:
+        assert m.is_within_recent_window(age) is expected, age
+
+    # The window is the caller's parameter, not a hardcoded 365 (SRS §14).
+    assert m.is_within_recent_window(30.0, recent_window_days=30) is True
+    assert m.is_within_recent_window(30.0000001, recent_window_days=30) is False
+
+
+@pytest.mark.lreq("LREQ-MET-080")
+@pytest.mark.lreq("LREQ-MET-010")
+def test_within_recent_window_non_finite_is_false() -> None:
+    """A non-finite age is never inside the window and contributes no count."""
+    for age in dfx.RECENT_WINDOW_NON_FINITE_VECTORS:
+        assert m.is_within_recent_window(age) is False, age
+
+
+@pytest.mark.lreq("LREQ-MET-080")
+def test_recent_window_parameter_validation_raises() -> None:
+    """A negative or non-``int`` ``recent_window_days`` is a breach: ValueError."""
+    for bad in (-1, -365, 365.0, "365"):
+        with pytest.raises(ValueError):
+            m.is_within_recent_window(10.0, recent_window_days=bad)
+
+    # Zero is a valid inclusive window: only age 0.0 falls inside it.
+    assert m.is_within_recent_window(0.0, recent_window_days=0) is True
+    assert m.is_within_recent_window(0.0000001, recent_window_days=0) is False
+
+
+@pytest.mark.lreq("LREQ-MET-030")
+def test_stratum_is_usable_at_minimum_boundary() -> None:
+    """``u_h >= MIN_USABLE_SAMPLES_PER_STRATUM`` is inclusive at the minimum."""
+    for count, expected in dfx.STRATUM_USABLE_VECTORS:
+        assert m.stratum_is_usable(count) is expected, count
+
+    # The minimum is an explicit caller parameter (SRS §14).
+    assert m.stratum_is_usable(0, min_usable_samples_per_stratum=0) is True
+    assert m.stratum_is_usable(9, min_usable_samples_per_stratum=10) is False
+    assert m.stratum_is_usable(10, min_usable_samples_per_stratum=10) is True
+
+    # A bool or negative count, and a negative or non-int minimum, are breaches.
+    for bad_count in (True, False, -1):
+        with pytest.raises(ValueError):
+            m.stratum_is_usable(bad_count)
+    for bad_minimum in (-1, 5.0):
+        with pytest.raises(ValueError):
+            m.stratum_is_usable(5, min_usable_samples_per_stratum=bad_minimum)
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+def test_quality_observation_eligibility_combines_conditions() -> None:
+    """Every SRS §7.5 condition satisfied makes the observation quality-eligible."""
+    eligible = m.quality_observation_eligibility(**dfx.quality_kwargs())
+    assert eligible.eligible is True
+    assert eligible.unavailable_reason is None
+    assert eligible.is_available is True
+
+    # Inclusive boundaries: rating_average 0.0 and 5.0, rating_count 5, page
+    # views 0, persisted status strings, validated semantics.
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_average=0.0)
+        ).eligible
+        is True
+    )
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_average=5.0)
+        ).eligible
+        is True
+    )
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_count=dfx.QUALITY_MIN_RATING_COUNT)
+        ).eligible
+        is True
+    )
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(product_page_views=0)
+        ).eligible
+        is True
+    )
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(
+                product_detail_status=dfx.OPERATION_SUCCESS_VALUE,
+                page_views_status=dfx.OPERATION_SUCCESS_VALUE,
+            )
+        ).eligible
+        is True
+    )
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(
+                page_view_semantics_status=dfx.SEMANTICS_VALIDATED_CUMULATIVE
+            )
+        ).eligible
+        is True
+    )
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+def test_quality_rating_range_and_count_thresholds() -> None:
+    """``rating_average`` must be finite in [0, 5]; ``rating_count`` >= 5 (§7.5)."""
+    null_average = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_average=None)
+    )
+    assert null_average.eligible is False
+    assert null_average.unavailable_reason == m.METRIC_REASON_NULL
+
+    expected_average = {
+        "nan": m.METRIC_REASON_NON_FINITE,
+        "below_zero": m.METRIC_REASON_INVALID_RANGE,
+        "above_five": m.METRIC_REASON_INVALID_RANGE,
+    }
+    for name, value in dfx.RATING_AVERAGE_INVALID_VECTORS:
+        if name not in expected_average:
+            continue
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_average=value)
+        )
+        assert result.eligible is False, name
+        assert result.unavailable_reason == expected_average[name], name
+
+    null_count = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=None)
+    )
+    assert null_count.eligible is False
+    assert null_count.unavailable_reason == m.METRIC_REASON_NULL
+
+    below_minimum = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=4)
+    )
+    assert below_minimum.eligible is False
+    assert (
+        below_minimum.unavailable_reason
+        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+    )
+
+    at_minimum = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=dfx.QUALITY_MIN_RATING_COUNT)
+    )
+    assert at_minimum.eligible is True
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+@pytest.mark.lreq("LREQ-MET-010")
+def test_quality_rating_wrong_type_and_negative_are_distinct_reasons() -> None:
+    """Wrong-typed ratings are WRONG_TYPE and a negative count is NEGATIVE."""
+    expected_average = {
+        "wrong_type_bool": m.METRIC_REASON_WRONG_TYPE,
+        "wrong_type_string": m.METRIC_REASON_WRONG_TYPE,
+    }
+    for name, value in dfx.RATING_AVERAGE_INVALID_VECTORS:
+        if name not in expected_average:
+            continue
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_average=value)
+        )
+        assert result.eligible is False, name
+        assert result.unavailable_reason == expected_average[name], name
+
+    expected_count = {
+        "wrong_type_bool": m.METRIC_REASON_WRONG_TYPE,
+        "wrong_type_float": m.METRIC_REASON_WRONG_TYPE,
+        "negative": m.METRIC_REASON_NEGATIVE,
+    }
+    for name, value in dfx.RATING_COUNT_INVALID_VECTORS:
+        if name not in expected_count:
+            continue
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_count=value)
+        )
+        assert result.eligible is False, name
+        assert result.unavailable_reason == expected_count[name], name
+
+    assert m.METRIC_REASON_WRONG_TYPE != m.METRIC_REASON_NEGATIVE
+    assert m.METRIC_REASON_WRONG_TYPE != m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-GQL-060")
+def test_quality_eligibility_operation_state_and_semantics_gates() -> None:
+    """Operation errors, state gates, and contradicted semantics each exclude."""
+    failed_detail = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(product_detail_status=dfx.OPERATION_ERROR)
+    )
+    assert failed_detail.eligible is False
+    assert failed_detail.unavailable_reason == m.METRIC_REASON_OPERATION_UNAVAILABLE
+
+    failed_views = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(page_views_status=dfx.OPERATION_ERROR)
+    )
+    assert failed_views.unavailable_reason == m.METRIC_REASON_OPERATION_UNAVAILABLE
+
+    # A persisted status string equal to the enum value is accepted (plan §5.3).
+    persisted_error = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(page_views_status=dfx.OPERATION_ERROR_VALUE)
+    )
+    assert persisted_error.unavailable_reason == m.METRIC_REASON_OPERATION_UNAVAILABLE
+
+    for state, expected_reason in (
+        (dfx.STATE_DRAFT, m.METRIC_REASON_STATE_EXCLUDED),
+        (dfx.STATE_COMING_SOON, m.METRIC_REASON_STATE_EXCLUDED),
+        (None, m.METRIC_REASON_STATE_UNKNOWN),
+        (dfx.STATE_WRONG_TYPE_INT, m.METRIC_REASON_STATE_UNKNOWN),
+    ):
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(state=state)
+        )
+        assert result.eligible is False, state
+        assert result.unavailable_reason == expected_reason, state
+
+    contradicted = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(page_view_semantics_status=dfx.SEMANTICS_CONTRADICTED)
+    )
+    assert contradicted.eligible is False
+    assert (
+        contradicted.unavailable_reason
+        == m.METRIC_REASON_PAGE_VIEW_SEMANTICS_CONTRADICTED
+    )
+
+    # A mixed-case published state is still eligible (Chunk 1's annotation).
+    mixed_case = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(state=dfx.STATE_MIXED_CASE_PUBLISHED)
+    )
+    assert mixed_case.eligible is True
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_quality_eligibility_propagates_page_view_index_reason() -> None:
+    """An unusable page-view index propagates its reason into the Q verdict."""
+    cases = (
+        ({"product_page_views": None}, m.METRIC_REASON_PAGE_VIEWS_UNAVAILABLE),
+        ({"product_page_views": -1}, m.METRIC_REASON_NEGATIVE),
+        ({"product_page_views": float("nan")}, m.METRIC_REASON_NON_FINITE),
+        ({"first_published_date_utc": None}, m.METRIC_REASON_NULL),
+        ({"first_published_date_utc": "2025-01-01"}, m.METRIC_REASON_WRONG_TYPE),
+        ({"first_published_date_utc": dfx.DATE_FUTURE}, m.METRIC_REASON_FUTURE_DATE),
+        (
+            {"first_published_date_utc": dfx.DATE_29D_1H},
+            m.METRIC_REASON_AGE_BELOW_MINIMUM,
+        ),
+    )
+    for overrides, expected_reason in cases:
+        quality = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(**overrides)
+        )
+        assert quality.eligible is False, overrides
+        assert quality.unavailable_reason == expected_reason, overrides
+
+        index = m.age_normalized_page_view_index(
+            overrides.get("product_page_views", 10),
+            overrides.get("first_published_date_utc", dfx.DATE_30D),
+            **dfx.index_kwargs(),
+        )
+        assert index.unavailable_reason == expected_reason, overrides
+
+
+@pytest.mark.lreq("LREQ-ARCH-010")
+@pytest.mark.lreq("LREQ-ARCH-020")
+def test_metric_primitives_are_pure_no_forbidden_imports_or_clock() -> None:
+    """``metrics.py`` stays inside the SRS §3.3 purity boundary."""
+    source = METRICS_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(METRICS_PATH))
+
+    assert check_module(METRICS_PATH) == [], (
+        "metrics.py must not import an I/O, network, DB, CLI, or clock module "
+        "and must not read the clock"
+    )
+    assert clock_violations(tree) == []
+
+    imported = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        (node.module or "").split(".")[-1]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert imported & FORBIDDEN_MODULES == set(), imported & FORBIDDEN_MODULES
+    assert imported & {"random", "secrets", "uuid"} == set(), (
+        "no randomness or platform-dependent identifiers (plan §11)"
+    )
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+def test_metric_primitives_classify_invalid_values_and_never_convert_to_zero() -> None:
+    """Every §9.2 product-level invalidity vector yields its reason, never 0."""
+    expected_page_views = {
+        "negative": m.METRIC_REASON_NEGATIVE,
+        "bool": m.METRIC_REASON_WRONG_TYPE,
+        "nan": m.METRIC_REASON_NON_FINITE,
+        "infinity": m.METRIC_REASON_NON_FINITE,
+        "negative_string": m.METRIC_REASON_WRONG_TYPE,
+        "list": m.METRIC_REASON_WRONG_TYPE,
+    }
+    for name, value in dfx.PAGE_VIEW_INVALID_VECTORS:
+        result = m.age_normalized_page_view_index(
+            value, dfx.DATE_30D, **dfx.index_kwargs()
+        )
+        assert result.is_available is False, name
+        assert result.value is None, name
+        assert result.value != 0.0, name
+        assert result.unavailable_reason == expected_page_views[name], name
+
+    for name, value in dfx.WRONG_TYPE_TIMESTAMP_VECTORS:
+        timestamp = m.normalize_metric_timestamp(value)
+        age = m.age_days_exact(value, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+        index = m.age_normalized_page_view_index(10, value, **dfx.index_kwargs())
+        assert timestamp.value_utc is None, name
+        assert age.value is None, name
+        assert index.value is None, name
+        for result in (timestamp, age, index):
+            assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
+
+    # Missing values keep their distinct reasons: a missing date is NULL on the
+    # index path (step 6) while missing page views are PAGE_VIEWS_UNAVAILABLE.
+    missing_date = m.age_normalized_page_view_index(10, None, **dfx.index_kwargs())
+    assert missing_date.value is None
+    assert missing_date.unavailable_reason == m.METRIC_REASON_NULL
+    missing_views = m.age_normalized_page_view_index(
+        None, dfx.DATE_30D, **dfx.index_kwargs()
+    )
+    assert missing_views.unavailable_reason == m.METRIC_REASON_PAGE_VIEWS_UNAVAILABLE
+
+    expected_average = {
+        "wrong_type_bool": m.METRIC_REASON_WRONG_TYPE,
+        "wrong_type_string": m.METRIC_REASON_WRONG_TYPE,
+        "nan": m.METRIC_REASON_NON_FINITE,
+        "below_zero": m.METRIC_REASON_INVALID_RANGE,
+        "above_five": m.METRIC_REASON_INVALID_RANGE,
+    }
+    for name, value in dfx.RATING_AVERAGE_INVALID_VECTORS:
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_average=value)
+        )
+        assert result.eligible is False, name
+        assert result.is_available is False, name
+        assert result.unavailable_reason == expected_average[name], name
+
+    expected_count = {
+        "wrong_type_bool": m.METRIC_REASON_WRONG_TYPE,
+        "wrong_type_float": m.METRIC_REASON_WRONG_TYPE,
+        "negative": m.METRIC_REASON_NEGATIVE,
+        "below_minimum": m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM,
+    }
+    for name, value in dfx.RATING_COUNT_INVALID_VECTORS:
+        result = m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_count=value)
+        )
+        assert result.eligible is False, name
+        assert result.unavailable_reason == expected_count[name], name
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+@pytest.mark.lreq("LREQ-ARCH-010")
+def test_metric_primitives_raise_valueerror_only_for_caller_parameters() -> None:
+    """Only the §5.0 caller/policy breaches raise; no product-level value raises."""
+    with pytest.raises(ValueError):
+        m.age_days_exact(dfx.DATE_30D, scoring_cutoff_utc=dfx.CUTOFF_NAIVE)
+    with pytest.raises(ValueError):
+        m.age_days_exact(dfx.DATE_30D, scoring_cutoff_utc=dfx.CUTOFF_NON_UTC)
+    with pytest.raises(ValueError):
+        m.age_normalized_page_view_index(
+            10, dfx.DATE_30D, **dfx.index_kwargs(scoring_cutoff_utc=dfx.CUTOFF_NAIVE)
+        )
+    with pytest.raises(ValueError):
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(scoring_cutoff_utc=dfx.CUTOFF_NON_UTC)
+        )
+    with pytest.raises(ValueError):
+        m.age_normalized_page_view_index(
+            10, dfx.DATE_30D, **dfx.index_kwargs(min_age_days_for_rate=0)
+        )
+
+    for bad_window in (-1, 365.0, "365"):
+        with pytest.raises(ValueError):
+            m.is_within_recent_window(10.0, recent_window_days=bad_window)
+    for bad_count in (True, -1):
+        with pytest.raises(ValueError):
+            m.stratum_is_usable(bad_count)
+    for bad_minimum in (-1, 5.0):
+        with pytest.raises(ValueError):
+            m.stratum_is_usable(5, min_usable_samples_per_stratum=bad_minimum)
+
+    # The counterexamples: the same kinds of invalid *product-level* values are
+    # classified unavailable instead of raising (LREQ-MET-010).
+    assert (
+        m.age_normalized_page_view_index(-1, dfx.DATE_30D, **dfx.index_kwargs()).value
+        is None
+    )
+    assert (
+        m.age_normalized_page_view_index(
+            True, dfx.DATE_30D, **dfx.index_kwargs()
+        ).unavailable_reason
+        == m.METRIC_REASON_WRONG_TYPE
+    )
+    naive_age = m.age_days_exact(dfx.DATE_NAIVE, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert naive_age.unavailable_reason == m.METRIC_REASON_NAIVE_DATE
+    assert (
+        m.quality_observation_eligibility(
+            **dfx.quality_kwargs(rating_count=-1)
+        ).unavailable_reason
+        == m.METRIC_REASON_NEGATIVE
+    )
+
+
+@pytest.mark.lreq("LREQ-MET-010")
+def test_metric_reason_vocabulary_is_closed_and_malformed_is_unproduced() -> None:
+    """The reason tuple is closed and ordered; ``malformed`` stays unproduced."""
+    expected = (
+        "null",
+        "malformed",
+        "wrong_type",
+        "invalid_range",
+        "future_date",
+        "naive_date",
+        "negative",
+        "non_finite",
+        "state_excluded",
+        "state_unknown",
+        "identity_mismatch",
+        "age_below_minimum",
+        "rating_count_below_minimum",
+        "operation_unavailable",
+        "page_view_semantics_contradicted",
+        "page_views_unavailable",
+    )
+    assert m.METRIC_UNAVAILABLE_REASONS == expected
+    assert len(set(m.METRIC_UNAVAILABLE_REASONS)) == len(m.METRIC_UNAVAILABLE_REASONS)
+
+    # The §5.1 spellings of the reasons this function set produces, plus the
+    # retained-but-unproduced ``malformed`` member.
+    assert m.METRIC_REASON_MALFORMED == "malformed"
+    assert m.METRIC_REASON_WRONG_TYPE == "wrong_type"
+    assert m.METRIC_REASON_NEGATIVE == "negative"
+    assert m.METRIC_REASON_NON_FINITE == "non_finite"
+
+    observed = set()
+    for value in (-1, True, float("nan"), "-1", [1]):
+        observed.add(
+            m.age_normalized_page_view_index(
+                value, dfx.DATE_30D, **dfx.index_kwargs()
+            ).unavailable_reason
+        )
+    assert observed == {
+        m.METRIC_REASON_NEGATIVE,
+        m.METRIC_REASON_WRONG_TYPE,
+        m.METRIC_REASON_NON_FINITE,
+    }
+    assert observed <= set(m.METRIC_UNAVAILABLE_REASONS)
+    assert m.METRIC_REASON_MALFORMED not in observed, (
+        "retained but unproduced by this function set (plan §12 A-6)"
+    )
+
+
+@pytest.mark.lreq("LREQ-ARCH-020")
+def test_metric_primitives_repeat_deterministically() -> None:
+    """Identical typed inputs produce equal results on repeated calls."""
+    assert m.age_days_exact(
+        dfx.DATE_29D_1H, scoring_cutoff_utc=dfx.CUTOFF_UTC
+    ) == m.age_days_exact(dfx.DATE_29D_1H, scoring_cutoff_utc=dfx.CUTOFF_UTC)
+    assert m.normalize_metric_timestamp(
+        dfx.DATE_OFFSET_30D
+    ) == m.normalize_metric_timestamp(dfx.DATE_OFFSET_30D)
+    assert m.age_normalized_page_view_index(
+        7, dfx.DATE_30D, **dfx.index_kwargs()
+    ) == m.age_normalized_page_view_index(7, dfx.DATE_30D, **dfx.index_kwargs())
+    assert m.age_normalized_page_view_index(
+        None, dfx.DATE_30D, **dfx.index_kwargs()
+    ) == m.age_normalized_page_view_index(None, dfx.DATE_30D, **dfx.index_kwargs())
+    assert m.metric_state_eligibility(
+        dfx.STATE_DRAFT
+    ) == m.metric_state_eligibility(dfx.STATE_DRAFT)
+    assert m.is_within_recent_window(365.0) == m.is_within_recent_window(365.0)
+    assert m.stratum_is_usable(5) == m.stratum_is_usable(5)
+    assert m.quality_observation_eligibility(
+        **dfx.quality_kwargs()
+    ) == m.quality_observation_eligibility(**dfx.quality_kwargs())

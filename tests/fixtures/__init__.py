@@ -10,7 +10,9 @@ from __future__ import annotations
 from fixtures import (
     config_fixtures,
     coveo_discovery,
+    date_eligibility_fixtures,
     graphql_fixtures,
+    metric_estimator_fixtures,
     sampling_fixtures,
     sampling_persistence_fixtures,
     validation_fixtures,
@@ -19,7 +21,9 @@ from fixtures import (
 __all__ = [
     "config_fixtures",
     "coveo_discovery",
+    "date_eligibility_fixtures",
     "graphql_fixtures",
+    "metric_estimator_fixtures",
     "sampling_fixtures",
     "sampling_persistence_fixtures",
     "validation_fixtures",
