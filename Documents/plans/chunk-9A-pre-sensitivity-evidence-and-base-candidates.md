@@ -649,7 +649,13 @@ implementation. Fixtures are inert builders/constants only.
   `reference_size = 0` → `(NO_VALID_LEAVE_ONE_OUT_REFERENCE,)`.
 - **Field-reference-support vectors** (R11; Q1): (i) demand available
   (`component_d` not `None`) with `demand_median_raw = 0` usable peers but
-  `demand_per_asset_raw > 0` → predicate `True`; (ii) demand available with both
+  `demand_per_asset_raw > 0` → predicate `False` (the frozen §5.1 rule requires
+  **every** raw field a component consumes to have at least one usable peer;
+  LREQ-EVD-020's clause is *additional* to "all four components available", so it
+  must impose more than component availability — this is what keeps the clause
+  non-vacuous). **[Corrected 2026-09-21: the draft said `True`; that contradicted
+  this plan's own §5.1 predicate and the LREQ-EVD-020 additive-clause reading. The
+  strict rule governs; §5.1 was already correct.]** (ii) demand available with both
   demand counts `0` → `False`; (iii) competition available (`component_c` not
   `None`) with `breadth_raw = 0` → `False`; (iv) an unused field at `0` (e.g.
   `quality_raw = 0` while `Q` is unavailable) never fails; (v) all four components
@@ -660,19 +666,25 @@ implementation. Fixtures are inert builders/constants only.
   order.
 - **Provisional vectors**: coverage `0.79` on one required component (others
   `1.0`) → `(COVERAGE_BELOW_STRONG,)`; coverage exactly `0.80` → no
-  `COVERAGE_BELOW_STRONG`; coverage `0.50` (boundary) → no
-  `COVERAGE_BELOW_STRONG` and the component is available; fallback breadth
-  (`incomplete_estimate`, `discovery_bounded_by_verified_total = False`) →
-  `(INCOMPLETE_BREADTH_FALLBACK,)`; **the same fallback with
+  `COVERAGE_BELOW_STRONG`; coverage exactly `0.50` (the required minimum, still
+  "acceptable but below the strong policy", LREQ-EVD-030 line 999) →
+  `(COVERAGE_BELOW_STRONG,)` and the component stays available.
+  **[Corrected 2026-09-21: the draft said `0.50` fires no reason; that contradicted
+  LREQ-EVD-030 line 999 ("coverage is acceptable but below the strong policy",
+  `0.50 <= coverage < 0.80`). A coverage strictly below `0.50` is not a provisional
+  reason — the component is already unavailable and the category not rankable.]**
+  fallback breadth (`incomplete_estimate`, `discovery_bounded_by_verified_total =
+  False`) → `(INCOMPLETE_BREADTH_FALLBACK,)`; **the same fallback with
   `discovery_bounded_by_verified_total = True` → still
   `(INCOMPLETE_BREADTH_FALLBACK,)` (Q3)**; run size 21 with no other condition →
   no provisional reasons; a category with verified+complete breadth and
   `discovery_bounded_by_verified_total = True` → no provisional reasons (bounded by
   a verified total does not force provisional).
 - **Distinctness vectors**: a category with `score_state = PARTIAL` and state
-  `PROVISIONAL`; a category with `score_state = AVAILABLE` but
-  `rankability_state = NOT_RANKABLE`; assert
-  `isinstance(state, PreSensitivityRankabilityState)` and that it is not a
+  `PROVISIONAL` (a provisional reason must actually fire, e.g. an 8-category run or
+  coverage in `[0.50, 0.80)` — an all-clean 21-category fact set is `RANKABLE`); a
+  category with `score_state = AVAILABLE` but `rankability_state = NOT_RANKABLE`;
+  assert `isinstance(state, PreSensitivityRankabilityState)` and that it is not a
   `models.RankabilityStatus` (R2).
 
 ### Exact `@pytest.mark.lreq(...)` markers (1:1 with §3)
