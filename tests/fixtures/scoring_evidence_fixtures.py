@@ -498,19 +498,26 @@ ORDER_VECTOR_ALTERNATE_EVIDENCE_OVERRIDES: dict[str, object] = {
 # Field-reference-support vectors (LREQ-EVD-020 line 993; plan §12 Q1/R11)
 # ---------------------------------------------------------------------------
 #
-# ``(label, counts_kwargs, availability_flags, expected)``. Support is required
-# only for the raw fields each *available* component consumes (SRS §8.2):
+# ``(label, counts_kwargs, availability_flags, expected)``. Strict rule (plan
+# §5.1): the predicate is ``True`` iff, for **every available** component, **every**
+# raw field that component consumes has ``counts.<field> > 0``. The clause is
+# additional to "all four components are available" (LREQ-EVD-020 lines 991-993),
+# so it must impose more than component availability. A component that is
+# *unavailable* contributes no requirement: its consumed fields may be ``0``
+# without failing the predicate. Consumed fields (SRS §8.2):
 #   D <- demand_per_asset_raw, demand_median_raw
 #   C <- breadth_raw
 #   R <- recent_share_raw, median_age_raw
 #   Q <- quality_raw
 
 FIELD_REFERENCE_SUPPORT_VECTORS: tuple[tuple[str, dict, dict, bool], ...] = (
-    # (i) demand available from a single sub-signal: demand_median_raw has 0
-    # usable peers, but demand_per_asset_raw > 0 satisfies the demand
-    # requirement, and every other available component's consumed field is > 0.
+    # (i) demand available, but one of its two consumed fields has 0 usable
+    # peers: ``demand_median_raw = 0`` even though ``demand_per_asset_raw > 0``.
+    # The strict plan §5.1 rule requires **every** consumed field of an available
+    # component to be ``> 0``, so the predicate is False (LREQ-EVD-020 line 993 is
+    # additional to component availability).
     (
-        "demand_available_one_of_two_fields",
+        "demand_available_one_consumed_field_zero",
         {
             "demand_per_asset_raw": 5,
             "demand_median_raw": 0,
@@ -525,7 +532,7 @@ FIELD_REFERENCE_SUPPORT_VECTORS: tuple[tuple[str, dict, dict, bool], ...] = (
             "recent_supply_available": True,
             "quality_available": True,
         },
-        True,
+        False,
     ),
     # (ii) demand available with both consumed counts 0 -> the demand
     # requirement is unsatisfied -> False.
@@ -639,7 +646,9 @@ PROVISIONAL_COVERAGE_MINIMUM: float = MIN_REQUIRED_COMPONENT_COVERAGE
 
 #: Coverage vectors on one sample-derived component (demand); the others stay at
 #: 1.0. 0.79 < 0.80 -> COVERAGE_BELOW_STRONG; 0.80 is the strong boundary and
-#: fires nothing; 0.50 is the required minimum boundary and fires nothing.
+#: fires nothing; 0.50 is the required minimum but is still "acceptable but below
+#: the strong policy" (SRS §9.1 LREQ-EVD-030 line 999: 0.50 <= coverage < 0.80),
+#: so it fires COVERAGE_BELOW_STRONG while the component stays available.
 PROVISIONAL_COVERAGE_VECTORS: tuple[tuple[str, float, object], ...] = (
     (
         "coverage_below_strong",
@@ -654,7 +663,7 @@ PROVISIONAL_COVERAGE_VECTORS: tuple[tuple[str, float, object], ...] = (
     (
         "coverage_exactly_minimum",
         PROVISIONAL_COVERAGE_MINIMUM,
-        (),
+        ("coverage_below_strong",),
     ),
 )
 

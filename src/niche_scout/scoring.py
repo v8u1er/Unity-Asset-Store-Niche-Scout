@@ -1,10 +1,13 @@
-"""Pure normalization, component, and composite scoring contracts.
+"""Pure normalization, component, composite, and evidence scoring contracts.
 
 This module intentionally contains no I/O, clock access, or orchestration.
 Chunk 0 freezes the typed input/output contracts (:class:`ScoringInput`,
 :class:`ScoreResult`, :class:`SensitivityResult`); Chunk 8 adds the pure
 leave-one-out reference, the six field-specific midrank normalizations, the four
-components ``D``/``C``/``R``/``Q``, and the available-component composite score.
+components ``D``/``C``/``R``/``Q``, and the available-component composite score;
+Chunk 9A adds the pre-sensitivity evidence decision (not-rankable and provisional
+reason vocabularies, the preliminary rankability/evidence states, and the frozen
+``base_rankable_candidates`` set) computed **before** any sensitivity policy.
 
 Every unavailable value stays ``None`` and is never converted to a fabricated
 zero (SRS-lean §1.2). Computations use ``float64`` and an explicit timezone-aware
@@ -17,6 +20,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import StrEnum
 
 from .metrics import CategoryRawMetrics, RawMetricBundle
 from .models import (
@@ -25,13 +29,17 @@ from .models import (
     MIN_REQUIRED_COMPONENT_COVERAGE,
     RECENT_SUBWEIGHT_AGE,
     RECENT_SUBWEIGHT_SHARE,
+    STRONG_COMPONENT_COVERAGE,
+    STRONG_REFERENCE_CATEGORY_COUNT,
     W_C,
     W_D,
     W_Q,
     W_R,
     BreadthCompletenessStatus,
     BreadthSource,
+    DiscoveryStatus,
     EvidenceGrade,
+    IdentityPreflightStatus,
     PageViewSemanticsStatus,
     RankabilityStatus,
     ScoreState,
@@ -677,3 +685,487 @@ _COMPONENT_ATTRS: dict[str, str] = {
     "R": "recent_supply",
     "Q": "quality",
 }
+
+
+# ---------------------------------------------------------------------------
+# Chunk 9A — pre_sensitivity evidence vocabularies and typed structures
+# ---------------------------------------------------------------------------
+
+
+class NotRankableReason(StrEnum):
+    """Every LREQ-EVD-020 category-level not-rankable cause (SRS-lean §9.1).
+
+    Each member's string value is the persisted/diagnostic spelling; the member
+    set is closed and covers exactly the clauses of LREQ-EVD-020 lines 980-987
+    plus the field-support clause of line 993.
+    """
+
+    UNRECOVERABLE_DATA_INTEGRITY_ERROR = "unrecoverable_data_integrity_error"
+    DISCOVERY_FILTER_UNVERIFIED = "discovery_filter_unverified"
+    UNRESOLVED_OR_CONFLICTING_IDENTITY = "unresolved_or_conflicting_identity"
+    IDENTITY_PREFLIGHT_FAILED = "identity_preflight_failed"
+    COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE = (
+        "competition_unbounded_or_material_failure"
+    )
+    PAGE_VIEW_SEMANTICS_CONTRADICTED = "page_view_semantics_contradicted"
+    REQUIRED_DEMAND_DATA_UNAVAILABLE = "required_demand_data_unavailable"
+    RECENT_SUPPLY_MINIMUM_NOT_MET = "recent_supply_minimum_not_met"
+    QUALITY_UNAVAILABLE = "quality_unavailable"
+    NO_VALID_LEAVE_ONE_OUT_REFERENCE = "no_valid_leave_one_out_reference"
+    FIELD_REFERENCE_SUPPORT_INSUFFICIENT = "field_reference_support_insufficient"
+
+
+#: Fixed emission order; sequence-valued results list every fired reason in this
+#: order regardless of input order. This tuple defines output order only; it does
+#: not assert that one condition is logically earlier than another
+#: (LREQ-ARCH-030 determinism).
+NOT_RANKABLE_REASON_ORDER: tuple[NotRankableReason, ...] = (
+    NotRankableReason.UNRECOVERABLE_DATA_INTEGRITY_ERROR,
+    NotRankableReason.DISCOVERY_FILTER_UNVERIFIED,
+    NotRankableReason.UNRESOLVED_OR_CONFLICTING_IDENTITY,
+    NotRankableReason.IDENTITY_PREFLIGHT_FAILED,
+    NotRankableReason.COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE,
+    NotRankableReason.PAGE_VIEW_SEMANTICS_CONTRADICTED,
+    NotRankableReason.REQUIRED_DEMAND_DATA_UNAVAILABLE,
+    NotRankableReason.RECENT_SUPPLY_MINIMUM_NOT_MET,
+    NotRankableReason.QUALITY_UNAVAILABLE,
+    NotRankableReason.NO_VALID_LEAVE_ONE_OUT_REFERENCE,
+    NotRankableReason.FIELD_REFERENCE_SUPPORT_INSUFFICIENT,
+)
+
+
+class ProvisionalReason(StrEnum):
+    """The pre-ranking provisional causes (the LREQ-EVD-030 half owned here).
+
+    Only the clauses computable without a ranking-policy input are present; the
+    high-alternate-policy clause of LREQ-EVD-030 line 999 belongs to Chunk 9B and
+    has no member here.
+    """
+
+    RUN_BELOW_STRONG_REFERENCE = "run_below_strong_reference"
+    INCOMPLETE_BREADTH_FALLBACK = "incomplete_breadth_fallback"
+    COVERAGE_BELOW_STRONG = "coverage_below_strong"
+
+
+PROVISIONAL_REASON_ORDER: tuple[ProvisionalReason, ...] = (
+    ProvisionalReason.RUN_BELOW_STRONG_REFERENCE,
+    ProvisionalReason.INCOMPLETE_BREADTH_FALLBACK,
+    ProvisionalReason.COVERAGE_BELOW_STRONG,
+)
+
+
+class PreSensitivityRankabilityState(StrEnum):
+    """The preliminary rankability state (LREQ-EVD-010).
+
+    Distinct from ``models.RankabilityStatus``: this is the pure pre-ranking value
+    and is never a persisted ``rankability_status`` (Chunk 9B assigns the final
+    one). The string values match the SRS vocabulary by design.
+    """
+
+    NOT_RANKABLE = "not_rankable"
+    PROVISIONAL = "provisional"
+    RANKABLE = "rankable"
+
+
+PRE_SENSITIVITY_RANKABILITY_STATES: tuple[PreSensitivityRankabilityState, ...] = (
+    PreSensitivityRankabilityState.NOT_RANKABLE,
+    PreSensitivityRankabilityState.PROVISIONAL,
+    PreSensitivityRankabilityState.RANKABLE,
+)
+
+
+class PreSensitivityEvidenceState(StrEnum):
+    """The preliminary evidence state (LREQ-EVD-010 companion; plan §12 Q2).
+
+    Distinct from ``models.EvidenceGrade``: this is the pure pre-ranking value and
+    is never a persisted ``evidence_grade`` (Chunk 9B assigns the final grade).
+    """
+
+    SUFFICIENT = "sufficient"
+    PROVISIONAL_ONLY = "provisional_only"
+    INSUFFICIENT = "insufficient"
+
+
+@dataclass(frozen=True, slots=True)
+class PreSensitivityCategoryInput:
+    """The already-classified per-category facts the evidence decision consumes.
+
+    All facts are supplied explicitly by the caller and are never re-derived from
+    payloads (LREQ-EVD-020; plan §5.1 R7/R10). ``field_usable_counts`` values are
+    counts, so ``0`` is a legitimate explicit count, not a missing value;
+    ``reference_size`` may be ``0`` for a one-category run. No field carries a
+    ``None``-means-unavailable float component here — those live on
+    ``ScoreResult``.
+    """
+
+    category: str
+    discovery_status: DiscoveryStatus
+    discovery_filter_verified: bool
+    discovery_unresolved_identity_count: int
+    discovery_conflict_count: int
+    discovery_bounded_by_verified_total: bool
+    page_view_semantics_status: PageViewSemanticsStatus
+    breadth_source: BreadthSource
+    breadth_completeness_status: BreadthCompletenessStatus
+    demand_stratum_eligibility_coverage: float
+    recent_supply_stratum_eligibility_coverage: float
+    quality_stratum_eligibility_coverage: float
+    reference_size: int
+    field_usable_counts: FieldUsableCounts
+
+
+@dataclass(frozen=True, slots=True)
+class PreSensitivityDecision:
+    """One category's pure pre-ranking evidence decision.
+
+    ``evidence_state`` and ``rankability_state`` are the preliminary values kept
+    distinct from ``ScoreResult.score_state`` and from the final persisted
+    ``evidence_grade``/``rankability_status``. ``not_rankable_reasons`` and
+    ``provisional_reasons`` are emitted in their fixed orders and are empty when
+    no condition fires.
+    """
+
+    category: str
+    evidence_state: PreSensitivityEvidenceState
+    rankability_state: PreSensitivityRankabilityState
+    not_rankable_reasons: tuple[NotRankableReason, ...]
+    provisional_reasons: tuple[ProvisionalReason, ...]
+    base_rankable: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BaseCandidateSet:
+    """The frozen base-rankable candidate set and its per-category decisions.
+
+    Built before any alternate policy is ranked (LREQ-EVD-020 line 994).
+    ``base_rankable_candidates`` and ``decisions`` follow the caller's canonical
+    ``all_metrics`` order; ``run_category_count`` is ``len(all_metrics)``. A run
+    of 8-20 categories yields an empty candidate tuple.
+    """
+
+    base_rankable_candidates: tuple[str, ...]
+    decisions: tuple[PreSensitivityDecision, ...]
+    run_category_count: int
+
+
+def field_reference_support_passes(
+    counts: FieldUsableCounts,
+    *,
+    demand_available: bool,
+    competition_available: bool,
+    recent_supply_available: bool,
+    quality_available: bool,
+) -> bool:
+    """Return whether field-specific reference support passes (LREQ-EVD-020).
+
+    For every **available** component, each raw field that component consumes
+    (per SRS-lean §8.2: ``D`` ← ``demand_per_asset_raw``/``demand_median_raw``;
+    ``C`` ← ``breadth_raw``; ``R`` ← ``recent_share_raw``/``median_age_raw``;
+    ``Q`` ← ``quality_raw``) must have a positive usable-peer count in ``counts``.
+    An unavailable component contributes no requirement, so its fields may be
+    ``0`` without failing the predicate; all four unavailable returns vacuously
+    ``True`` (that category is already not-rankable through the
+    component-availability reasons). A count of ``0`` is a legitimate explicit
+    count, never a missing value, and a ``None`` is never treated as ``0``.
+    """
+    if demand_available and (
+        counts.demand_per_asset_raw <= 0 or counts.demand_median_raw <= 0
+    ):
+        return False
+    if competition_available and counts.breadth_raw <= 0:
+        return False
+    if recent_supply_available and (
+        counts.recent_share_raw <= 0 or counts.median_age_raw <= 0
+    ):
+        return False
+    if quality_available and counts.quality_raw <= 0:
+        return False
+    return True
+
+
+def not_rankable_reasons(
+    score: ScoreResult,
+    evidence: PreSensitivityCategoryInput,
+    *,
+    identity_preflight_status: IdentityPreflightStatus,
+) -> tuple[NotRankableReason, ...]:
+    """Return the not-rankable reasons for one category, in fixed emission order.
+
+    Consumes the already-classified ``score`` components, the ``evidence`` facts,
+    and the run-level ``identity_preflight_status``; nothing is re-derived. The
+    result is the firing subset of :data:`NOT_RANKABLE_REASON_ORDER`, in that
+    order and deduplicated, and is empty for a category with no not-rankable
+    condition. ``IdentityPreflightStatus.INSUFFICIENT`` fires
+    ``IDENTITY_PREFLIGHT_FAILED`` exactly as ``FAILED`` does (plan §12 Q4). A
+    ``None`` component, a non-positive ``reference_size``, or a field-support
+    failure fires its reason; a ``0`` field count is a count, never a missing
+    value.
+    """
+    reasons: list[NotRankableReason] = []
+    if evidence.discovery_status in (
+        DiscoveryStatus.REQUEST_FAILED,
+        DiscoveryStatus.PAGE_FAILED,
+    ):
+        reasons.append(NotRankableReason.UNRECOVERABLE_DATA_INTEGRITY_ERROR)
+    if not evidence.discovery_filter_verified or evidence.discovery_status in (
+        DiscoveryStatus.FILTER_UNVERIFIED,
+        DiscoveryStatus.CATEGORY_MISMATCH,
+    ):
+        reasons.append(NotRankableReason.DISCOVERY_FILTER_UNVERIFIED)
+    if (
+        evidence.discovery_status is DiscoveryStatus.IDENTITY_INCOMPLETE
+        or evidence.discovery_unresolved_identity_count > 0
+        or evidence.discovery_conflict_count > 0
+    ):
+        reasons.append(NotRankableReason.UNRESOLVED_OR_CONFLICTING_IDENTITY)
+    if identity_preflight_status in (
+        IdentityPreflightStatus.FAILED,
+        IdentityPreflightStatus.INSUFFICIENT,
+    ):
+        reasons.append(NotRankableReason.IDENTITY_PREFLIGHT_FAILED)
+    if score.component_c is None:
+        reasons.append(NotRankableReason.COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE)
+    if evidence.page_view_semantics_status is PageViewSemanticsStatus.CONTRADICTED:
+        reasons.append(NotRankableReason.PAGE_VIEW_SEMANTICS_CONTRADICTED)
+    if score.component_d is None:
+        reasons.append(NotRankableReason.REQUIRED_DEMAND_DATA_UNAVAILABLE)
+    if score.component_r is None:
+        reasons.append(NotRankableReason.RECENT_SUPPLY_MINIMUM_NOT_MET)
+    if score.component_q is None:
+        reasons.append(NotRankableReason.QUALITY_UNAVAILABLE)
+    if evidence.reference_size <= 0:
+        reasons.append(NotRankableReason.NO_VALID_LEAVE_ONE_OUT_REFERENCE)
+    if not field_reference_support_passes(
+        evidence.field_usable_counts,
+        demand_available=score.component_d is not None,
+        competition_available=score.component_c is not None,
+        recent_supply_available=score.component_r is not None,
+        quality_available=score.component_q is not None,
+    ):
+        reasons.append(NotRankableReason.FIELD_REFERENCE_SUPPORT_INSUFFICIENT)
+    return tuple(reasons)
+
+
+def provisional_reasons(
+    score: ScoreResult,
+    evidence: PreSensitivityCategoryInput,
+    *,
+    run_category_count: int,
+    min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE,
+) -> tuple[ProvisionalReason, ...]:
+    """Return the pre_sensitivity provisional reasons, in fixed emission order.
+
+    Only the pre_sensitivity clauses of LREQ-EVD-030 are represented: a run below
+    ``STRONG_REFERENCE_CATEGORY_COUNT``, the incomplete breadth fallback estimate,
+    and coverage that meets ``min_required_component_coverage`` but is below
+    ``STRONG_COMPONENT_COVERAGE``. The fallback reason fires whenever
+    ``breadth_completeness_status is INCOMPLETE_ESTIMATE``, including when
+    ``discovery_bounded_by_verified_total`` is ``True`` (plan §12 Q3). Coverage
+    strictly below ``min_required_component_coverage`` is not a provisional
+    reason. ``score`` is accepted for signature stability with the not-rankable
+    evaluation; these pre_sensitivity clauses read no component value, so a
+    ``None`` component is never turned into a zero or a provisional reason. A
+    non-finite or out-of-range threshold raises ``ValueError``.
+    """
+    threshold = _require_threshold(min_required_component_coverage)
+    reasons: list[ProvisionalReason] = []
+    if run_category_count < STRONG_REFERENCE_CATEGORY_COUNT:
+        reasons.append(ProvisionalReason.RUN_BELOW_STRONG_REFERENCE)
+    if (
+        evidence.breadth_completeness_status
+        is BreadthCompletenessStatus.INCOMPLETE_ESTIMATE
+    ):
+        reasons.append(ProvisionalReason.INCOMPLETE_BREADTH_FALLBACK)
+    if any(
+        threshold <= coverage < STRONG_COMPONENT_COVERAGE
+        for coverage in (
+            evidence.demand_stratum_eligibility_coverage,
+            evidence.recent_supply_stratum_eligibility_coverage,
+            evidence.quality_stratum_eligibility_coverage,
+        )
+    ):
+        reasons.append(ProvisionalReason.COVERAGE_BELOW_STRONG)
+    return tuple(reasons)
+
+
+def pre_sensitivity_rankability_state(
+    not_rankable: Sequence[NotRankableReason],
+    provisional: Sequence[ProvisionalReason],
+    *,
+    base_rankable: bool,
+) -> PreSensitivityRankabilityState:
+    """Return the preliminary rankability state (LREQ-EVD-010).
+
+    ``NOT_RANKABLE`` when ``not_rankable`` is non-empty; else ``RANKABLE`` when
+    ``base_rankable`` is ``True`` and ``provisional`` is empty; else
+    ``PROVISIONAL``. The result is always one of
+    :data:`PRE_SENSITIVITY_RANKABILITY_STATES` and is never a
+    ``models.RankabilityStatus`` instance (plan §5.1 R2). All inputs are explicit;
+    no clock, no I/O, no policy input.
+    """
+    if len(not_rankable) > 0:
+        return PreSensitivityRankabilityState.NOT_RANKABLE
+    if base_rankable and len(provisional) == 0:
+        return PreSensitivityRankabilityState.RANKABLE
+    return PreSensitivityRankabilityState.PROVISIONAL
+
+
+def _is_base_rankable(
+    score: ScoreResult,
+    evidence: PreSensitivityCategoryInput,
+    *,
+    run_category_count: int,
+    not_rankable: Sequence[NotRankableReason],
+    min_required_component_coverage: float,
+) -> bool:
+    """Return the LREQ-EVD-020 base-candidate rule for one category (pure).
+
+    All six conditions must hold: run size at least
+    ``STRONG_REFERENCE_CATEGORY_COUNT``; no not-rankable reason; all four
+    components available; every required stratum eligibility coverage at or above
+    ``min_required_component_coverage``; a positive ``reference_size``; and
+    field-specific reference support. A ``None`` component is unavailable and is
+    never treated as ``0``.
+    """
+    if run_category_count < STRONG_REFERENCE_CATEGORY_COUNT:
+        return False
+    if len(not_rankable) > 0:
+        return False
+    if score.available_component_count != 4:
+        return False
+    if (
+        evidence.demand_stratum_eligibility_coverage < min_required_component_coverage
+        or evidence.recent_supply_stratum_eligibility_coverage
+        < min_required_component_coverage
+        or evidence.quality_stratum_eligibility_coverage
+        < min_required_component_coverage
+    ):
+        return False
+    if evidence.reference_size <= 0:
+        return False
+    return field_reference_support_passes(
+        evidence.field_usable_counts,
+        demand_available=score.component_d is not None,
+        competition_available=score.component_c is not None,
+        recent_supply_available=score.component_r is not None,
+        quality_available=score.component_q is not None,
+    )
+
+
+def evaluate_pre_sensitivity_evidence(
+    score: ScoreResult,
+    evidence: PreSensitivityCategoryInput,
+    *,
+    identity_preflight_status: IdentityPreflightStatus,
+    run_category_count: int,
+    min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE,
+) -> PreSensitivityDecision:
+    """Evaluate the pre_sensitivity evidence and preliminary rankability.
+
+    Computes ``base_rankable`` from the LREQ-EVD-020 base-candidate rule, then the
+    not-rankable reasons, the provisional reasons, and the state. ``evidence_state``
+    is ``INSUFFICIENT`` when any not-rankable reason fires, else
+    ``PROVISIONAL_ONLY`` when any provisional reason fires, else ``SUFFICIENT``.
+    The function accepts no alternate-policy input and reads no clock. ``None``
+    components/coverages stay ``None``; a ``0`` field count is a count. A
+    non-finite or out-of-range threshold raises ``ValueError``.
+    """
+    threshold = _require_threshold(min_required_component_coverage)
+    not_rankable = not_rankable_reasons(
+        score,
+        evidence,
+        identity_preflight_status=identity_preflight_status,
+    )
+    provisional = provisional_reasons(
+        score,
+        evidence,
+        run_category_count=run_category_count,
+        min_required_component_coverage=threshold,
+    )
+    base_rankable = _is_base_rankable(
+        score,
+        evidence,
+        run_category_count=run_category_count,
+        not_rankable=not_rankable,
+        min_required_component_coverage=threshold,
+    )
+    state = pre_sensitivity_rankability_state(
+        not_rankable,
+        provisional,
+        base_rankable=base_rankable,
+    )
+    if len(not_rankable) > 0:
+        evidence_state = PreSensitivityEvidenceState.INSUFFICIENT
+    elif len(provisional) > 0:
+        evidence_state = PreSensitivityEvidenceState.PROVISIONAL_ONLY
+    else:
+        evidence_state = PreSensitivityEvidenceState.SUFFICIENT
+    return PreSensitivityDecision(
+        category=evidence.category,
+        evidence_state=evidence_state,
+        rankability_state=state,
+        not_rankable_reasons=not_rankable,
+        provisional_reasons=provisional,
+        base_rankable=base_rankable,
+    )
+
+
+def build_base_rankable_candidates(
+    all_metrics: Sequence[CategoryRawMetrics],
+    inputs: Sequence[PreSensitivityCategoryInput],
+    scores: Sequence[ScoreResult],
+    *,
+    identity_preflight_status: IdentityPreflightStatus,
+    min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE,
+) -> BaseCandidateSet:
+    """Build the frozen base-rankable candidate set before any policy is ranked.
+
+    Pure run-level wiring (LREQ-EVD-020 lines 989-994). ``all_metrics`` is the
+    ordering authority; ``inputs`` and ``scores`` must be equal-length and
+    category-aligned with it, else ``ValueError`` (a caller breach, never a
+    silently dropped or reordered category). ``base_rankable_candidates`` and
+    ``decisions`` follow ``all_metrics`` order and ``run_category_count`` is its
+    length. ``ScoreResult`` fields are read only: the function never mutates,
+    rebuilds, or reassigns a stored score field, and adds or removes no candidate
+    from any alternate policy. ``None`` components stay ``None``. A run of 8-20
+    categories yields an empty candidate tuple.
+    """
+    threshold = _require_threshold(min_required_component_coverage)
+    metrics = tuple(all_metrics)
+    evidence_inputs = tuple(inputs)
+    score_results = tuple(scores)
+    run_category_count = len(metrics)
+    if (
+        len(evidence_inputs) != run_category_count
+        or len(score_results) != run_category_count
+    ):
+        raise ValueError(
+            "all_metrics, inputs, and scores must have equal length: "
+            f"{run_category_count}, {len(evidence_inputs)}, {len(score_results)}"
+        )
+    for index, metric in enumerate(metrics):
+        if evidence_inputs[index].category != metric.category:
+            raise ValueError(
+                "category misalignment at index "
+                f"{index}: all_metrics has {metric.category!r}, "
+                f"inputs has {evidence_inputs[index].category!r}"
+            )
+
+    decisions: list[PreSensitivityDecision] = []
+    candidates: list[str] = []
+    for metric, evidence, score in zip(metrics, evidence_inputs, score_results):
+        decision = evaluate_pre_sensitivity_evidence(
+            score,
+            evidence,
+            identity_preflight_status=identity_preflight_status,
+            run_category_count=run_category_count,
+            min_required_component_coverage=threshold,
+        )
+        decisions.append(decision)
+        if decision.base_rankable:
+            candidates.append(metric.category)
+    return BaseCandidateSet(
+        base_rankable_candidates=tuple(candidates),
+        decisions=tuple(decisions),
+        run_category_count=run_category_count,
+    )

@@ -476,10 +476,11 @@ def test_field_reference_support_requires_consumed_fields() -> None:
     Plan §12 Q1/R11 with SRS §9.1 LREQ-EVD-020 line 993 and §8.2: Demand consumes
     ``demand_per_asset_raw``/``demand_median_raw``, Competition ``breadth_raw``,
     Recent supply ``recent_share_raw``/``median_age_raw``, Quality ``quality_raw``.
-    An unavailable component contributes no requirement, so an unused ``0`` field
-    never fails, and the all-four-unavailable case is vacuously ``True``. A
-    ``0`` here is a legitimate count, not a missing value (LREQ-TST-010 explicit
-    valid zero).
+    For an available component, **every** consumed field must have at least one
+    usable peer; an unavailable component contributes no requirement, so an unused
+    ``0`` field never fails, and the all-four-unavailable case is vacuously
+    ``True``. A ``0`` here is a legitimate count, not a missing value
+    (LREQ-TST-010 explicit valid zero).
     """
     for (
         label,
@@ -492,9 +493,9 @@ def test_field_reference_support_requires_consumed_fields() -> None:
             scoring.field_reference_support_passes(counts, **availability) is expected
         ), label
 
-    # Cross-check through ``not_rankable_reasons``: the demand requirement is
-    # satisfied by a single sub-signal, so a category with a clean ``D`` and a
-    # zero ``demand_median_raw`` count is still rankable at 21 categories.
+    # Cross-check through ``not_rankable_reasons``: with ``D`` available, one of
+    # its consumed fields at 0 usable peers fails the strict rule, so the reason
+    # fires exactly once and the category cannot be a base candidate.
     evidence = efx.make_pre_sensitivity_input(
         "c-0",
         field_usable_counts=efx.make_field_usable_counts(
@@ -511,8 +512,10 @@ def test_field_reference_support_requires_consumed_fields() -> None:
         evidence,
         run_category_count=STRONG_REFERENCE_CATEGORY_COUNT,
     )
-    assert result.not_rankable_reasons == ()
-    assert result.base_rankable is True
+    assert result.not_rankable_reasons == (
+        NotRankableReason.FIELD_REFERENCE_SUPPORT_INSUFFICIENT,
+    )
+    assert result.base_rankable is False
 
 
 @pytest.mark.lreq("LREQ-EVD-020")
@@ -842,11 +845,17 @@ def test_base_rankable_candidates_require_all_components_and_coverage() -> None:
     assert missing_run.base_rankable_candidates == expected_missing
 
     # One coverage below the required minimum on a sample-derived component.
+    # Replace the entry at index 1 in place so the sequences stay aligned with
+    # ``metrics`` (c-1 stays c-1).
     low_coverage_inputs = (
-        efx.make_pre_sensitivity_input(
-            "c-1", recent_supply_stratum_eligibility_coverage=0.49
-        ),
-    ) + inputs[1:]
+        inputs[:1]
+        + (
+            efx.make_pre_sensitivity_input(
+                "c-1", recent_supply_stratum_eligibility_coverage=0.49
+            ),
+        )
+        + inputs[2:]
+    )
     low_coverage_run = scoring.build_base_rankable_candidates(
         metrics,
         low_coverage_inputs,
@@ -858,12 +867,18 @@ def test_base_rankable_candidates_require_all_components_and_coverage() -> None:
     ) + efx.CATEGORY_ORDER_FULL_RUN[2:]
     assert low_coverage_run.base_rankable_candidates == expected_low_coverage
 
-    # Coverage exactly at the required minimum keeps candidacy (boundary).
+    # Coverage exactly at the required minimum keeps candidacy (boundary). The
+    # 0.50 coverage still fires the provisional COVERAGE_BELOW_STRONG reason, but
+    # base candidacy is a separate necessary condition and is unaffected.
     boundary_inputs = (
-        efx.make_pre_sensitivity_input(
-            "c-1", recent_supply_stratum_eligibility_coverage=0.50
-        ),
-    ) + inputs[1:]
+        inputs[:1]
+        + (
+            efx.make_pre_sensitivity_input(
+                "c-1", recent_supply_stratum_eligibility_coverage=0.50
+            ),
+        )
+        + inputs[2:]
+    )
     boundary_run = scoring.build_base_rankable_candidates(
         metrics,
         boundary_inputs,
@@ -948,9 +963,11 @@ def test_build_base_rankable_candidates_rejects_misaligned_inputs() -> None:
         if "inputs" in label:
             bad_inputs = inputs[:-1]
             bad_scores = scores
+            assert len(bad_inputs) == count - 1
         else:
             bad_inputs = inputs
             bad_scores = scores[:-1]
+            assert len(bad_scores) == count - 1
         with pytest.raises(ValueError):
             scoring.build_base_rankable_candidates(
                 metrics,
@@ -958,7 +975,6 @@ def test_build_base_rankable_candidates_rejects_misaligned_inputs() -> None:
                 bad_scores,
                 identity_preflight_status=IdentityPreflightStatus.PASSED,
             )
-        assert len(bad_inputs) == count - 1
 
     mismatched_inputs = (efx.make_pre_sensitivity_input("wrong-category"),) + inputs[1:]
     with pytest.raises(ValueError):
@@ -1005,21 +1021,27 @@ def test_score_state_and_rankability_state_remain_distinct() -> None:
                 available_component_count=3,
             )
             evidence = efx.make_pre_sensitivity_input("c-0")
+            run_category_count = STRONG_REFERENCE_CATEGORY_COUNT
         else:
-            # PARTIAL score, provisional rankability: computable 8-category run.
+            # PARTIAL score, provisional rankability: the 8-category run makes
+            # RUN_BELOW_STRONG_REFERENCE fire, so the state is provisional and the
+            # category is not a base candidate (fewer than 21 categories).
             score = efx.make_score_result(
                 score_state=score_state,
                 available_component_count=4,
             )
             evidence = efx.make_pre_sensitivity_input("c-0", reference_size=7)
+            run_category_count = efx.EIGHT_CATEGORY_COUNT
         result = _evaluate(
             score,
             evidence,
             identity_preflight_status=IdentityPreflightStatus.PASSED,
-            run_category_count=STRONG_REFERENCE_CATEGORY_COUNT,
+            run_category_count=run_category_count,
         )
         assert score.score_state is score_state, label
         assert result.rankability_state.value == expected_rankability_state, label
+        if expected_rankability_state == "provisional":
+            assert result.base_rankable is False, label
 
     score_values = {state.value for state in ScoreState}
     rankability_values = {state.value for state in PreSensitivityRankabilityState}
@@ -1039,7 +1061,9 @@ def test_provisional_reason_for_run_below_strong_reference() -> None:
 
     SRS §9.1 LREQ-EVD-030 lines 996-998: a score is provisional when the run has
     8-20 categories or fewer than ``STRONG_REFERENCE_CATEGORY_COUNT`` categories.
-    A 21-category run with the same clean facts fires nothing.
+    The 20-category run also fails base candidacy, because LREQ-EVD-020 lines
+    990-991 require at least 21 categories for the base candidate set. A
+    21-category run with the same clean facts fires nothing.
     """
     below = _evaluate(
         _clean_score(),
@@ -1049,7 +1073,7 @@ def test_provisional_reason_for_run_below_strong_reference() -> None:
     assert below.provisional_reasons == (ProvisionalReason.RUN_BELOW_STRONG_REFERENCE,)
     assert below.evidence_state is PreSensitivityEvidenceState.PROVISIONAL_ONLY
     assert below.rankability_state is PreSensitivityRankabilityState.PROVISIONAL
-    assert below.base_rankable is True
+    assert below.base_rankable is False
 
     at_strong = _evaluate(
         _clean_score(),
@@ -1149,9 +1173,11 @@ def test_provisional_reason_for_coverage_between_minimum_and_strong() -> None:
     but below the strong policy". Acceptable means
     ``>= MIN_REQUIRED_COMPONENT_COVERAGE``; below the strong policy means
     ``< STRONG_COMPONENT_COVERAGE``. The boundary vectors: ``0.79`` fires it,
-    ``0.80`` (exactly strong) and ``0.50`` (exactly the required minimum) do not.
-    A coverage strictly below ``0.50`` is not a provisional reason at all -- that
-    component is already unavailable and the category is not rankable earlier.
+    ``0.80`` (exactly strong) does not, and ``0.50`` (exactly the required
+    minimum, still "acceptable but below the strong policy") fires it while the
+    component stays available. A coverage strictly below ``0.50`` is not a
+    provisional reason at all -- that component is already unavailable and the
+    category is not rankable earlier.
     """
     for label, coverage, expected in efx.PROVISIONAL_COVERAGE_VECTORS:
         evidence = efx.make_pre_sensitivity_input(
