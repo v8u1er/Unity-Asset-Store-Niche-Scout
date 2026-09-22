@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -63,6 +65,107 @@ def _text_primary_row(text, category):
         if cells and cells[0] == category:
             return dict(zip(headers, cells, strict=True))
     raise AssertionError("category primary-table row not found")
+
+
+class _PrimaryTableHTML(HTMLParser):
+    """Parse the rendered ``<table id="primary">`` header and rows.
+
+    Only the primary table is captured: the per-category stratum tables are
+    ignored, so the extracted header/row cell sets are exactly the primary
+    table's own cells.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._in_table = False
+        self._table_depth = 0
+        self._section = None  # "thead" | "tbody" | None
+        self._in_cell = False
+        self._buffer = []
+        self.headers = []
+        self.rows = []
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "table":
+            if self._in_table:
+                self._table_depth += 1
+                return
+            if attributes.get("id") == "primary":
+                self._in_table = True
+                self._table_depth = 0
+            return
+        if not self._in_table:
+            return
+        if tag == "thead":
+            self._section = "thead"
+        elif tag == "tbody":
+            self._section = "tbody"
+        elif tag == "tr":
+            self.rows.append([])
+        elif tag in ("th", "td"):
+            self._in_cell = True
+            self._buffer = []
+
+    def handle_data(self, data):
+        if self._in_cell:
+            self._buffer.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "table":
+            if not self._in_table:
+                return
+            if self._table_depth:
+                self._table_depth -= 1
+            else:
+                self._in_table = False
+            return
+        if not self._in_table:
+            return
+        if tag in ("th", "td"):
+            if not self._in_cell:
+                return
+            text = "".join(self._buffer).strip()
+            self._in_cell = False
+            self._buffer = []
+            if tag == "th":
+                self.headers.append(text)
+            elif self.rows:
+                self.rows[-1].append(text)
+        elif tag in ("thead", "tbody"):
+            self._section = None
+
+
+def _PrimaryTableHTML_headers(html):
+    """Parse the rendered primary table and return its ``<th>`` header texts."""
+    parser = _PrimaryTableHTML()
+    parser.feed(html)
+    return parser.headers
+
+
+def _primary_row_cell_count(html):
+    """Count width-cell data rows and their ``<td>`` cells in the primary table.
+
+    A real data row carries one cell per header (``_PRIMARY_COLUMNS`` has
+    entries; the count is not hard-coded so it follows the column set). Returns
+    ``(header_width, data_row_count, populated_data_cells)``.
+    """
+    parser = _PrimaryTableHTML()
+    parser.feed(html)
+    width = len(parser.headers)
+    populated_rows = [row for row in parser.rows if len(row) == width]
+    return width, len(populated_rows), sum(len(row) for row in populated_rows)
+
+
+def _text_primary_headers(text):
+    """Extract the text renderer's primary-table header labels."""
+    lines = text.splitlines()
+    header_index = lines.index("PRIMARY TABLE")
+    for line in lines[header_index + 1 :]:
+        stripped = line.strip()
+        if stripped:
+            return [label.strip() for label in stripped.split(" | ")]
+    raise AssertionError("text primary-table header line not found")
 
 
 # --------------------------------------------------------------------------
@@ -169,7 +272,15 @@ def test_load_run_report_view_orders_ranked_then_unranked(tmp_path):
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_primary_table_renders_every_mandatory_column(tmp_path):
-    """The HTML and text primary tables carry every LREQ-RPT-020 column."""
+    """The rendered primary-table header set is exactly the mandatory label set.
+
+    Asserts against the primary table's own header cells (parsed from the HTML
+    ``<thead>`` and read from the text renderer's header line), so a missing,
+    renamed, duplicated, or extra column fails even when its label is a
+    substring of unrelated rendered text (``rank`` inside ``rankability``,
+    ``sample fraction`` inside ``sample shared with other categories (%)``).
+    Each expected label must additionally have a cell in a rendered data row.
+    """
     repository = _repository(tmp_path)
     run = rf.run_record((rf.CATEGORY_ALPHA, rf.CATEGORY_BRAVO))
     alpha, bravo = rf.scored_rows_for(rf.CATEGORY_ALPHA, rf.CATEGORY_BRAVO)
@@ -178,38 +289,29 @@ def test_primary_table_renders_every_mandatory_column(tmp_path):
         view = report.load_run_report_view(repository, rf.RUN_ID)
         html = report.render_run_report_html(view)
         text = report.render_run_report_text(view)
-        for label in (
-            "category",
-            "rank",
-            "composite score",
-            "discovered population",
-            "sample size",
-            "census flag",
-            "unique enrichment count",
-            "sample fraction",
-            "sampling basis",
-            "cross-category overlap count",
-            "usable demand count",
-            "usable recent supply count",
-            "usable quality count",
-            "demand stratum eligibility coverage",
-            "recent supply stratum eligibility coverage",
-            "quality stratum eligibility coverage",
-            "evidence grade",
-            "rankability",
-            "discovery status",
-            "page-view semantic status",
-            "top_3_stability",
-            "top_5_stability",
-            "maximum_score_delta",
-            "maximum_rank_displacement",
-            "sensitivity warning",
-            "sample shared with other categories (%)",
-        ):
-            assert label in html
-            assert label in text
-        for component in report.COMPONENT_RENDER_ORDER:
-            assert f"<th>{component}</th>" in html
+
+        # Every LREQ-RPT-020 column, and only those, as rendered header cells.
+        expected = {label for label, _ in report._PRIMARY_COLUMNS}
+        html_headers = _PrimaryTableHTML_headers(html)
+        assert set(html_headers) == expected
+        assert len(html_headers) == len(expected)
+        assert _text_primary_headers(text) == [
+            label for label, _ in report._PRIMARY_COLUMNS
+        ]
+        # Every expected column has a real cell in a rendered data row.
+        width, data_rows, populated_cells = _primary_row_cell_count(html)
+        assert width == len(expected)
+        assert data_rows == len(view.categories)
+        assert populated_cells == len(expected) * data_rows
+        assert len(view.categories) == 2
+        for row in view.categories:
+            cells = _text_primary_row(text, row.category)
+            assert set(cells) == expected
+        # The D/C/R/Q cells remain the component columns, not another "D".
+        assert all(
+            re.search(rf"<th>{re.escape(component)}</th>", html)
+            for component in report.COMPONENT_RENDER_ORDER
+        )
     finally:
         repository.close()
 
