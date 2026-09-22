@@ -487,5 +487,22 @@
   "tests/test_pipeline.py::test_final_evidence_and_rankability_are_persisted_per_category": ["LREQ-SEN-020", "LREQ-EVD-020"],
   "tests/test_pipeline.py::test_shared_sampled_identity_is_enriched_once": ["LREQ-ID-040"],
   "tests/test_pipeline.py::test_run_uses_injected_clock_transports_and_sleeper": ["LREQ-ARCH-030"],
-  "tests/test_database.py::test_runs_taxonomy_sha256_empty_is_rejected": ["LREQ-ARCH-030"]
+  "tests/test_database.py::test_runs_taxonomy_sha256_empty_is_rejected": ["LREQ-ARCH-030"],
+  "tests/test_report.py::test_load_run_report_view_reads_primary_rows": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_load_run_report_view_orders_ranked_then_unranked": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_primary_table_renders_every_mandatory_column": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_pre_scoring_defaults_render_as_unavailable": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_zero_population_sample_fraction_is_null": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_explicit_zero_overlap_is_measured_zero": ["LREQ-RPT-020"],
+  "tests/test_report.py::test_category_detail_shows_formulas_inputs_strata_and_timestamps": ["LREQ-RPT-030"],
+  "tests/test_report.py::test_detail_labels_observed_versus_inferred": ["LREQ-RPT-030"],
+  "tests/test_report.py::test_non_rankable_category_remains_visible": ["LREQ-RPT-040"],
+  "tests/test_report.py::test_failed_preflight_fallback_yields_one_row_per_category": ["LREQ-RPT-040"],
+  "tests/test_report.py::test_report_states_heuristic_and_six_distinctions": ["LREQ-RPT-050"],
+  "tests/test_report.py::test_html_output_is_self_contained_and_deterministic": ["LREQ-RPT-010"],
+  "tests/test_report.py::test_write_run_report_writes_html_and_text": ["LREQ-RPT-010"],
+  "tests/test_report.py::test_write_run_report_rejects_unknown_format": ["LREQ-RPT-010"],
+  "tests/test_report.py::test_load_run_report_view_raises_for_unknown_run": ["LREQ-RPT-010"],
+  "tests/test_report.py::test_render_dashboard_html_is_database_read_only": ["LREQ-CLI-020"],
+  "tests/test_report.py::test_public_report_functions_have_hints_and_docstrings": ["LREQ-NFR-040"]
 }
