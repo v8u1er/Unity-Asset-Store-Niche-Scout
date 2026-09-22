@@ -40,7 +40,7 @@ on Chunk 9A, so the branch was cut from the `chunk-9A` tip rather than `main`.
 | Implementation — dispute 2 | RESOLVED (stale Chunk 9A expectation) | `test_scoring_evidence.py::test_base_candidate_set_is_fixed_input_to_sensitivity` asserted `final_evidence_grade`/`final_rankability_status` were absent; Chunk 9B plan §5 legitimately adds them. Fixture `NO_RANKABLE_SURFACE` reduced to `("compute_sensitivity",)` (correctly still absent; the 9B name is `evaluate_sensitivity`). |
 | Tests — `test-author` fix dispatch | DONE | Session `ses_f39e6e876ffeNZceazhIS0zpfG` fixed the two artifacts. `pytest tests/test_scoring_sensitivity.py -q` → 39 passed; `tests/test_scoring_evidence.py -q` → 36 passed; full suite → 475 passed. No node ID/marker/traceability entry changed. |
 | Lead verification (step 6) | DONE | `python -m pytest -q` → **475 passed, 0 failed** (re-run by the lead). `validate_traceability` → valid, 461 matrix nodes, 89 defined LREQ IDs (7 pre-existing unmarked collector/sampling tests, none a Chunk 9B node). `check_import_boundaries` → valid for `metrics.py, scoring.py`. `ruff check` on the six changed files → "All checks passed!"; `ruff format --check` → all formatted (lead ran `ruff format tests/test_scoring_sensitivity.py` once; whitespace only, suite re-run green). |
-| Implementation commits | PENDING | source + adjudicated test fixes. |
+| Implementation commits | DONE | `711b0cf` — `chunk-9B: implementation` (source); `0a68ccb` — `chunk-9B: resolve stale test artifacts` (the two adjudicated test/fixture fixes). |
 | Review — `spec-reviewer` | DONE | Session `ses_f39e0d219ffes2x2LYlwFqSRxz` returned `VERDICT: PASS`, no Blocker, no Major. It re-read the SRS §9.1–§9.3/§7.3/§6.5/§13/Appendix C, the frozen plan, the implementation, the tests, and the adjudicated edits; independently re-derived the golden vectors; re-ran the suite and tooling. |
 | Fix rounds used | 0 of 2 | No review-fix commit was needed. |
 | Interface produced | DONE | `Documents/interfaces/chunk-9B.md` (Status: VERIFIED) created from the frozen plan §5. Consumers: Chunks 10, 11, 12, 13. |
@@ -57,7 +57,7 @@ on Chunk 9A, so the branch was cut from the `chunk-9A` tip rather than `main`.
 ### Gate — Chunk 9B
 
 Gate bullets walked one by one from `Documents/requirements-dependency-map.md` §3 Chunk 9B
-(Gate section, lines 947–954), on commit `711b0cf` (working tree clean except this run log
+(Gate section, lines 947–954), on commit `0a68ccb` (working tree clean except this run log
 and the interface file).
 
 | Gate bullet | Result | Evidence |
@@ -95,6 +95,25 @@ collector/sampling tests, none a Chunk 9B node);
   `ranking_sensitivity_json` from `SensitivityDiagnostics`, **not** from the frozen
   `SensitivityResult` (whose `warning: bool = False` cannot express `None`); and it
   must supply `SampleEvidenceFacts` from the authoritative persisted columns.
+### Merge-time re-verification (2026-09-22)
+
+Lead re-verified Chunk 9 on branch tip `83c00a8` before merging to `main`:
+
+| Command / check | Result |
+|---|---|
+| `python -m pytest -q` | **475 passed, 0 failed** |
+| `python -m pytest tests/test_scoring_evidence.py tests/test_scoring_sensitivity.py -q` | **75 passed** (36 + 39) |
+| `python -m niche_scout.tools.validate_traceability` | valid: 461 matrix nodes, 89 defined LREQ IDs |
+| `python -m niche_scout.tools.check_import_boundaries` | valid for `metrics.py, scoring.py` |
+| `ruff check` / `ruff format --check` on the six changed files | "All checks passed!" / "6 files already formatted" |
+| Node/entry counts (queried) | `test_scoring_sensitivity.py` → 39 nodes = 39 traceability entries; `test_scoring_evidence.py` → 36 nodes = 36 entries |
+| Interfaces | `interfaces/chunk-9A.md` `Status: VERIFIED`; `interfaces/chunk-9B.md` `Status: VERIFIED` |
+| Gate bullets 9A (4) and 9B (6) | re-walked; all PASS on the cited source (`scoring.py:759–1656`) |
+
+Two stale run-log rows corrected here: the "Implementation commits" row read `PENDING`
+though `711b0cf`/`0a68ccb` already existed, and the Chunk 9B gate was walked on
+`0a68ccb`, not `711b0cf`.
+
 - The four evidence-grade sample-count literals (80/50/40/20) are SRS §9.2 values
   held as private `scoring.py` constants (no public config key); Chunk 12's
   config-precedence chunk should not add a configurable override (out of scope per
