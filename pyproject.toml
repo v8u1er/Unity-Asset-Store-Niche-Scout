@@ -12,6 +12,9 @@ dependencies = []
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
+[project.scripts]
+niche-scout = "niche_scout.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

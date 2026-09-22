@@ -1,508 +1,1718 @@
 {
-  "tests/test_contracts.py::test_models_import": ["LREQ-ARCH-010"],
-  "tests/test_contracts.py::test_pure_boundary_no_clock": ["LREQ-ARCH-020"],
-  "tests/test_contracts.py::test_determinism_contract": ["LREQ-ARCH-030"],
-  "tests/test_contracts.py::test_coveo_endpoint_contract": ["LREQ-EXT-010"],
-  "tests/test_contracts.py::test_taxonomy_contract": ["LREQ-EXT-020"],
-  "tests/test_contracts.py::test_coveo_retry_contract": ["LREQ-EXT-100"],
-  "tests/test_contracts.py::test_graphql_endpoint_contract": ["LREQ-GQL-010"],
-  "tests/test_contracts.py::test_credentials_contract": ["LREQ-SEC-010"],
-  "tests/test_contracts.py::test_secrets_redaction_contract": ["LREQ-SEC-020"],
-  "tests/test_contracts.py::test_preflight_constants_contract": ["LREQ-ID-030"],
-  "tests/test_contracts.py::test_sampling_constants_contract": ["LREQ-SMP-030"],
-  "tests/test_contracts.py::test_census_model_contract": ["LREQ-SMP-040"],
-  "tests/test_contracts.py::test_selection_digest_contract": ["LREQ-SMP-060"],
-  "tests/test_contracts.py::test_age_calculation_contract": ["LREQ-MET-020"],
-  "tests/test_contracts.py::test_config_precedence_contract": ["LREQ-CLI-030"],
-  "tests/test_contracts.py::test_type_hints_and_docstrings": ["LREQ-NFR-040"],
-  "tests/test_contracts.py::test_platform_pathlib_contract": ["LREQ-NFR-050"],
-  "tests/test_contracts.py::test_quality_workflow_contract": ["LREQ-NFR-060"],
-  "tests/test_contracts.py::test_formula_test_conventions": ["LREQ-TST-010"],
-  "tests/test_contracts.py::test_status_values_and_mandatory_fields_are_typed": ["LREQ-ARCH-010"],
-  "tests/test_contracts.py::test_repository_protocol_and_schema_specification": ["LREQ-ARCH-010"],
-  "tests/test_contracts.py::test_json_round_trip_for_all_records": ["LREQ-NFR-050"],
-  "tests/test_validation.py::test_taxonomy_requires_all_header_fields": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_taxonomy_requires_canonical_path_inventory": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_taxonomy_rejects_naive_captured_at": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_taxonomy_flags_stale_capture": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_taxonomy_flags_future_capture": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_taxonomy_reports_missing_requested_categories": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_validate_taxonomy_combines_structure_freshness_and_presence": ["LREQ-EXT-020"],
-  "tests/test_validation.py::test_exact_category_path_match": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_parent_path_does_not_match_child_path": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_child_path_does_not_match_parent_path": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_scalar_category_shape_handled_explicitly": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_multi_valued_category_shape_handled_explicitly": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_unverified_versus_mismatch_classification": ["LREQ-EXT-080"],
-  "tests/test_validation.py::test_malformed_shape_is_explicitly_invalid": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_wrong_scalar_type_is_explicitly_invalid": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_null_required_member_is_distinct_from_wrong_type": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_failed_fields_remain_none_not_zero": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_validation_issues_are_redacted": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_structural_validation_does_not_decide_metric_eligibility": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_missing_identity_member_is_operation_shape_error": ["LREQ-GQL-040"],
-  "tests/test_validation.py::test_structure_validation_retains_valid_member_when_other_missing": ["LREQ-GQL-050"],
-  "tests/test_validation.py::test_category_mismatch_and_unverified_map_to_discovery_status_vocabulary": ["LREQ-EXT-050", "LREQ-EXT-090"],
-  "tests/test_identity.py::test_collects_all_non_empty_identity_candidates": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_candidate_source_fields_are_retained": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_uri_fallback_parsing": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_canonicalization_is_versioned": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_unparseable_candidate_retained_with_reason": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_empty_candidates_are_dropped_not_fabricated": ["LREQ-EXT-060"],
-  "tests/test_identity.py::test_agreeing_candidates_resolve": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_disagreeing_candidates_become_conflict": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_uri_derived_proper_suffix_of_anchor_is_conflict": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_no_canonicalizable_candidate_becomes_unresolved": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_conflict_excluded_from_denominator_and_enrichment": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_unresolved_excluded_from_denominator_and_enrichment": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_conflict_and_unresolved_never_ordinary_asset": ["LREQ-EXT-070"],
-  "tests/test_identity.py::test_published_state_annotated_eligible": ["LREQ-GQL-060"],
-  "tests/test_identity.py::test_state_excluded_annotation": ["LREQ-GQL-060"],
-  "tests/test_identity.py::test_state_unknown_annotation": ["LREQ-GQL-060"],
-  "tests/test_identity.py::test_state_annotation_keeps_asset_in_discovered_breadth": ["LREQ-GQL-060"],
-  "tests/test_identity.py::test_state_annotation_is_not_metric_eligibility": ["LREQ-GQL-060"],
-  "tests/test_identity.py::test_matching_alias_after_canonicalization": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_disagreeing_alias_sets_id_mapping_mismatch": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_missing_alias_is_mismatch_not_agreement": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_unparseable_alias_is_mismatch_with_reason": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_canonical_identity_key_type_is_shared_identity_unit": ["LREQ-GQL-010"],
-  "tests/test_identity.py::test_requested_identity_compatibility_comparison": ["LREQ-ID-020"],
-  "tests/test_identity.py::test_resolution_status_supports_population_exclusion": ["LREQ-SMP-010"],
-  "tests/test_identity.py::test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_mismatch": ["LREQ-TST-030"],
-  "tests/test_database.py::test_schema_initialization_is_versioned_and_idempotent": ["LREQ-SEC-020"],
-  "tests/test_database.py::test_repository_never_persists_or_leaks_secrets": ["LREQ-SEC-020", "LREQ-NFR-060"],
-  "tests/test_database.py::test_duplicate_sample_membership_is_rejected": ["LREQ-SMP-080"],
-  "tests/test_database.py::test_sample_member_round_trip_preserves_nullable_and_census_fields": ["LREQ-SMP-080"],
-  "tests/test_database.py::test_at_most_one_enrichment_row_per_run_and_identity": ["LREQ-GQL-080", "LREQ-TST-030"],
-  "tests/test_database.py::test_streamed_raw_append_consumes_single_pass_iterable": ["LREQ-NFR-010"],
-  "tests/test_database.py::test_pre_enrichment_counts_are_readable_without_full_scans": ["LREQ-NFR-020"],
-  "tests/test_database.py::test_discovery_terminal_states_round_trip_without_zero_substitution": ["LREQ-EXT-050", "LREQ-EXT-090"],
-  "tests/test_database.py::test_unresolved_and_conflicting_identities_persist_null_identity_key": ["LREQ-EXT-070"],
-  "tests/test_database.py::test_partial_graphql_operation_success_is_stored_independently": ["LREQ-GQL-050"],
-  "tests/test_database.py::test_preflight_selection_is_persisted_on_sample_members": ["LREQ-ID-010"],
-  "tests/test_database.py::test_preflight_observations_persist_both_operations_and_correlation_metadata": ["LREQ-ID-020"],
-  "tests/test_database.py::test_preflight_status_values_persist_distinctly": ["LREQ-ID-040"],
-  "tests/test_database.py::test_reference_size_and_usable_counts_persist_separately": ["LREQ-NRM-020"],
-  "tests/test_database.py::test_null_sensitivity_diagnostics_round_trip_as_null": ["LREQ-SEN-020"],
-  "tests/test_database.py::test_category_score_columns_cover_report_read_model": ["LREQ-RPT-020"],
-  "tests/test_database.py::test_category_scores_primary_key_enforced": ["LREQ-SMP-080"],
-  "tests/test_database.py::test_category_isolation_preserves_unrelated_observations": ["LREQ-SMP-080", "LREQ-EXT-090"],
-  "tests/test_database.py::test_foreign_key_and_pragma_contracts_are_enforced": ["LREQ-SEC-020", "LREQ-GQL-080"],
-  "tests/test_database.py::test_json_and_utc_round_trip_for_all_record_types": ["LREQ-TST-080"],
-  "tests/test_database.py::test_insert_versus_upsert_semantics_per_table": ["LREQ-SMP-080", "LREQ-GQL-080", "LREQ-SEC-020"],
-  "tests/test_database.py::test_enum_backed_columns_reject_unknown_values": ["LREQ-SEC-020", "LREQ-ID-040"],
-  "tests/test_database.py::test_no_alias_columns_and_no_import_time_ddl": ["LREQ-TST-080"],
-  "tests/test_collector.py::test_coveo_endpoint_headers_and_facet_selection_match_captured_template": ["LREQ-EXT-010"],
-  "tests/test_collector.py::test_authorization_header_normalizes_a_supplied_bearer_scheme_prefix": ["LREQ-EXT-010"],
-  "tests/test_collector.py::test_request_body_rejects_free_text_q_and_query_at_any_depth": ["LREQ-EXT-030"],
-  "tests/test_collector.py::test_request_uses_discovery_only_field_set": ["LREQ-EXT-040"],
-  "tests/test_collector.py::test_response_reader_never_sources_forbidden_scoring_fields": ["LREQ-EXT-040"],
-  "tests/test_collector.py::test_extra_response_fields_are_ignored_and_missing_identity_fields_stay_missing": ["LREQ-EXT-040"],
-  "tests/test_collector.py::test_response_carrying_a_novel_member_records_forbidden_presence": ["LREQ-EXT-040"],
-  "tests/test_collector.py::test_pagination_stops_at_verified_total_count": ["LREQ-EXT-050"],
-  "tests/test_collector.py::test_pagination_stops_at_natural_terminal_page": ["LREQ-EXT-050"],
-  "tests/test_collector.py::test_pagination_truncates_at_max_results_and_retains_api_count": ["LREQ-EXT-050"],
-  "tests/test_collector.py::test_failed_page_never_becomes_zero_assets": ["LREQ-EXT-050"],
-  "tests/test_collector.py::test_zero_result_category_requires_verified_filter": ["LREQ-EXT-050"],
-  "tests/test_collector.py::test_every_non_empty_identity_candidate_is_retained": ["LREQ-EXT-060"],
-  "tests/test_collector.py::test_uri_fallback_and_unparseable_candidates_contribute_nothing": ["LREQ-EXT-060"],
-  "tests/test_collector.py::test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count": ["LREQ-EXT-070"],
-  "tests/test_collector.py::test_exact_category_match_scalar_and_multivalued": ["LREQ-EXT-080"],
-  "tests/test_collector.py::test_parent_path_does_not_match_child_path": ["LREQ-EXT-080"],
-  "tests/test_collector.py::test_discovery_conditions_are_recorded_and_status_uses_severity_precedence": ["LREQ-EXT-090"],
-  "tests/test_collector.py::test_transient_429_and_5xx_are_retried_with_backoff_and_retry_after": ["LREQ-EXT-100"],
-  "tests/test_collector.py::test_permanent_auth_csrf_and_malformed_request_are_not_retried": ["LREQ-EXT-100"],
-  "tests/test_collector.py::test_observations_are_streamed_into_active_category_transaction": ["LREQ-NFR-010"],
-  "tests/test_collector.py::test_insert_outside_category_transaction_raises_repository_error": ["LREQ-NFR-010"],
-  "tests/test_collector.py::test_discovery_does_not_materialize_the_result_set": ["LREQ-NFR-010"],
-  "tests/test_collector.py::test_failed_category_does_not_abort_other_categories_and_stays_visible": ["LREQ-NFR-030"],
-  "tests/test_collector.py::test_credentials_are_required_before_any_request_and_bearer_scheme_is_normalized": ["LREQ-SEC-010"],
-  "tests/test_collector.py::test_persisted_metadata_and_error_summaries_contain_no_credentials": ["LREQ-SEC-020"],
-  "tests/test_collector.py::test_batch_request_has_exactly_two_operations_with_one_identity": ["LREQ-GQL-010"],
-  "tests/test_collector.py::test_adapter_cannot_bulk_enrich_or_consult_preflight_state": ["LREQ-GQL-010"],
-  "tests/test_collector.py::test_product_detail_query_requests_only_required_fields": ["LREQ-GQL-020"],
-  "tests/test_collector.py::test_page_views_operation_requests_its_scalar": ["LREQ-GQL-020"],
-  "tests/test_collector.py::test_request_construction_requires_graphql_credential": ["LREQ-SEC-010"],
-  "tests/test_collector.py::test_reversed_response_order_correlates_by_explicit_key": ["LREQ-GQL-030"],
-  "tests/test_collector.py::test_missing_correlation_key_is_malformed_not_positional": ["LREQ-GQL-030"],
-  "tests/test_collector.py::test_duplicated_unknown_and_ambiguous_correlation_fail_safely": ["LREQ-GQL-030"],
-  "tests/test_collector.py::test_explicit_key_mode_never_falls_back_to_response_position": ["LREQ-GQL-030"],
-  "tests/test_collector.py::test_validated_position_mode_is_accepted_not_validated_here": ["LREQ-GQL-030"],
-  "tests/test_collector.py::test_http_failure_is_an_operation_error": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_top_level_errors_are_not_masked_by_sibling_success": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_operation_level_errors_on_http_200_are_operation_errors": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_null_required_data_and_wrong_data_shape_are_operation_errors": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_invalid_state_value_and_missing_identity_are_operation_errors": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_page_view_scalar_type_and_range_acceptance": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_retry_backoff_on_transient_and_no_indefinite_retry": ["LREQ-GQL-040"],
-  "tests/test_collector.py::test_partial_success_retains_valid_operation_fields": ["LREQ-GQL-050"],
-  "tests/test_collector.py::test_failed_operation_fields_are_none_never_zero": ["LREQ-GQL-050"],
-  "tests/test_collector.py::test_state_annotation_covers_published_excluded_and_unknown": ["LREQ-GQL-060"],
-  "tests/test_collector.py::test_state_excluded_and_unknown_assets_remain_recorded": ["LREQ-GQL-060"],
-  "tests/test_collector.py::test_adapter_declares_no_metric_eligibility_verdict": ["LREQ-GQL-060"],
-  "tests/test_collector.py::test_transport_failure_does_not_escape_as_an_exception": ["LREQ-NFR-030"],
-  "tests/test_collector.py::test_request_metadata_json_carries_required_fields_without_secrets": ["LREQ-SEC-020"],
-  "tests/test_collector.py::test_error_summaries_and_metadata_are_redacted": ["LREQ-SEC-020"],
-  "tests/test_collector.py::test_request_metadata_json_carries_real_operation_names_and_correlation_keys": ["LREQ-SEC-020"],
-  "tests/test_identity.py::test_correlated_product_detail_reports_alias_mismatch": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_missing_returned_identity_is_not_an_implicit_match": ["LREQ-GQL-070"],
-  "tests/test_identity.py::test_adapter_mismatch_is_a_flag_not_a_metric_exclusion": ["LREQ-GQL-070"],
-  "tests/test_sampling.py::test_digest_matches_nul_delimited_sha256_literal": ["LREQ-SMP-060"],
-  "tests/test_sampling.py::test_digest_changes_with_rule_version": ["LREQ-SMP-060"],
-  "tests/test_sampling.py::test_repeated_selection_is_identical": ["LREQ-SMP-060", "LREQ-SMP-050"],
-  "tests/test_sampling.py::test_no_randomness_module_used": ["LREQ-SMP-060", "LREQ-ARCH-020"],
-  "tests/test_sampling.py::test_census_population_sizes_zero_one_99_100": ["LREQ-SMP-040"],
-  "tests/test_sampling.py::test_census_selects_all_assets": ["LREQ-SMP-040"],
-  "tests/test_sampling.py::test_zero_population_fraction_is_null_not_zero": ["LREQ-SMP-040"],
-  "tests/test_sampling.py::test_census_sample_fraction_is_exactly_one": ["LREQ-SMP-040"],
-  "tests/test_sampling.py::test_four_strata_boundaries_at_101": ["LREQ-SMP-050"],
-  "tests/test_sampling.py::test_four_strata_boundaries_at_200": ["LREQ-SMP-050"],
-  "tests/test_sampling.py::test_strata_are_contiguous_and_cover_population": ["LREQ-SMP-050"],
-  "tests/test_sampling.py::test_large_category_targets_25_per_stratum": ["LREQ-SMP-050"],
-  "tests/test_sampling.py::test_population_ordered_by_discovery_ordinal": ["LREQ-SMP-020"],
-  "tests/test_sampling.py::test_first_valid_ordinal_retained_for_repeat": ["LREQ-SMP-020"],
-  "tests/test_sampling.py::test_unresolved_and_conflict_excluded": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_duplicate_row_excluded_and_counted": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_reduced_stratum_selects_all_and_reports_reduced_count": ["LREQ-SMP-090"],
-  "tests/test_sampling.py::test_early_middle_late_positions_represented": ["LREQ-SMP-070"],
-  "tests/test_sampling.py::test_sample_is_not_first_page_prefix": ["LREQ-SMP-070"],
-  "tests/test_sampling.py::test_sampling_basis_and_census_flag": ["LREQ-SMP-030", "LREQ-SMP-040"],
-  "tests/test_sampling.py::test_default_constants_are_not_configurable": ["LREQ-SMP-030"],
-  "tests/test_sampling.py::test_malformed_population_input_raises_value_error": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_no_duplicate_membership_within_category": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_run_sample_preserves_category_order": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_shared_identity_appears_in_both_categories": ["LREQ-SMP-010"],
-  "tests/test_sampling.py::test_sample_fraction_distinct_from_stratum_aggregates": ["LREQ-SMP-080"],
-  "tests/test_sampling.py::test_census_member_ranks_follow_digest_order": ["LREQ-SMP-060"],
-  "tests/test_sampling.py::test_census_member_digest_is_standard_nul_digest": ["LREQ-SMP-060"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_counts_shared_categories": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_percentage_is_exact_ratio": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_percentage_is_unrounded_float64": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_zero_when_disjoint": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_single_category": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_null_percentage_for_empty_category": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_three_way_share": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_preserves_category_order": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_compute_overlap_does_not_inflate_enrichment_counts": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persist_writes_one_membership_per_selected_member": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persisted_member_fields_match_pure_result": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persisted_digest_is_reproducible": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_member_overlap_repeats_category_overlap_values": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persisted_overlap_columns_match_pure_overlap": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_preflight_selected_is_false_placeholder": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_census_summary_round_trips": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_large_category_summary_round_trips": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_zero_population_sample_fraction_is_null_not_zero": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_stratum_statistics_json_matches_frozen_schema": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_stratum_statistics_json_round_trips_n_h_and_boundaries": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_pending_usable_status_token_is_pending": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_pending_usable_placeholders_before_enrichment": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_category_level_usable_counts_are_non_authoritative_placeholders": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_unique_enrichment_count_is_not_written_by_4b": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_upsert_sampling_summary_updates_only_sampling_columns": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_sample_fraction_distinct_from_eligibility_coverage": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_duplicate_membership_is_rejected_and_does_not_duplicate": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persisted_values_verify_against_pure_result": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_verification_reports_a_tampered_value": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_verification_does_not_assert_category_usable_counts": ["LREQ-SMP-080"],
-  "tests/test_sampling_persistence.py::test_persist_requires_explicit_utc_and_reads_no_clock": ["LREQ-SMP-080"],
-  "tests/test_identity_preflight.py::test_select_preflight_identities_two_assets_five_categories": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_truncates_covered_but_reports_all_eligible": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_identities_reduced_coverage_and_shortfall": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_one_asset_category_not_counted": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_overlap_dedups_identities": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_empty_run_is_insufficient_shape": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_select_preflight_rejects_zero_minimums": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_preflight_policy_defaults_and_config_read": ["LREQ-ID-030"],
-  "tests/test_identity_preflight.py::test_preflight_policy_construction_reads_no_clock_or_environment": ["LREQ-ID-030"],
-  "tests/test_identity_preflight.py::test_compute_preflight_rates_unique_identity_denominator": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_compute_preflight_rates_two_identity_golden": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_compute_preflight_rates_other_failed_partition": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_compute_preflight_rates_ignores_out_of_selection_observations": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_compute_preflight_rates_zero_attempted_null_rates": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_gate_zero_attempted_is_insufficient": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_gate_below_min_success_rate_fails": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_gate_above_max_conflict_rate_fails": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_gate_exactly_min_success_rate_passes": ["LREQ-ID-030"],
-  "tests/test_identity_preflight.py::test_gate_exactly_max_conflict_rate_passes": ["LREQ-ID-030"],
-  "tests/test_identity_preflight.py::test_bulk_enrichment_allowed_only_for_passed": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_run_identity_preflight_uses_chunk5_adapter_per_unique_identity": ["LREQ-ID-020"],
-  "tests/test_identity_preflight.py::test_run_identity_preflight_preserves_distinct_operation_outcomes": ["LREQ-ID-020"],
-  "tests/test_identity_preflight.py::test_preflight_identity_failure_modes": ["LREQ-ID-020"],
-  "tests/test_identity_preflight.py::test_run_identity_preflight_failed_operation_does_not_abort_loop": ["LREQ-ID-020"],
-  "tests/test_identity_preflight.py::test_successful_preflight_counts_toward_enrichment_once": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_preflight_persisted_before_gate_returns": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_failed_preflight_marks_run_failed_not_warning": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_failed_preflight_blocks_bulk_enrichment": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_insufficient_preflight_blocks_bulk_enrichment": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_insufficient_preflight_does_not_mark_run_failed": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_failed_preflight_summary_has_counts_endpoint_mapping_diagnostic": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_endpoint_signature_form": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_mark_preflight_selected_flips_rows_true": ["LREQ-ID-010"],
-  "tests/test_identity_preflight.py::test_preflight_observations_are_redacted": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_validated": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_contradicted": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_third_value": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_identity_preflight_summary_key_set_is_frozen": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_insufficient_summary_rates_are_null_not_zero": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_run_identity_preflight_issues_no_third_or_bulk_request": ["LREQ-ID-040"],
-  "tests/test_identity_preflight.py::test_run_identity_preflight_passes_caller_seams_through": ["LREQ-ID-020"],
-  "tests/test_validation.py::test_metric_timestamp_normalizes_aware_offset_to_utc": ["LREQ-MET-020"],
-  "tests/test_validation.py::test_metric_timestamp_rejects_naive_date_with_reason": ["LREQ-MET-020"],
-  "tests/test_validation.py::test_metric_timestamp_wrong_type_is_unavailable_not_raised": ["LREQ-MET-010", "LREQ-MET-020"],
-  "tests/test_validation.py::test_metric_timestamp_null_is_unavailable_never_zero": ["LREQ-MET-010", "LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_uses_fractional_days": ["LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_at_cutoff_is_valid_zero_not_future": ["LREQ-MET-010", "LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_future_date_is_unavailable_distinct_reason": ["LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_naive_and_null_are_distinct_reasons": ["LREQ-MET-010", "LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_wrong_type_date_is_unavailable": ["LREQ-MET-010", "LREQ-MET-020"],
-  "tests/test_validation.py::test_age_days_exact_requires_aware_utc_cutoff": ["LREQ-ARCH-020", "LREQ-MET-020"],
-  "tests/test_validation.py::test_page_view_index_uses_seven_over_age_days": ["LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_zero_views_is_usable_zero": ["LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_missing_views_is_unavailable_not_zero": ["LREQ-MET-040", "LREQ-MET-010"],
-  "tests/test_validation.py::test_page_view_index_rejects_bool_negative_and_non_finite": ["LREQ-MET-010", "LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_rejects_non_numeric_views_and_accepts_integral_float": ["LREQ-MET-010", "LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_wrong_type_date_is_unavailable": ["LREQ-MET-010", "LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_age_threshold_boundary": ["LREQ-MET-040", "LREQ-MET-030"],
-  "tests/test_validation.py::test_page_view_index_never_divides_by_zero_at_threshold": ["LREQ-MET-040", "LREQ-MET-030"],
-  "tests/test_validation.py::test_page_view_index_rejects_state_excluded_and_unknown": ["LREQ-GQL-060", "LREQ-MET-040"],
-  "tests/test_validation.py::test_page_view_index_rejects_identity_mismatch": ["LREQ-GQL-070", "LREQ-MET-040"],
-  "tests/test_validation.py::test_metric_state_eligibility_published_excluded_unknown": ["LREQ-GQL-060"],
-  "tests/test_validation.py::test_state_excluded_assets_remain_available_for_nothing_but_breadth": ["LREQ-GQL-060"],
-  "tests/test_validation.py::test_identity_mismatch_marks_all_demand_recent_quality_unavailable": ["LREQ-GQL-070"],
-  "tests/test_validation.py::test_within_recent_window_is_inclusive_at_boundaries": ["LREQ-MET-080"],
-  "tests/test_validation.py::test_within_recent_window_non_finite_is_false": ["LREQ-MET-080", "LREQ-MET-010"],
-  "tests/test_validation.py::test_recent_window_parameter_validation_raises": ["LREQ-MET-080"],
-  "tests/test_validation.py::test_stratum_is_usable_at_minimum_boundary": ["LREQ-MET-030"],
-  "tests/test_validation.py::test_quality_observation_eligibility_combines_conditions": ["LREQ-MET-090"],
-  "tests/test_validation.py::test_quality_rating_range_and_count_thresholds": ["LREQ-MET-090"],
-  "tests/test_validation.py::test_quality_rating_wrong_type_and_negative_are_distinct_reasons": ["LREQ-MET-090", "LREQ-MET-010"],
-  "tests/test_validation.py::test_quality_eligibility_operation_state_and_semantics_gates": ["LREQ-MET-090", "LREQ-MET-010", "LREQ-GQL-060"],
-  "tests/test_validation.py::test_quality_eligibility_propagates_page_view_index_reason": ["LREQ-MET-090", "LREQ-MET-040"],
-  "tests/test_validation.py::test_metric_primitives_are_pure_no_forbidden_imports_or_clock": ["LREQ-ARCH-010", "LREQ-ARCH-020"],
-  "tests/test_validation.py::test_metric_primitives_classify_invalid_values_and_never_convert_to_zero": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_metric_primitives_raise_valueerror_only_for_caller_parameters": ["LREQ-MET-010", "LREQ-ARCH-010"],
-  "tests/test_validation.py::test_metric_reason_vocabulary_is_closed_and_malformed_is_unproduced": ["LREQ-MET-010"],
-  "tests/test_validation.py::test_metric_primitives_repeat_deterministically": ["LREQ-ARCH-020"],
-  "tests/test_metrics.py::test_stratum_expansion_weight_is_population_over_sample": ["LREQ-MET-050", "LREQ-MET-100"],
-  "tests/test_metrics.py::test_stratum_expansion_weight_rejects_bool_zero_and_negative": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_weighted_median_empty_and_all_zero_weight_return_none": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_weighted_median_single_value_and_first_at_or_above_half": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_weighted_median_exact_half_averages_with_next": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_weighted_median_retains_ties_and_rejects_non_finite": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_demand_per_asset_uses_population_weighted_means": ["LREQ-MET-030"],
-  "tests/test_metrics.py::test_demand_per_asset_null_when_no_usable_stratum": ["LREQ-MET-030"],
-  "tests/test_metrics.py::test_demand_per_asset_zero_population_is_null_and_never_divides": ["LREQ-MET-030"],
-  "tests/test_metrics.py::test_demand_median_uses_stratum_expansion_weights": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_demand_median_exact_half_boundary": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_demand_median_null_when_no_usable_index": ["LREQ-MET-050"],
-  "tests/test_metrics.py::test_demand_coverage_sums_usable_stratum_weights": ["LREQ-MET-060"],
-  "tests/test_metrics.py::test_demand_coverage_is_zero_for_zero_population": ["LREQ-MET-060"],
-  "tests/test_metrics.py::test_demand_coverage_is_distinct_from_sample_fraction": ["LREQ-MET-060", "LREQ-MET-030"],
-  "tests/test_metrics.py::test_breadth_uses_verified_total_count": ["LREQ-MET-070"],
-  "tests/test_metrics.py::test_breadth_falls_back_to_distinct_canonical_count": ["LREQ-MET-070"],
-  "tests/test_metrics.py::test_breadth_verified_zero_result_is_zero": ["LREQ-MET-070"],
-  "tests/test_metrics.py::test_recent_share_uses_inclusive_window_per_stratum": ["LREQ-MET-080"],
-  "tests/test_metrics.py::test_recent_share_missing_dates_reduce_coverage_not_zero": ["LREQ-MET-080"],
-  "tests/test_metrics.py::test_recent_supply_usability_minimum_boundary": ["LREQ-MET-080", "LREQ-MET-030"],
-  "tests/test_metrics.py::test_recent_supply_coverage_and_usable_count": ["LREQ-MET-080"],
-  "tests/test_metrics.py::test_median_age_uses_stratum_expansion_weights": ["LREQ-MET-080"],
-  "tests/test_metrics.py::test_median_age_exact_half_boundary": ["LREQ-MET-080", "LREQ-MET-050"],
-  "tests/test_metrics.py::test_recent_zero_population_is_null_and_coverage_zero": ["LREQ-MET-080"],
-  "tests/test_metrics.py::test_quality_raw_uses_n_h_over_n_h_weights": ["LREQ-MET-100"],
-  "tests/test_metrics.py::test_quality_raw_zero_visibility_denominator_is_null": ["LREQ-MET-100"],
-  "tests/test_metrics.py::test_quality_eligible_set_too_small_is_null": ["LREQ-MET-090"],
-  "tests/test_metrics.py::test_quality_raw_null_below_required_coverage": ["LREQ-MET-090"],
-  "tests/test_metrics.py::test_quality_raw_contradicted_semantics_is_null": ["LREQ-MET-090"],
-  "tests/test_metrics.py::test_quality_coverage_not_renormalized": ["LREQ-MET-090"],
-  "tests/test_metrics.py::test_quality_raw_ineligible_observations_are_excluded": ["LREQ-MET-090"],
-  "tests/test_metrics.py::test_quality_zero_population_is_null_and_coverage_zero": ["LREQ-MET-100"],
-  "tests/test_metrics.py::test_compute_raw_metric_bundle_maps_all_six_values": ["LREQ-MET-030", "LREQ-MET-050", "LREQ-MET-060", "LREQ-MET-070", "LREQ-MET-080", "LREQ-MET-100"],
-  "tests/test_metrics.py::test_compute_category_raw_metrics_reports_coverages_and_counts": ["LREQ-MET-060", "LREQ-MET-080", "LREQ-MET-090", "LREQ-MET-070"],
-  "tests/test_metrics.py::test_zero_population_bundle_has_null_raws_and_zero_coverages": ["LREQ-MET-030", "LREQ-MET-060", "LREQ-MET-080", "LREQ-MET-100"],
-  "tests/test_metrics.py::test_estimators_consume_chunk_7a_index_eligibility": ["LREQ-MET-040", "LREQ-MET-030", "LREQ-MET-080", "LREQ-MET-100"],
-  "tests/test_metrics.py::test_estimators_raise_valueerror_only_for_caller_contract": ["LREQ-MET-030"],
-  "tests/test_metrics.py::test_estimators_are_pure_no_forbidden_imports_or_clock": ["LREQ-ARCH-010", "LREQ-ARCH-020"],
-  "tests/test_metrics.py::test_estimators_repeat_deterministically": ["LREQ-ARCH-030"],
-  "tests/test_metrics.py::test_demand_explicit_zero_page_views_are_usable": ["LREQ-MET-040", "LREQ-MET-030"],
-  "tests/test_scoring.py::test_midrank_golden_vectors": ["LREQ-NRM-030", "LREQ-TST-010"],
-  "tests/test_scoring.py::test_midrank_ties_receive_same_midrank": ["LREQ-NRM-030"],
-  "tests/test_scoring.py::test_midrank_all_equal_reference": ["LREQ-NRM-030"],
-  "tests/test_scoring.py::test_midrank_null_target_or_empty_reference_returns_none": ["LREQ-NRM-030"],
-  "tests/test_scoring.py::test_midrank_rejects_non_finite_values": ["LREQ-NRM-030"],
-  "tests/test_scoring.py::test_leave_one_out_reference_excludes_target": ["LREQ-NRM-010"],
-  "tests/test_scoring.py::test_reference_size_is_category_count_minus_one": ["LREQ-NRM-020"],
-  "tests/test_scoring.py::test_eight_and_twenty_one_category_run_reference_sizes": ["LREQ-NRM-020", "LREQ-TST-060"],
-  "tests/test_scoring.py::test_field_specific_usable_reference_counts": ["LREQ-NRM-020"],
-  "tests/test_scoring.py::test_leave_one_out_reference_rejects_absent_or_duplicate_target": ["LREQ-NRM-010"],
-  "tests/test_scoring.py::test_normalize_raw_metrics_independently": ["LREQ-NRM-040"],
-  "tests/test_scoring.py::test_normalize_raw_metrics_null_target_and_null_reference": ["LREQ-NRM-040"],
-  "tests/test_scoring.py::test_demand_component_both_one_or_neither_field": ["LREQ-SCR-010"],
-  "tests/test_scoring.py::test_demand_component_coverage_shrinkage_and_clamp": ["LREQ-SCR-010"],
-  "tests/test_scoring.py::test_competition_component_requires_verified_complete_breadth": ["LREQ-SCR-020"],
-  "tests/test_scoring.py::test_competition_component_inverts_midrank_and_clamps": ["LREQ-SCR-020"],
-  "tests/test_scoring.py::test_recent_supply_component_both_one_or_neither_field": ["LREQ-SCR-030"],
-  "tests/test_scoring.py::test_recent_supply_component_coverage_shrinkage": ["LREQ-SCR-030"],
-  "tests/test_scoring.py::test_quality_component_null_or_shrunk": ["LREQ-SCR-040"],
-  "tests/test_scoring.py::test_below_minimum_component_coverage_is_unavailable": ["LREQ-SCR-010", "LREQ-SCR-030", "LREQ-SCR-040"],
-  "tests/test_scoring.py::test_contradicted_page_views_disable_demand_and_quality": ["LREQ-SCR-050"],
-  "tests/test_scoring.py::test_contradicted_page_views_keep_competition_and_recent_supply": ["LREQ-SCR-050"],
-  "tests/test_scoring.py::test_fewer_than_two_components_score_unavailable": ["LREQ-SCR-060"],
-  "tests/test_scoring.py::test_two_or_three_components_score_partial": ["LREQ-SCR-060"],
-  "tests/test_scoring.py::test_available_component_weight_renormalization": ["LREQ-SCR-060"],
-  "tests/test_scoring.py::test_balanced_primary_matches_balanced_sensitivity_policy": ["LREQ-SCR-060", "LREQ-TST-060"],
-  "tests/test_scoring.py::test_score_category_integration_and_score_state": ["LREQ-SCR-060"],
-  "tests/test_scoring.py::test_score_state_field_is_distinct_from_rankability_status": ["LREQ-SCR-060"],
-  "tests/test_scoring.py::test_scoring_public_functions_have_type_hints_and_docstrings": ["LREQ-NFR-040"],
-  "tests/test_scoring.py::test_scoring_module_is_import_pure_and_clock_free": ["LREQ-ARCH-010", "LREQ-ARCH-020"],
-  "tests/test_scoring.py::test_scoring_outputs_are_deterministic": ["LREQ-ARCH-030"],
-  "tests/test_enrichment.py::test_union_overlapping_categories_dedups_identities": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_union_preserves_first_seen_order_and_source_categories": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_union_reuse_split_excludes_preflight_keys": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_union_reference_count_never_inflates_execution": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_executes_one_request_per_pending_identity": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_does_not_request_reused_preflight_identities": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_failed_asset_does_not_abort_unrelated_assets": ["LREQ-NFR-030"],
-  "tests/test_enrichment.py::test_enrich_persists_every_pending_identity_observation": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_failed_preflight_issues_zero_requests": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_insufficient_preflight_issues_zero_requests": ["LREQ-GQL-080"],
-  "tests/test_enrichment.py::test_enrich_logs_projection_before_first_request": ["LREQ-NFR-020"],
-  "tests/test_enrichment.py::test_projection_minimum_seconds_from_interval": ["LREQ-NFR-020"],
-  "tests/test_enrichment.py::test_projection_zero_pending_is_measured_zero": ["LREQ-NFR-020"],
-  "tests/test_enrichment.py::test_projection_log_line_contains_no_credential_or_identity": ["LREQ-NFR-020"],
-  "tests/test_enrichment.py::test_capture_scoring_cutoff_normalizes_and_rejects_naive": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_stratum_counts_from_observations": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_counts_missing_observation_not_zero": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_explicit_zero_page_views_counts_toward_demand": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_usable_status_and_eligibility_rule_present": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_serialization_is_byte_deterministic": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_zero_population_category_is_empty_and_zero": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_category_counts_equal_sum_over_usable_strata": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_agrees_with_chunk7b_compute_category_raw_metrics": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_unique_enrichment_count_identical_on_every_category": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_assert_consistency_detects_injected_drift": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_assert_consistency_clean_run_returns_no_mismatches": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_no_pending_usable_status_after_finalize": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_is_idempotent": ["LREQ-SMP-080"],
-  "tests/test_enrichment.py::test_finalize_enrichment_merges_consistency_assertion_mismatches": ["LREQ-SMP-080"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_vocabulary": ["LREQ-EVD-010"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_precedence": ["LREQ-EVD-010"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_is_not_final_rankability_status": ["LREQ-EVD-010"],
-  "tests/test_scoring_evidence.py::test_not_rankable_reason_matrix": ["LREQ-EVD-020", "LREQ-TST-010"],
-  "tests/test_scoring_evidence.py::test_not_rankable_reason_order_is_deterministic": ["LREQ-EVD-020", "LREQ-ARCH-030"],
-  "tests/test_scoring_evidence.py::test_discovery_filter_unverified_is_not_rankable": ["LREQ-EVD-020", "LREQ-EXT-090"],
-  "tests/test_scoring_evidence.py::test_unresolved_or_conflicting_identity_is_not_rankable": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_identity_preflight_failure_is_not_rankable": ["LREQ-EVD-020", "LREQ-ID-040"],
-  "tests/test_scoring_evidence.py::test_identity_preflight_insufficient_is_not_rankable": ["LREQ-EVD-020", "LREQ-ID-040"],
-  "tests/test_scoring_evidence.py::test_field_reference_support_requires_consumed_fields": ["LREQ-EVD-020", "LREQ-TST-010"],
-  "tests/test_scoring_evidence.py::test_required_demand_unavailable_is_not_rankable": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_recent_supply_minimum_not_met_is_not_rankable": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_quality_unavailable_is_not_rankable": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_page_view_semantics_contradicted_is_not_rankable": ["LREQ-EVD-020", "LREQ-SCR-050"],
-  "tests/test_scoring_evidence.py::test_no_valid_leave_one_out_reference_is_not_rankable": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_unrecoverable_data_integrity_error_is_not_rankable": ["LREQ-EVD-020", "LREQ-EXT-050"],
-  "tests/test_scoring_evidence.py::test_competition_unbounded_or_material_failure_is_not_rankable": ["LREQ-EVD-020", "LREQ-MET-070"],
-  "tests/test_scoring_evidence.py::test_base_rankable_candidates_require_strong_reference_count": ["LREQ-EVD-020", "LREQ-TST-060"],
-  "tests/test_scoring_evidence.py::test_base_rankable_candidates_empty_for_eight_to_twenty_run": ["LREQ-EVD-020", "LREQ-TST-060"],
-  "tests/test_scoring_evidence.py::test_base_rankable_candidates_preserve_all_metrics_order": ["LREQ-EVD-020", "LREQ-ARCH-030"],
-  "tests/test_scoring_evidence.py::test_base_rankable_candidates_require_all_components_and_coverage": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_base_candidate_construction_does_not_change_score_fields": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_build_base_rankable_candidates_rejects_misaligned_inputs": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_score_state_and_rankability_state_remain_distinct": ["LREQ-EVD-020"],
-  "tests/test_scoring_evidence.py::test_provisional_reason_for_run_below_strong_reference": ["LREQ-EVD-030"],
-  "tests/test_scoring_evidence.py::test_provisional_reason_for_incomplete_breadth_fallback": ["LREQ-EVD-030", "LREQ-MET-070"],
-  "tests/test_scoring_evidence.py::test_bounded_by_verified_total_does_not_force_provisional": ["LREQ-EVD-030"],
-  "tests/test_scoring_evidence.py::test_incomplete_breadth_fallback_with_verified_total_is_provisional": ["LREQ-EVD-030", "LREQ-MET-070"],
-  "tests/test_scoring_evidence.py::test_provisional_reason_for_coverage_between_minimum_and_strong": ["LREQ-EVD-030"],
-  "tests/test_scoring_evidence.py::test_eight_category_run_is_provisional_never_rankable": ["LREQ-EVD-030", "LREQ-TST-060"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_state_excludes_sensitivity_high_reason": ["LREQ-EVD-030"],
-  "tests/test_scoring_evidence.py::test_base_candidate_set_is_fixed_input_to_sensitivity": ["LREQ-SEN-030"],
-  "tests/test_scoring_evidence.py::test_scoring_evidence_public_functions_have_type_hints_and_docstrings": ["LREQ-NFR-040"],
-  "tests/test_scoring_evidence.py::test_scoring_evidence_module_is_import_pure_and_clock_free": ["LREQ-ARCH-010", "LREQ-ARCH-020"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_outputs_are_deterministic": ["LREQ-ARCH-030"],
-  "tests/test_scoring_evidence.py::test_pre_sensitivity_golden_vectors": ["LREQ-TST-010", "LREQ-EVD-020", "LREQ-EVD-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_policy_vocabulary_and_weights": ["LREQ-SEN-010"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_balanced_policy_equals_primary_weights": ["LREQ-SEN-010", "LREQ-SCR-060"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_ranks_only_fixed_candidates": ["LREQ-SEN-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_deterministic_tie_break_by_category_path": ["LREQ-SEN-020", "LREQ-ARCH-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_top_k_stability": ["LREQ-SEN-020", "LREQ-TST-070"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_top_k_null_when_too_few_candidates": ["LREQ-SEN-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_empty_candidate_set_null_outputs": ["LREQ-SEN-020", "LREQ-TST-070"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_max_score_and_rank_displacement": ["LREQ-SEN-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_does_not_add_or_remove_candidates": ["LREQ-SEN-020", "LREQ-SEN-040"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_returns_typed_diagnostics": ["LREQ-SEN-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_top_three_boundary": ["LREQ-SEN-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_rank_displacement_threshold": ["LREQ-SEN-030", "LREQ-NRM-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_is_false_when_top_three_inapplicable": ["LREQ-SEN-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_is_none_only_without_candidates": ["LREQ-SEN-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_reference_set_size_mismatch_raises": ["LREQ-SEN-030", "LREQ-NRM-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_does_not_alter_balanced_score": ["LREQ-SEN-030", "LREQ-SEN-040"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_preserves_balanced_primary_score": ["LREQ-SEN-040", "LREQ-SCR-060"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_strong_vector": ["LREQ-EVD-050"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_moderate_vector": ["LREQ-EVD-050"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_weak_vector": ["LREQ-EVD-050"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_insufficient_when_not_rankable": ["LREQ-EVD-050", "LREQ-EVD-020"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_census_alternative": ["LREQ-EVD-050"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_uses_min_component_sample_count": ["LREQ-EVD-050", "LREQ-NRM-020"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_sensitivity_demotes_strong": ["LREQ-EVD-050", "LREQ-SEN-030"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_null_warning_is_not_strong": ["LREQ-EVD-050", "LREQ-SEN-030"],
-  "tests/test_scoring_sensitivity.py::test_final_rankability_requires_base_and_sensitivity": ["LREQ-EVD-040"],
-  "tests/test_scoring_sensitivity.py::test_final_rankability_sensitivity_demotes_to_provisional": ["LREQ-EVD-040", "LREQ-EVD-030", "LREQ-SEN-040"],
-  "tests/test_scoring_sensitivity.py::test_final_rankability_null_warning_is_provisional": ["LREQ-EVD-040", "LREQ-EVD-030"],
-  "tests/test_scoring_sensitivity.py::test_final_rankability_never_demotes_to_not_rankable": ["LREQ-EVD-040"],
-  "tests/test_scoring_sensitivity.py::test_eight_to_twenty_run_never_rankable": ["LREQ-EVD-040", "LREQ-EVD-030"],
-  "tests/test_scoring_sensitivity.py::test_final_rankability_states_use_rankability_status": ["LREQ-EVD-010"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_high_provisional_clause_completes_evd030": ["LREQ-EVD-030"],
-  "tests/test_scoring_sensitivity.py::test_final_evidence_and_rankability_preserve_candidate_set_and_score": ["LREQ-EVD-040", "LREQ-EVD-050"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_golden_vectors": ["LREQ-SEN-020", "LREQ-TST-090"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_normal_and_boundary_values": ["LREQ-TST-010"],
-  "tests/test_scoring_sensitivity.py::test_scoring_tests_cover_sensitivity_after_base_candidates": ["LREQ-TST-060"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_outputs_are_deterministic": ["LREQ-ARCH-030"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_module_is_import_pure_and_clock_free": ["LREQ-ARCH-010", "LREQ-ARCH-020"],
-  "tests/test_scoring_sensitivity.py::test_sensitivity_public_functions_have_type_hints_and_docstrings": ["LREQ-NFR-040"],
-  "tests/test_pipeline.py::test_pipeline_runs_completed_end_to_end": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_pipeline_is_deterministic_across_repeat_runs": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_repeat_run_produces_structurally_equal_persisted_rows": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_failed_preflight_blocks_enrichment_and_marks_run_failed": ["LREQ-ID-040", "LREQ-NFR-030"],
-  "tests/test_pipeline.py::test_failed_preflight_issues_zero_enrichment_requests": ["LREQ-ID-040"],
-  "tests/test_pipeline.py::test_failed_preflight_retains_discovery_sample_and_preflight_rows": ["LREQ-ID-040", "LREQ-EVD-020"],
-  "tests/test_pipeline.py::test_failed_preflight_persists_per_category_limitations": ["LREQ-EVD-020", "LREQ-EXT-090"],
-  "tests/test_pipeline.py::test_failed_preflight_does_not_complete_or_overwrite_failed": ["LREQ-ID-040"],
-  "tests/test_pipeline.py::test_insufficient_preflight_leaves_run_non_completed": ["LREQ-ID-040"],
-  "tests/test_pipeline.py::test_failed_category_does_not_abort_other_categories": ["LREQ-NFR-030", "LREQ-EXT-090"],
-  "tests/test_pipeline.py::test_failed_page_is_not_zero_assets": ["LREQ-NFR-030", "LREQ-EXT-090"],
-  "tests/test_pipeline.py::test_failed_asset_does_not_abort_other_assets": ["LREQ-NFR-030"],
-  "tests/test_pipeline.py::test_run_with_fewer_than_min_categories_is_rejected": ["LREQ-CLI-040"],
-  "tests/test_pipeline.py::test_eight_category_run_has_empty_candidates_and_null_stability": ["LREQ-EVD-020", "LREQ-SEN-020"],
-  "tests/test_pipeline.py::test_twenty_one_category_run_stores_reference_size_20": ["LREQ-NRM-020"],
-  "tests/test_pipeline.py::test_scoring_cutoff_is_captured_once_and_threaded_to_pure_calls": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_enrichment_projection_is_logged_before_first_request": ["LREQ-NFR-020"],
-  "tests/test_pipeline.py::test_projection_contains_required_counts_and_minimum_time": ["LREQ-NFR-020"],
-  "tests/test_pipeline.py::test_projection_log_contains_no_secret_or_identity": ["LREQ-NFR-020"],
-  "tests/test_pipeline.py::test_invalid_configuration_causes_no_network_request": ["LREQ-CLI-040", "LREQ-EXT-090"],
-  "tests/test_pipeline.py::test_invalid_taxonomy_causes_no_network_request": ["LREQ-EXT-090"],
-  "tests/test_pipeline.py::test_taxonomy_sha256_is_non_empty_and_matches_golden": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_run_record_seeds_required_not_null_columns": ["LREQ-ARCH-030"],
-  "tests/test_pipeline.py::test_sensitivity_does_not_change_candidate_set_or_balanced_score": ["LREQ-SEN-020", "LREQ-EVD-020"],
-  "tests/test_pipeline.py::test_final_evidence_and_rankability_are_persisted_per_category": ["LREQ-SEN-020", "LREQ-EVD-020"],
-  "tests/test_pipeline.py::test_shared_sampled_identity_is_enriched_once": ["LREQ-ID-040"],
-  "tests/test_pipeline.py::test_run_uses_injected_clock_transports_and_sleeper": ["LREQ-ARCH-030"],
-  "tests/test_database.py::test_runs_taxonomy_sha256_empty_is_rejected": ["LREQ-ARCH-030"],
-  "tests/test_report.py::test_load_run_report_view_reads_primary_rows": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_load_run_report_view_orders_ranked_then_unranked": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_primary_table_renders_every_mandatory_column": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_pre_scoring_defaults_render_as_unavailable": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_zero_population_sample_fraction_is_null": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_explicit_zero_overlap_is_measured_zero": ["LREQ-RPT-020"],
-  "tests/test_report.py::test_category_detail_shows_formulas_inputs_strata_and_timestamps": ["LREQ-RPT-030"],
-  "tests/test_report.py::test_detail_labels_observed_versus_inferred": ["LREQ-RPT-030"],
-  "tests/test_report.py::test_non_rankable_category_remains_visible": ["LREQ-RPT-040"],
-  "tests/test_report.py::test_failed_preflight_fallback_yields_one_row_per_category": ["LREQ-RPT-040"],
-  "tests/test_report.py::test_report_states_heuristic_and_six_distinctions": ["LREQ-RPT-050"],
-  "tests/test_report.py::test_html_output_is_self_contained_and_deterministic": ["LREQ-RPT-010"],
-  "tests/test_report.py::test_write_run_report_writes_html_and_text": ["LREQ-RPT-010"],
-  "tests/test_report.py::test_write_run_report_rejects_unknown_format": ["LREQ-RPT-010"],
-  "tests/test_report.py::test_load_run_report_view_raises_for_unknown_run": ["LREQ-RPT-010"],
-  "tests/test_report.py::test_render_dashboard_html_is_database_read_only": ["LREQ-CLI-020"],
-  "tests/test_report.py::test_public_report_functions_have_hints_and_docstrings": ["LREQ-NFR-040"]
+  "tests/test_cli.py::test_build_graphql_transport_sends_csrf_header_only_and_no_cookie": [
+    "LREQ-CLI-010",
+    "LREQ-SEC-010"
+  ],
+  "tests/test_cli.py::test_cli_option_overrides_toml_and_toml_overrides_default": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_cli.py::test_dashboard_missing_run_is_nonzero": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_dashboard_reads_database_only_and_never_constructs_a_transport": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_dashboard_requires_run_id": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_dashboard_selects_completed_and_failed_runs": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_main_help_returns_ok": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_main_unknown_subcommand_is_a_usage_error": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_module_entry_point_is_reachable": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_no_subcommand_exits_nonzero_without_pipeline_or_report": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_parse_options_reads_no_environment_or_clock": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_cli.py::test_parser_exposes_two_subcommands_with_none_defaults": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_parser_rejects_dashboard_without_run_id": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_cli.py::test_resolve_config_passes_only_explicit_overrides": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_cli.py::test_run_command_calls_renderer_only_after_pipeline_returns": [
+    "LREQ-CLI-010",
+    "LREQ-RPT-010"
+  ],
+  "tests/test_cli.py::test_run_command_constructs_production_transports_when_not_injected": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_run_command_does_not_render_on_failure_path": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_run_command_invokes_pipeline_once_and_exits_zero": [
+    "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_run_command_maps_pipeline_configuration_error_to_nonzero": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-040"
+  ],
+  "tests/test_cli.py::test_run_command_maps_taxonomy_error_to_nonzero_without_network": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-040"
+  ],
+  "tests/test_cli.py::test_run_command_never_emits_credentials_or_response_bodies": [
+    "LREQ-SEC-010"
+  ],
+  "tests/test_cli.py::test_run_command_preflight_failed_exits_nonzero_and_surfaces_limitations": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-040"
+  ],
+  "tests/test_cli.py::test_run_command_rejects_fewer_than_min_categories_before_ranking": [
+    "LREQ-CLI-040"
+  ],
+  "tests/test_cli.py::test_run_completed_provisional_eight_categories_exits_zero": [
+    "LREQ-CLI-010",
+    "LREQ-CLI-040"
+  ],
+  "tests/test_cli.py::test_run_parses_report_path_and_format": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_cli.py::test_run_without_report_option_writes_no_report": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_cli.py::test_unknown_cli_option_is_rejected": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_cli.py::test_unset_cli_option_does_not_shadow_toml_or_default": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_collector.py::test_adapter_cannot_bulk_enrich_or_consult_preflight_state": [
+    "LREQ-GQL-010"
+  ],
+  "tests/test_collector.py::test_adapter_declares_no_metric_eligibility_verdict": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_collector.py::test_authorization_header_normalizes_a_supplied_bearer_scheme_prefix": [
+    "LREQ-EXT-010"
+  ],
+  "tests/test_collector.py::test_batch_request_has_exactly_two_operations_with_one_identity": [
+    "LREQ-GQL-010"
+  ],
+  "tests/test_collector.py::test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_collector.py::test_coveo_endpoint_headers_and_facet_selection_match_captured_template": [
+    "LREQ-EXT-010"
+  ],
+  "tests/test_collector.py::test_credentials_are_required_before_any_request_and_bearer_scheme_is_normalized": [
+    "LREQ-SEC-010"
+  ],
+  "tests/test_collector.py::test_discovery_conditions_are_recorded_and_status_uses_severity_precedence": [
+    "LREQ-EXT-090"
+  ],
+  "tests/test_collector.py::test_discovery_does_not_materialize_the_result_set": [
+    "LREQ-NFR-010"
+  ],
+  "tests/test_collector.py::test_duplicated_unknown_and_ambiguous_correlation_fail_safely": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_error_summaries_and_metadata_are_redacted": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_every_non_empty_identity_candidate_is_retained": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_collector.py::test_exact_category_match_scalar_and_multivalued": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_collector.py::test_explicit_key_mode_never_falls_back_to_response_position": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_extra_response_fields_are_ignored_and_missing_identity_fields_stay_missing": [
+    "LREQ-EXT-040"
+  ],
+  "tests/test_collector.py::test_failed_category_does_not_abort_other_categories_and_stays_visible": [
+    "LREQ-NFR-030"
+  ],
+  "tests/test_collector.py::test_failed_operation_fields_are_none_never_zero": [
+    "LREQ-GQL-050"
+  ],
+  "tests/test_collector.py::test_failed_page_never_becomes_zero_assets": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_http_failure_is_an_operation_error": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_insert_outside_category_transaction_raises_repository_error": [
+    "LREQ-NFR-010"
+  ],
+  "tests/test_collector.py::test_invalid_state_value_and_missing_identity_are_operation_errors": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_missing_correlation_key_is_malformed_not_positional": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_null_required_data_and_wrong_data_shape_are_operation_errors": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_observations_are_streamed_into_active_category_transaction": [
+    "LREQ-NFR-010"
+  ],
+  "tests/test_collector.py::test_operation_level_errors_on_http_200_are_operation_errors": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_page_view_scalar_type_and_range_acceptance": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_page_views_operation_requests_its_scalar": [
+    "LREQ-GQL-020"
+  ],
+  "tests/test_collector.py::test_pagination_stops_at_natural_terminal_page": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_pagination_stops_at_verified_total_count": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_pagination_truncates_at_max_results_and_retains_api_count": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_parent_path_does_not_match_child_path": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_collector.py::test_partial_success_retains_valid_operation_fields": [
+    "LREQ-GQL-050"
+  ],
+  "tests/test_collector.py::test_permanent_auth_csrf_and_malformed_request_are_not_retried": [
+    "LREQ-EXT-100"
+  ],
+  "tests/test_collector.py::test_persisted_metadata_and_error_summaries_contain_no_credentials": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_product_detail_query_requests_only_required_fields": [
+    "LREQ-GQL-020"
+  ],
+  "tests/test_collector.py::test_request_body_rejects_free_text_q_and_query_at_any_depth": [
+    "LREQ-EXT-030"
+  ],
+  "tests/test_collector.py::test_request_construction_requires_graphql_credential": [
+    "LREQ-SEC-010"
+  ],
+  "tests/test_collector.py::test_request_metadata_json_carries_real_operation_names_and_correlation_keys": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_request_metadata_json_carries_required_fields_without_secrets": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_request_uses_discovery_only_field_set": [
+    "LREQ-EXT-040"
+  ],
+  "tests/test_collector.py::test_response_carrying_a_novel_member_records_forbidden_presence": [
+    "LREQ-EXT-040"
+  ],
+  "tests/test_collector.py::test_response_reader_never_sources_forbidden_scoring_fields": [
+    "LREQ-EXT-040"
+  ],
+  "tests/test_collector.py::test_retry_backoff_on_transient_and_no_indefinite_retry": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_reversed_response_order_correlates_by_explicit_key": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_state_annotation_covers_published_excluded_and_unknown": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_collector.py::test_state_excluded_and_unknown_assets_remain_recorded": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_collector.py::test_top_level_errors_are_not_masked_by_sibling_success": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_transient_429_and_5xx_are_retried_with_backoff_and_retry_after": [
+    "LREQ-EXT-100"
+  ],
+  "tests/test_collector.py::test_transport_failure_does_not_escape_as_an_exception": [
+    "LREQ-NFR-030"
+  ],
+  "tests/test_collector.py::test_uri_fallback_and_unparseable_candidates_contribute_nothing": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_collector.py::test_validated_position_mode_is_accepted_not_validated_here": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_zero_result_category_requires_verified_filter": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_contracts.py::test_age_calculation_contract": [
+    "LREQ-MET-020"
+  ],
+  "tests/test_contracts.py::test_census_model_contract": [
+    "LREQ-SMP-040"
+  ],
+  "tests/test_contracts.py::test_config_precedence_contract": [
+    "LREQ-CLI-030"
+  ],
+  "tests/test_contracts.py::test_coveo_endpoint_contract": [
+    "LREQ-EXT-010"
+  ],
+  "tests/test_contracts.py::test_coveo_retry_contract": [
+    "LREQ-EXT-100"
+  ],
+  "tests/test_contracts.py::test_credentials_contract": [
+    "LREQ-SEC-010"
+  ],
+  "tests/test_contracts.py::test_determinism_contract": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_contracts.py::test_formula_test_conventions": [
+    "LREQ-TST-010"
+  ],
+  "tests/test_contracts.py::test_graphql_endpoint_contract": [
+    "LREQ-GQL-010"
+  ],
+  "tests/test_contracts.py::test_json_round_trip_for_all_records": [
+    "LREQ-NFR-050"
+  ],
+  "tests/test_contracts.py::test_models_import": [
+    "LREQ-ARCH-010"
+  ],
+  "tests/test_contracts.py::test_platform_pathlib_contract": [
+    "LREQ-NFR-050"
+  ],
+  "tests/test_contracts.py::test_preflight_constants_contract": [
+    "LREQ-ID-030"
+  ],
+  "tests/test_contracts.py::test_pure_boundary_no_clock": [
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_contracts.py::test_quality_workflow_contract": [
+    "LREQ-NFR-060"
+  ],
+  "tests/test_contracts.py::test_repository_protocol_and_schema_specification": [
+    "LREQ-ARCH-010"
+  ],
+  "tests/test_contracts.py::test_sampling_constants_contract": [
+    "LREQ-SMP-030"
+  ],
+  "tests/test_contracts.py::test_secrets_redaction_contract": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_contracts.py::test_selection_digest_contract": [
+    "LREQ-SMP-060"
+  ],
+  "tests/test_contracts.py::test_status_values_and_mandatory_fields_are_typed": [
+    "LREQ-ARCH-010"
+  ],
+  "tests/test_contracts.py::test_taxonomy_contract": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_contracts.py::test_type_hints_and_docstrings": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_database.py::test_at_most_one_enrichment_row_per_run_and_identity": [
+    "LREQ-GQL-080",
+    "LREQ-TST-030"
+  ],
+  "tests/test_database.py::test_category_isolation_preserves_unrelated_observations": [
+    "LREQ-SMP-080",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_database.py::test_category_score_columns_cover_report_read_model": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_database.py::test_category_scores_primary_key_enforced": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_database.py::test_discovery_terminal_states_round_trip_without_zero_substitution": [
+    "LREQ-EXT-050",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_database.py::test_duplicate_sample_membership_is_rejected": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_database.py::test_enum_backed_columns_reject_unknown_values": [
+    "LREQ-SEC-020",
+    "LREQ-ID-040"
+  ],
+  "tests/test_database.py::test_foreign_key_and_pragma_contracts_are_enforced": [
+    "LREQ-SEC-020",
+    "LREQ-GQL-080"
+  ],
+  "tests/test_database.py::test_insert_versus_upsert_semantics_per_table": [
+    "LREQ-SMP-080",
+    "LREQ-GQL-080",
+    "LREQ-SEC-020"
+  ],
+  "tests/test_database.py::test_json_and_utc_round_trip_for_all_record_types": [
+    "LREQ-TST-080"
+  ],
+  "tests/test_database.py::test_no_alias_columns_and_no_import_time_ddl": [
+    "LREQ-TST-080"
+  ],
+  "tests/test_database.py::test_null_sensitivity_diagnostics_round_trip_as_null": [
+    "LREQ-SEN-020"
+  ],
+  "tests/test_database.py::test_partial_graphql_operation_success_is_stored_independently": [
+    "LREQ-GQL-050"
+  ],
+  "tests/test_database.py::test_pre_enrichment_counts_are_readable_without_full_scans": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_database.py::test_preflight_observations_persist_both_operations_and_correlation_metadata": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_database.py::test_preflight_selection_is_persisted_on_sample_members": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_database.py::test_preflight_status_values_persist_distinctly": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_database.py::test_reference_size_and_usable_counts_persist_separately": [
+    "LREQ-NRM-020"
+  ],
+  "tests/test_database.py::test_repository_never_persists_or_leaks_secrets": [
+    "LREQ-SEC-020",
+    "LREQ-NFR-060"
+  ],
+  "tests/test_database.py::test_runs_taxonomy_sha256_empty_is_rejected": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_database.py::test_sample_member_round_trip_preserves_nullable_and_census_fields": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_database.py::test_schema_initialization_is_versioned_and_idempotent": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_database.py::test_streamed_raw_append_consumes_single_pass_iterable": [
+    "LREQ-NFR-010"
+  ],
+  "tests/test_database.py::test_unresolved_and_conflicting_identities_persist_null_identity_key": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_enrichment.py::test_assert_consistency_clean_run_returns_no_mismatches": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_assert_consistency_detects_injected_drift": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_capture_scoring_cutoff_normalizes_and_rejects_naive": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_enrich_does_not_request_reused_preflight_identities": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_enrich_executes_one_request_per_pending_identity": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_enrich_failed_asset_does_not_abort_unrelated_assets": [
+    "LREQ-NFR-030"
+  ],
+  "tests/test_enrichment.py::test_enrich_failed_preflight_issues_zero_requests": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_enrich_insufficient_preflight_issues_zero_requests": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_enrich_logs_projection_before_first_request": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_enrichment.py::test_enrich_persists_every_pending_identity_observation": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_agrees_with_chunk7b_compute_category_raw_metrics": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_category_counts_equal_sum_over_usable_strata": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_counts_missing_observation_not_zero": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_enrichment_merges_consistency_assertion_mismatches": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_explicit_zero_page_views_counts_toward_demand": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_is_idempotent": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_serialization_is_byte_deterministic": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_stratum_counts_from_observations": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_unique_enrichment_count_identical_on_every_category": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_usable_status_and_eligibility_rule_present": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_zero_population_category_is_empty_and_zero": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_no_pending_usable_status_after_finalize": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_projection_log_line_contains_no_credential_or_identity": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_enrichment.py::test_projection_minimum_seconds_from_interval": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_enrichment.py::test_projection_zero_pending_is_measured_zero": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_enrichment.py::test_union_overlapping_categories_dedups_identities": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_union_preserves_first_seen_order_and_source_categories": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_union_reference_count_never_inflates_execution": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_enrichment.py::test_union_reuse_split_excludes_preflight_keys": [
+    "LREQ-GQL-080"
+  ],
+  "tests/test_identity.py::test_adapter_mismatch_is_a_flag_not_a_metric_exclusion": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_agreeing_candidates_resolve": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_candidate_source_fields_are_retained": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity.py::test_canonical_identity_key_type_is_shared_identity_unit": [
+    "LREQ-GQL-010"
+  ],
+  "tests/test_identity.py::test_canonicalization_is_versioned": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity.py::test_collects_all_non_empty_identity_candidates": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity.py::test_conflict_and_unresolved_never_ordinary_asset": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_conflict_excluded_from_denominator_and_enrichment": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_correlated_product_detail_reports_alias_mismatch": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_disagreeing_alias_sets_id_mapping_mismatch": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_disagreeing_candidates_become_conflict": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_empty_candidates_are_dropped_not_fabricated": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity.py::test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_mismatch": [
+    "LREQ-TST-030"
+  ],
+  "tests/test_identity.py::test_matching_alias_after_canonicalization": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_missing_alias_is_mismatch_not_agreement": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_missing_returned_identity_is_not_an_implicit_match": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_no_canonicalizable_candidate_becomes_unresolved": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_published_state_annotated_eligible": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_identity.py::test_requested_identity_compatibility_comparison": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity.py::test_resolution_status_supports_population_exclusion": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_identity.py::test_state_annotation_is_not_metric_eligibility": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_identity.py::test_state_annotation_keeps_asset_in_discovered_breadth": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_identity.py::test_state_excluded_annotation": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_identity.py::test_state_unknown_annotation": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_identity.py::test_unparseable_alias_is_mismatch_with_reason": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_identity.py::test_unparseable_candidate_retained_with_reason": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity.py::test_unresolved_excluded_from_denominator_and_enrichment": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_uri_derived_proper_suffix_of_anchor_is_conflict": [
+    "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_uri_fallback_parsing": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_identity_preflight.py::test_bulk_enrichment_allowed_only_for_passed": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_compute_preflight_rates_ignores_out_of_selection_observations": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_compute_preflight_rates_other_failed_partition": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_compute_preflight_rates_two_identity_golden": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_compute_preflight_rates_unique_identity_denominator": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_compute_preflight_rates_zero_attempted_null_rates": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_endpoint_signature_form": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_failed_preflight_blocks_bulk_enrichment": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_failed_preflight_marks_run_failed_not_warning": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_failed_preflight_summary_has_counts_endpoint_mapping_diagnostic": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_gate_above_max_conflict_rate_fails": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_gate_below_min_success_rate_fails": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_gate_exactly_max_conflict_rate_passes": [
+    "LREQ-ID-030"
+  ],
+  "tests/test_identity_preflight.py::test_gate_exactly_min_success_rate_passes": [
+    "LREQ-ID-030"
+  ],
+  "tests/test_identity_preflight.py::test_gate_zero_attempted_is_insufficient": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_identity_preflight_summary_key_set_is_frozen": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_insufficient_preflight_blocks_bulk_enrichment": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_insufficient_preflight_does_not_mark_run_failed": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_insufficient_summary_rates_are_null_not_zero": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_mark_preflight_selected_flips_rows_true": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_contradicted": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_third_value": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_page_view_semantics_not_clobbered_when_validated": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_identity_failure_modes": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_observations_are_redacted": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_persisted_before_gate_returns": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_policy_construction_reads_no_clock_or_environment": [
+    "LREQ-ID-030"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_policy_defaults_and_config_read": [
+    "LREQ-ID-030"
+  ],
+  "tests/test_identity_preflight.py::test_run_identity_preflight_failed_operation_does_not_abort_loop": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_run_identity_preflight_issues_no_third_or_bulk_request": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_run_identity_preflight_passes_caller_seams_through": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_run_identity_preflight_preserves_distinct_operation_outcomes": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_run_identity_preflight_uses_chunk5_adapter_per_unique_identity": [
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_empty_run_is_insufficient_shape": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_identities_reduced_coverage_and_shortfall": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_identities_two_assets_five_categories": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_one_asset_category_not_counted": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_overlap_dedups_identities": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_rejects_zero_minimums": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_select_preflight_truncates_covered_but_reports_all_eligible": [
+    "LREQ-ID-010"
+  ],
+  "tests/test_identity_preflight.py::test_successful_preflight_counts_toward_enrichment_once": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_metrics.py::test_breadth_falls_back_to_distinct_canonical_count": [
+    "LREQ-MET-070"
+  ],
+  "tests/test_metrics.py::test_breadth_uses_verified_total_count": [
+    "LREQ-MET-070"
+  ],
+  "tests/test_metrics.py::test_breadth_verified_zero_result_is_zero": [
+    "LREQ-MET-070"
+  ],
+  "tests/test_metrics.py::test_compute_category_raw_metrics_reports_coverages_and_counts": [
+    "LREQ-MET-060",
+    "LREQ-MET-080",
+    "LREQ-MET-090",
+    "LREQ-MET-070"
+  ],
+  "tests/test_metrics.py::test_compute_raw_metric_bundle_maps_all_six_values": [
+    "LREQ-MET-030",
+    "LREQ-MET-050",
+    "LREQ-MET-060",
+    "LREQ-MET-070",
+    "LREQ-MET-080",
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_demand_coverage_is_distinct_from_sample_fraction": [
+    "LREQ-MET-060",
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_demand_coverage_is_zero_for_zero_population": [
+    "LREQ-MET-060"
+  ],
+  "tests/test_metrics.py::test_demand_coverage_sums_usable_stratum_weights": [
+    "LREQ-MET-060"
+  ],
+  "tests/test_metrics.py::test_demand_explicit_zero_page_views_are_usable": [
+    "LREQ-MET-040",
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_demand_median_exact_half_boundary": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_demand_median_null_when_no_usable_index": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_demand_median_uses_stratum_expansion_weights": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_demand_per_asset_null_when_no_usable_stratum": [
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_demand_per_asset_uses_population_weighted_means": [
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_demand_per_asset_zero_population_is_null_and_never_divides": [
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_estimators_are_pure_no_forbidden_imports_or_clock": [
+    "LREQ-ARCH-010",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_metrics.py::test_estimators_consume_chunk_7a_index_eligibility": [
+    "LREQ-MET-040",
+    "LREQ-MET-030",
+    "LREQ-MET-080",
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_estimators_raise_valueerror_only_for_caller_contract": [
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_estimators_repeat_deterministically": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_metrics.py::test_median_age_exact_half_boundary": [
+    "LREQ-MET-080",
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_median_age_uses_stratum_expansion_weights": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_metrics.py::test_quality_coverage_not_renormalized": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_eligible_set_too_small_is_null": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_raw_contradicted_semantics_is_null": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_raw_ineligible_observations_are_excluded": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_raw_null_below_required_coverage": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_raw_uses_n_h_over_n_h_weights": [
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_quality_raw_zero_visibility_denominator_is_null": [
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_quality_zero_population_is_null_and_coverage_zero": [
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_recent_share_missing_dates_reduce_coverage_not_zero": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_metrics.py::test_recent_share_uses_inclusive_window_per_stratum": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_metrics.py::test_recent_supply_coverage_and_usable_count": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_metrics.py::test_recent_supply_usability_minimum_boundary": [
+    "LREQ-MET-080",
+    "LREQ-MET-030"
+  ],
+  "tests/test_metrics.py::test_recent_zero_population_is_null_and_coverage_zero": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_metrics.py::test_stratum_expansion_weight_is_population_over_sample": [
+    "LREQ-MET-050",
+    "LREQ-MET-100"
+  ],
+  "tests/test_metrics.py::test_stratum_expansion_weight_rejects_bool_zero_and_negative": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_weighted_median_empty_and_all_zero_weight_return_none": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_weighted_median_exact_half_averages_with_next": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_weighted_median_retains_ties_and_rejects_non_finite": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_weighted_median_single_value_and_first_at_or_above_half": [
+    "LREQ-MET-050"
+  ],
+  "tests/test_metrics.py::test_zero_population_bundle_has_null_raws_and_zero_coverages": [
+    "LREQ-MET-030",
+    "LREQ-MET-060",
+    "LREQ-MET-080",
+    "LREQ-MET-100"
+  ],
+  "tests/test_pipeline.py::test_eight_category_run_has_empty_candidates_and_null_stability": [
+    "LREQ-EVD-020",
+    "LREQ-SEN-020"
+  ],
+  "tests/test_pipeline.py::test_enrichment_projection_is_logged_before_first_request": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_pipeline.py::test_failed_asset_does_not_abort_other_assets": [
+    "LREQ-NFR-030"
+  ],
+  "tests/test_pipeline.py::test_failed_category_does_not_abort_other_categories": [
+    "LREQ-NFR-030",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_pipeline.py::test_failed_page_is_not_zero_assets": [
+    "LREQ-NFR-030",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_pipeline.py::test_failed_preflight_blocks_enrichment_and_marks_run_failed": [
+    "LREQ-ID-040",
+    "LREQ-NFR-030"
+  ],
+  "tests/test_pipeline.py::test_failed_preflight_does_not_complete_or_overwrite_failed": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_pipeline.py::test_failed_preflight_issues_zero_enrichment_requests": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_pipeline.py::test_failed_preflight_persists_per_category_limitations": [
+    "LREQ-EVD-020",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_pipeline.py::test_failed_preflight_retains_discovery_sample_and_preflight_rows": [
+    "LREQ-ID-040",
+    "LREQ-EVD-020"
+  ],
+  "tests/test_pipeline.py::test_final_evidence_and_rankability_are_persisted_per_category": [
+    "LREQ-SEN-020",
+    "LREQ-EVD-020"
+  ],
+  "tests/test_pipeline.py::test_insufficient_preflight_leaves_run_non_completed": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_pipeline.py::test_invalid_configuration_causes_no_network_request": [
+    "LREQ-CLI-040",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_pipeline.py::test_invalid_taxonomy_causes_no_network_request": [
+    "LREQ-EXT-090"
+  ],
+  "tests/test_pipeline.py::test_pipeline_is_deterministic_across_repeat_runs": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_pipeline_runs_completed_end_to_end": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_projection_contains_required_counts_and_minimum_time": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_pipeline.py::test_projection_log_contains_no_secret_or_identity": [
+    "LREQ-NFR-020"
+  ],
+  "tests/test_pipeline.py::test_repeat_run_produces_structurally_equal_persisted_rows": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_run_record_seeds_required_not_null_columns": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_run_uses_injected_clock_transports_and_sleeper": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_run_with_fewer_than_min_categories_is_rejected": [
+    "LREQ-CLI-040"
+  ],
+  "tests/test_pipeline.py::test_scoring_cutoff_is_captured_once_and_threaded_to_pure_calls": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_sensitivity_does_not_change_candidate_set_or_balanced_score": [
+    "LREQ-SEN-020",
+    "LREQ-EVD-020"
+  ],
+  "tests/test_pipeline.py::test_shared_sampled_identity_is_enriched_once": [
+    "LREQ-ID-040"
+  ],
+  "tests/test_pipeline.py::test_taxonomy_sha256_is_non_empty_and_matches_golden": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_twenty_one_category_run_stores_reference_size_20": [
+    "LREQ-NRM-020"
+  ],
+  "tests/test_report.py::test_category_detail_shows_formulas_inputs_strata_and_timestamps": [
+    "LREQ-RPT-030"
+  ],
+  "tests/test_report.py::test_detail_labels_observed_versus_inferred": [
+    "LREQ-RPT-030"
+  ],
+  "tests/test_report.py::test_explicit_zero_overlap_is_measured_zero": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_failed_preflight_fallback_yields_one_row_per_category": [
+    "LREQ-RPT-040"
+  ],
+  "tests/test_report.py::test_html_output_is_self_contained_and_deterministic": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_load_run_report_view_orders_ranked_then_unranked": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_load_run_report_view_raises_for_unknown_run": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_load_run_report_view_reads_primary_rows": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_non_rankable_category_remains_visible": [
+    "LREQ-RPT-040"
+  ],
+  "tests/test_report.py::test_pre_scoring_defaults_render_as_unavailable": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_primary_table_renders_every_mandatory_column": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_public_report_functions_have_hints_and_docstrings": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_report.py::test_render_dashboard_html_is_database_read_only": [
+    "LREQ-CLI-020"
+  ],
+  "tests/test_report.py::test_report_states_heuristic_and_six_distinctions": [
+    "LREQ-RPT-050"
+  ],
+  "tests/test_report.py::test_write_run_report_rejects_unknown_format": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_write_run_report_writes_html_and_text": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_zero_population_sample_fraction_is_null": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_sampling.py::test_census_member_digest_is_standard_nul_digest": [
+    "LREQ-SMP-060"
+  ],
+  "tests/test_sampling.py::test_census_member_ranks_follow_digest_order": [
+    "LREQ-SMP-060"
+  ],
+  "tests/test_sampling.py::test_census_population_sizes_zero_one_99_100": [
+    "LREQ-SMP-040"
+  ],
+  "tests/test_sampling.py::test_census_sample_fraction_is_exactly_one": [
+    "LREQ-SMP-040"
+  ],
+  "tests/test_sampling.py::test_census_selects_all_assets": [
+    "LREQ-SMP-040"
+  ],
+  "tests/test_sampling.py::test_default_constants_are_not_configurable": [
+    "LREQ-SMP-030"
+  ],
+  "tests/test_sampling.py::test_digest_changes_with_rule_version": [
+    "LREQ-SMP-060"
+  ],
+  "tests/test_sampling.py::test_digest_matches_nul_delimited_sha256_literal": [
+    "LREQ-SMP-060"
+  ],
+  "tests/test_sampling.py::test_duplicate_row_excluded_and_counted": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_early_middle_late_positions_represented": [
+    "LREQ-SMP-070"
+  ],
+  "tests/test_sampling.py::test_first_valid_ordinal_retained_for_repeat": [
+    "LREQ-SMP-020"
+  ],
+  "tests/test_sampling.py::test_four_strata_boundaries_at_101": [
+    "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_four_strata_boundaries_at_200": [
+    "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_large_category_targets_25_per_stratum": [
+    "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_malformed_population_input_raises_value_error": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_no_duplicate_membership_within_category": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_no_randomness_module_used": [
+    "LREQ-SMP-060",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_sampling.py::test_population_ordered_by_discovery_ordinal": [
+    "LREQ-SMP-020"
+  ],
+  "tests/test_sampling.py::test_reduced_stratum_selects_all_and_reports_reduced_count": [
+    "LREQ-SMP-090"
+  ],
+  "tests/test_sampling.py::test_repeated_selection_is_identical": [
+    "LREQ-SMP-060",
+    "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_run_sample_preserves_category_order": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_sample_fraction_distinct_from_stratum_aggregates": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling.py::test_sample_is_not_first_page_prefix": [
+    "LREQ-SMP-070"
+  ],
+  "tests/test_sampling.py::test_sampling_basis_and_census_flag": [
+    "LREQ-SMP-030",
+    "LREQ-SMP-040"
+  ],
+  "tests/test_sampling.py::test_shared_identity_appears_in_both_categories": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_strata_are_contiguous_and_cover_population": [
+    "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_unresolved_and_conflict_excluded": [
+    "LREQ-SMP-010"
+  ],
+  "tests/test_sampling.py::test_zero_population_fraction_is_null_not_zero": [
+    "LREQ-SMP-040"
+  ],
+  "tests/test_sampling_persistence.py::test_category_level_usable_counts_are_non_authoritative_placeholders": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_census_summary_round_trips": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_counts_shared_categories": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_does_not_inflate_enrichment_counts": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_null_percentage_for_empty_category": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_percentage_is_exact_ratio": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_percentage_is_unrounded_float64": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_preserves_category_order": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_single_category": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_three_way_share": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_compute_overlap_zero_when_disjoint": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_duplicate_membership_is_rejected_and_does_not_duplicate": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_large_category_summary_round_trips": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_member_overlap_repeats_category_overlap_values": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_pending_usable_placeholders_before_enrichment": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_pending_usable_status_token_is_pending": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persist_requires_explicit_utc_and_reads_no_clock": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persist_writes_one_membership_per_selected_member": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persisted_digest_is_reproducible": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persisted_member_fields_match_pure_result": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persisted_overlap_columns_match_pure_overlap": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_persisted_values_verify_against_pure_result": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_preflight_selected_is_false_placeholder": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_sample_fraction_distinct_from_eligibility_coverage": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_stratum_statistics_json_matches_frozen_schema": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_stratum_statistics_json_round_trips_n_h_and_boundaries": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_unique_enrichment_count_is_not_written_by_4b": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_upsert_sampling_summary_updates_only_sampling_columns": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_verification_does_not_assert_category_usable_counts": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_verification_reports_a_tampered_value": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_sampling_persistence.py::test_zero_population_sample_fraction_is_null_not_zero": [
+    "LREQ-SMP-080"
+  ],
+  "tests/test_scoring.py::test_available_component_weight_renormalization": [
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring.py::test_balanced_primary_matches_balanced_sensitivity_policy": [
+    "LREQ-SCR-060",
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring.py::test_below_minimum_component_coverage_is_unavailable": [
+    "LREQ-SCR-010",
+    "LREQ-SCR-030",
+    "LREQ-SCR-040"
+  ],
+  "tests/test_scoring.py::test_competition_component_inverts_midrank_and_clamps": [
+    "LREQ-SCR-020"
+  ],
+  "tests/test_scoring.py::test_competition_component_requires_verified_complete_breadth": [
+    "LREQ-SCR-020"
+  ],
+  "tests/test_scoring.py::test_contradicted_page_views_disable_demand_and_quality": [
+    "LREQ-SCR-050"
+  ],
+  "tests/test_scoring.py::test_contradicted_page_views_keep_competition_and_recent_supply": [
+    "LREQ-SCR-050"
+  ],
+  "tests/test_scoring.py::test_demand_component_both_one_or_neither_field": [
+    "LREQ-SCR-010"
+  ],
+  "tests/test_scoring.py::test_demand_component_coverage_shrinkage_and_clamp": [
+    "LREQ-SCR-010"
+  ],
+  "tests/test_scoring.py::test_eight_and_twenty_one_category_run_reference_sizes": [
+    "LREQ-NRM-020",
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring.py::test_fewer_than_two_components_score_unavailable": [
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring.py::test_field_specific_usable_reference_counts": [
+    "LREQ-NRM-020"
+  ],
+  "tests/test_scoring.py::test_leave_one_out_reference_excludes_target": [
+    "LREQ-NRM-010"
+  ],
+  "tests/test_scoring.py::test_leave_one_out_reference_rejects_absent_or_duplicate_target": [
+    "LREQ-NRM-010"
+  ],
+  "tests/test_scoring.py::test_midrank_all_equal_reference": [
+    "LREQ-NRM-030"
+  ],
+  "tests/test_scoring.py::test_midrank_golden_vectors": [
+    "LREQ-NRM-030",
+    "LREQ-TST-010"
+  ],
+  "tests/test_scoring.py::test_midrank_null_target_or_empty_reference_returns_none": [
+    "LREQ-NRM-030"
+  ],
+  "tests/test_scoring.py::test_midrank_rejects_non_finite_values": [
+    "LREQ-NRM-030"
+  ],
+  "tests/test_scoring.py::test_midrank_ties_receive_same_midrank": [
+    "LREQ-NRM-030"
+  ],
+  "tests/test_scoring.py::test_normalize_raw_metrics_independently": [
+    "LREQ-NRM-040"
+  ],
+  "tests/test_scoring.py::test_normalize_raw_metrics_null_target_and_null_reference": [
+    "LREQ-NRM-040"
+  ],
+  "tests/test_scoring.py::test_quality_component_null_or_shrunk": [
+    "LREQ-SCR-040"
+  ],
+  "tests/test_scoring.py::test_recent_supply_component_both_one_or_neither_field": [
+    "LREQ-SCR-030"
+  ],
+  "tests/test_scoring.py::test_recent_supply_component_coverage_shrinkage": [
+    "LREQ-SCR-030"
+  ],
+  "tests/test_scoring.py::test_reference_size_is_category_count_minus_one": [
+    "LREQ-NRM-020"
+  ],
+  "tests/test_scoring.py::test_score_category_integration_and_score_state": [
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring.py::test_score_state_field_is_distinct_from_rankability_status": [
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring.py::test_scoring_module_is_import_pure_and_clock_free": [
+    "LREQ-ARCH-010",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_scoring.py::test_scoring_outputs_are_deterministic": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring.py::test_scoring_public_functions_have_type_hints_and_docstrings": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_scoring.py::test_two_or_three_components_score_partial": [
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring_evidence.py::test_base_candidate_construction_does_not_change_score_fields": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_base_candidate_set_is_fixed_input_to_sensitivity": [
+    "LREQ-SEN-030"
+  ],
+  "tests/test_scoring_evidence.py::test_base_rankable_candidates_empty_for_eight_to_twenty_run": [
+    "LREQ-EVD-020",
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring_evidence.py::test_base_rankable_candidates_preserve_all_metrics_order": [
+    "LREQ-EVD-020",
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring_evidence.py::test_base_rankable_candidates_require_all_components_and_coverage": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_base_rankable_candidates_require_strong_reference_count": [
+    "LREQ-EVD-020",
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring_evidence.py::test_bounded_by_verified_total_does_not_force_provisional": [
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_evidence.py::test_build_base_rankable_candidates_rejects_misaligned_inputs": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_competition_unbounded_or_material_failure_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-MET-070"
+  ],
+  "tests/test_scoring_evidence.py::test_discovery_filter_unverified_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_scoring_evidence.py::test_eight_category_run_is_provisional_never_rankable": [
+    "LREQ-EVD-030",
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring_evidence.py::test_field_reference_support_requires_consumed_fields": [
+    "LREQ-EVD-020",
+    "LREQ-TST-010"
+  ],
+  "tests/test_scoring_evidence.py::test_identity_preflight_failure_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-ID-040"
+  ],
+  "tests/test_scoring_evidence.py::test_identity_preflight_insufficient_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-ID-040"
+  ],
+  "tests/test_scoring_evidence.py::test_incomplete_breadth_fallback_with_verified_total_is_provisional": [
+    "LREQ-EVD-030",
+    "LREQ-MET-070"
+  ],
+  "tests/test_scoring_evidence.py::test_no_valid_leave_one_out_reference_is_not_rankable": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_not_rankable_reason_matrix": [
+    "LREQ-EVD-020",
+    "LREQ-TST-010"
+  ],
+  "tests/test_scoring_evidence.py::test_not_rankable_reason_order_is_deterministic": [
+    "LREQ-EVD-020",
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring_evidence.py::test_page_view_semantics_contradicted_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-SCR-050"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_golden_vectors": [
+    "LREQ-TST-010",
+    "LREQ-EVD-020",
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_outputs_are_deterministic": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_is_not_final_rankability_status": [
+    "LREQ-EVD-010"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_precedence": [
+    "LREQ-EVD-010"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_rankability_state_vocabulary": [
+    "LREQ-EVD-010"
+  ],
+  "tests/test_scoring_evidence.py::test_pre_sensitivity_state_excludes_sensitivity_high_reason": [
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_evidence.py::test_provisional_reason_for_coverage_between_minimum_and_strong": [
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_evidence.py::test_provisional_reason_for_incomplete_breadth_fallback": [
+    "LREQ-EVD-030",
+    "LREQ-MET-070"
+  ],
+  "tests/test_scoring_evidence.py::test_provisional_reason_for_run_below_strong_reference": [
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_evidence.py::test_quality_unavailable_is_not_rankable": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_recent_supply_minimum_not_met_is_not_rankable": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_required_demand_unavailable_is_not_rankable": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_score_state_and_rankability_state_remain_distinct": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_evidence.py::test_scoring_evidence_module_is_import_pure_and_clock_free": [
+    "LREQ-ARCH-010",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_scoring_evidence.py::test_scoring_evidence_public_functions_have_type_hints_and_docstrings": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_scoring_evidence.py::test_unrecoverable_data_integrity_error_is_not_rankable": [
+    "LREQ-EVD-020",
+    "LREQ-EXT-050"
+  ],
+  "tests/test_scoring_evidence.py::test_unresolved_or_conflicting_identity_is_not_rankable": [
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_eight_to_twenty_run_never_rankable": [
+    "LREQ-EVD-040",
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_and_rankability_preserve_candidate_set_and_score": [
+    "LREQ-EVD-040",
+    "LREQ-EVD-050"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_census_alternative": [
+    "LREQ-EVD-050"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_insufficient_when_not_rankable": [
+    "LREQ-EVD-050",
+    "LREQ-EVD-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_moderate_vector": [
+    "LREQ-EVD-050"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_null_warning_is_not_strong": [
+    "LREQ-EVD-050",
+    "LREQ-SEN-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_sensitivity_demotes_strong": [
+    "LREQ-EVD-050",
+    "LREQ-SEN-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_strong_vector": [
+    "LREQ-EVD-050"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_uses_min_component_sample_count": [
+    "LREQ-EVD-050",
+    "LREQ-NRM-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_evidence_grade_weak_vector": [
+    "LREQ-EVD-050"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_rankability_never_demotes_to_not_rankable": [
+    "LREQ-EVD-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_rankability_null_warning_is_provisional": [
+    "LREQ-EVD-040",
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_rankability_requires_base_and_sensitivity": [
+    "LREQ-EVD-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_rankability_sensitivity_demotes_to_provisional": [
+    "LREQ-EVD-040",
+    "LREQ-EVD-030",
+    "LREQ-SEN-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_final_rankability_states_use_rankability_status": [
+    "LREQ-EVD-010"
+  ],
+  "tests/test_scoring_sensitivity.py::test_scoring_tests_cover_sensitivity_after_base_candidates": [
+    "LREQ-TST-060"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_balanced_policy_equals_primary_weights": [
+    "LREQ-SEN-010",
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_deterministic_tie_break_by_category_path": [
+    "LREQ-SEN-020",
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_does_not_add_or_remove_candidates": [
+    "LREQ-SEN-020",
+    "LREQ-SEN-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_empty_candidate_set_null_outputs": [
+    "LREQ-SEN-020",
+    "LREQ-TST-070"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_golden_vectors": [
+    "LREQ-SEN-020",
+    "LREQ-TST-090"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_high_provisional_clause_completes_evd030": [
+    "LREQ-EVD-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_max_score_and_rank_displacement": [
+    "LREQ-SEN-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_module_is_import_pure_and_clock_free": [
+    "LREQ-ARCH-010",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_normal_and_boundary_values": [
+    "LREQ-TST-010"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_outputs_are_deterministic": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_policy_vocabulary_and_weights": [
+    "LREQ-SEN-010"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_preserves_balanced_primary_score": [
+    "LREQ-SEN-040",
+    "LREQ-SCR-060"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_public_functions_have_type_hints_and_docstrings": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_ranks_only_fixed_candidates": [
+    "LREQ-SEN-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_reference_set_size_mismatch_raises": [
+    "LREQ-SEN-030",
+    "LREQ-NRM-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_returns_typed_diagnostics": [
+    "LREQ-SEN-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_top_k_null_when_too_few_candidates": [
+    "LREQ-SEN-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_top_k_stability": [
+    "LREQ-SEN-020",
+    "LREQ-TST-070"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_does_not_alter_balanced_score": [
+    "LREQ-SEN-030",
+    "LREQ-SEN-040"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_is_false_when_top_three_inapplicable": [
+    "LREQ-SEN-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_is_none_only_without_candidates": [
+    "LREQ-SEN-030"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_rank_displacement_threshold": [
+    "LREQ-SEN-030",
+    "LREQ-NRM-020"
+  ],
+  "tests/test_scoring_sensitivity.py::test_sensitivity_warning_top_three_boundary": [
+    "LREQ-SEN-030"
+  ],
+  "tests/test_validation.py::test_age_days_exact_at_cutoff_is_valid_zero_not_future": [
+    "LREQ-MET-010",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_age_days_exact_future_date_is_unavailable_distinct_reason": [
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_age_days_exact_naive_and_null_are_distinct_reasons": [
+    "LREQ-MET-010",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_age_days_exact_requires_aware_utc_cutoff": [
+    "LREQ-ARCH-020",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_age_days_exact_uses_fractional_days": [
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_age_days_exact_wrong_type_date_is_unavailable": [
+    "LREQ-MET-010",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_category_mismatch_and_unverified_map_to_discovery_status_vocabulary": [
+    "LREQ-EXT-050",
+    "LREQ-EXT-090"
+  ],
+  "tests/test_validation.py::test_child_path_does_not_match_parent_path": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_exact_category_path_match": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_failed_fields_remain_none_not_zero": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_identity_mismatch_marks_all_demand_recent_quality_unavailable": [
+    "LREQ-GQL-070"
+  ],
+  "tests/test_validation.py::test_malformed_shape_is_explicitly_invalid": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_metric_primitives_are_pure_no_forbidden_imports_or_clock": [
+    "LREQ-ARCH-010",
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_validation.py::test_metric_primitives_classify_invalid_values_and_never_convert_to_zero": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_metric_primitives_raise_valueerror_only_for_caller_parameters": [
+    "LREQ-MET-010",
+    "LREQ-ARCH-010"
+  ],
+  "tests/test_validation.py::test_metric_primitives_repeat_deterministically": [
+    "LREQ-ARCH-020"
+  ],
+  "tests/test_validation.py::test_metric_reason_vocabulary_is_closed_and_malformed_is_unproduced": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_metric_state_eligibility_published_excluded_unknown": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_validation.py::test_metric_timestamp_normalizes_aware_offset_to_utc": [
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_metric_timestamp_null_is_unavailable_never_zero": [
+    "LREQ-MET-010",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_metric_timestamp_rejects_naive_date_with_reason": [
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_metric_timestamp_wrong_type_is_unavailable_not_raised": [
+    "LREQ-MET-010",
+    "LREQ-MET-020"
+  ],
+  "tests/test_validation.py::test_missing_identity_member_is_operation_shape_error": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_validation.py::test_multi_valued_category_shape_handled_explicitly": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_null_required_member_is_distinct_from_wrong_type": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_page_view_index_age_threshold_boundary": [
+    "LREQ-MET-040",
+    "LREQ-MET-030"
+  ],
+  "tests/test_validation.py::test_page_view_index_missing_views_is_unavailable_not_zero": [
+    "LREQ-MET-040",
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_page_view_index_never_divides_by_zero_at_threshold": [
+    "LREQ-MET-040",
+    "LREQ-MET-030"
+  ],
+  "tests/test_validation.py::test_page_view_index_rejects_bool_negative_and_non_finite": [
+    "LREQ-MET-010",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_rejects_identity_mismatch": [
+    "LREQ-GQL-070",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_rejects_non_numeric_views_and_accepts_integral_float": [
+    "LREQ-MET-010",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_rejects_state_excluded_and_unknown": [
+    "LREQ-GQL-060",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_uses_seven_over_age_days": [
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_wrong_type_date_is_unavailable": [
+    "LREQ-MET-010",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_page_view_index_zero_views_is_usable_zero": [
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_parent_path_does_not_match_child_path": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_quality_eligibility_operation_state_and_semantics_gates": [
+    "LREQ-MET-090",
+    "LREQ-MET-010",
+    "LREQ-GQL-060"
+  ],
+  "tests/test_validation.py::test_quality_eligibility_propagates_page_view_index_reason": [
+    "LREQ-MET-090",
+    "LREQ-MET-040"
+  ],
+  "tests/test_validation.py::test_quality_observation_eligibility_combines_conditions": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_validation.py::test_quality_rating_range_and_count_thresholds": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_validation.py::test_quality_rating_wrong_type_and_negative_are_distinct_reasons": [
+    "LREQ-MET-090",
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_recent_window_parameter_validation_raises": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_validation.py::test_scalar_category_shape_handled_explicitly": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_state_excluded_assets_remain_available_for_nothing_but_breadth": [
+    "LREQ-GQL-060"
+  ],
+  "tests/test_validation.py::test_stratum_is_usable_at_minimum_boundary": [
+    "LREQ-MET-030"
+  ],
+  "tests/test_validation.py::test_structural_validation_does_not_decide_metric_eligibility": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_structure_validation_retains_valid_member_when_other_missing": [
+    "LREQ-GQL-050"
+  ],
+  "tests/test_validation.py::test_taxonomy_flags_future_capture": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_taxonomy_flags_stale_capture": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_taxonomy_rejects_naive_captured_at": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_taxonomy_reports_missing_requested_categories": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_taxonomy_requires_all_header_fields": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_taxonomy_requires_canonical_path_inventory": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_unverified_versus_mismatch_classification": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_validation.py::test_validate_taxonomy_combines_structure_freshness_and_presence": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_validation.py::test_validation_issues_are_redacted": [
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_within_recent_window_is_inclusive_at_boundaries": [
+    "LREQ-MET-080"
+  ],
+  "tests/test_validation.py::test_within_recent_window_non_finite_is_false": [
+    "LREQ-MET-080",
+    "LREQ-MET-010"
+  ],
+  "tests/test_validation.py::test_wrong_scalar_type_is_explicitly_invalid": [
+    "LREQ-MET-010"
+  ]
 }
