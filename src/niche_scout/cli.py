@@ -60,9 +60,9 @@ _PLACEHOLDER_DB_PATH: Path = config.DEFAULT_DB_PATH
 #: The numeric configuration settings SRS §14 marks configurable (``Yes``). Each
 #: is exposed as a CLI override; an unset option stays ``None`` and is therefore
 #: absent from ``cli_args`` so it cannot shadow TOML or an in-code default.
-#: ``page_size`` and ``min_categories_per_run`` are excluded because the SRS
-#: marks them non-configurable, ``strong_reference_category_count`` likewise,
-#: and ``db_path`` has no flag (Ruling 7 A1).
+#: ``page_size``, ``min_categories_per_run``, and
+#: ``strong_reference_category_count`` are excluded because the SRS marks them
+#: non-configurable, and ``db_path`` has no flag (Ruling 7 A1).
 _INT_CONFIG_OVERRIDE_FIELDS: tuple[str, ...] = (
     "max_discovery_results_per_category",
     "max_taxonomy_age_days",
