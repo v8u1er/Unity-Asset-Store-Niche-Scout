@@ -615,6 +615,22 @@ def _validate_required_columns(record: object) -> None:
             raise InvalidRecordValueError(f"{table}.{column}: value must be numeric")
 
 
+#: ``runs`` provenance/identity string columns whose value must be non-empty
+#: when supplied. Chunk 10 hardening (dependency-map §7): the persistence layer
+#: historically rejected only ``None``, so an empty ``""``/whitespace value could
+#: persist silently. The guard is scoped to exactly these ``NOT NULL`` text
+#: columns, so it can never turn an ordinary nullable text value into an error.
+_RUNS_PROVENANCE_COLUMNS: frozenset[str] = frozenset(
+    {
+        "taxonomy_sha256",
+        "taxonomy_version",
+        "endpoint_contract_version",
+        "identity_mapping_rule_version",
+        "sampling_rule_version",
+    }
+)
+
+
 _REAL_COLUMNS: dict[str, tuple[str, ...]] = {
     table: tuple(
         line.strip().rstrip(",").split()[0]
@@ -634,6 +650,17 @@ def _encode_column(table: str, column: str, value: object) -> object:
     if value is None:
         return None
     _validate_enum(table, column, value)
+    if (
+        table == "runs"
+        and column in _RUNS_PROVENANCE_COLUMNS
+        and isinstance(value, str)
+        and not value.strip()
+    ):
+        # The message names the table and column only, never the value
+        # (LREQ-SEC-010/020). ``None`` keeps the existing path above.
+        raise InvalidRecordValueError(
+            f"runs.{column}: is not a usable provenance token"
+        )
     if column in _DATETIME_COLUMNS[table]:
         if not isinstance(value, datetime):
             raise InvalidRecordValueError(
@@ -1136,6 +1163,27 @@ class SqliteRepository:
         cursor = self._connection.execute(
             f"UPDATE runs SET {', '.join(assignments)} WHERE run_id = ?",
             tuple(values),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(run_id)
+
+    def update_run_scoring_cutoff(
+        self, run_id: str, scoring_cutoff_utc: datetime
+    ) -> None:
+        """Set ``runs.scoring_cutoff_utc`` to the single captured cutoff value.
+
+        Mirrors :meth:`update_run_status`: ``_check_open()``; encode the column
+        with the aware-UTC contract (:func:`_encode_column`); a single
+        ``UPDATE runs SET scoring_cutoff_utc = ? WHERE run_id = ?``; ``KeyError``
+        when no row matches. The caller passes the exact value
+        ``capture_scoring_cutoff_utc`` returned; this method never reads a clock
+        and never re-derives a timestamp.
+        """
+        self._check_open()
+        encoded = _encode_column("runs", "scoring_cutoff_utc", scoring_cutoff_utc)
+        cursor = self._connection.execute(
+            "UPDATE runs SET scoring_cutoff_utc = ? WHERE run_id = ?",
+            (encoded, run_id),
         )
         if cursor.rowcount == 0:
             raise KeyError(run_id)

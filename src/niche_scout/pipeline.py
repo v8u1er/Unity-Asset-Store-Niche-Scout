@@ -19,15 +19,25 @@ always caller-injected.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import datetime
+from pathlib import Path
 from typing import AbstractSet, Any
 
+from niche_scout import scoring
+from niche_scout.collector_coveo import (
+    COVEO_TEMPLATE_PATH,
+    CategoryDiscoveryResult,
+    CoveoObservationSink,
+    CoveoRateLimiter,
+    discover_category,
+)
 from niche_scout.collector_graphql import (
     GRAPHQL_BATCH_ENDPOINT,
     GraphQLBatchResponse,
@@ -45,6 +55,7 @@ from niche_scout.database import (
     EnrichmentObservationRecord,
     SqliteRepository,
     parse_stratum_statistics,
+    persist_run_sampling,
 )
 from niche_scout.metrics import (
     METRIC_REASON_NULL,
@@ -66,18 +77,37 @@ from niche_scout.models import (
     IDENTITY_PREFLIGHT_MIN_CATEGORIES,
     IDENTITY_PREFLIGHT_MIN_SUCCESS_RATE,
     MIN_AGE_DAYS_FOR_RATE,
+    MIN_CATEGORIES_PER_RUN,
     MIN_USABLE_SAMPLES_PER_STRATUM,
     RECENT_WINDOW_DAYS,
+    SAMPLING_RULE_VERSION,
+    CategoryFilterValidationStatus,
     CategoryScoreRecord,
+    CategoryStatus,
+    DiscoveryStatus,
+    EvidenceGrade,
     GraphQLOperationCorrelationMode,
     IdentityPreflightStatus,
     OperationStatus,
     PageViewSemanticsStatus,
+    RankabilityStatus,
+    RunRecord,
     RunStatus,
+    ScoreState,
+    WarningCode,
     ensure_utc,
 )
-from niche_scout.sampling import CategorySamplingResult, RunSamplingResult
-from niche_scout.validation import ValidationIssue, summarize_validation_issues
+from niche_scout.sampling import (
+    CategorySamplingResult,
+    DiscoveryPopulationRecord,
+    RunSamplingResult,
+    select_run_sample,
+)
+from niche_scout.validation import (
+    ValidationIssue,
+    summarize_validation_issues,
+    validate_taxonomy,
+)
 
 __all__ = [
     "PreflightPolicy",
@@ -111,6 +141,13 @@ __all__ = [
     "finalize_stratum_counts",
     "finalize_enrichment",
     "assert_finalization_consistency",
+    "PipelineError",
+    "PipelineConfigurationError",
+    "TaxonomyInvalidError",
+    "PipelineResult",
+    "taxonomy_sha256_for",
+    "category_status_for",
+    "run_pipeline",
 ]
 
 #: The Chunk 5 ``GraphQLOperationCorrelationMode`` members that mark an invalid
@@ -2264,3 +2301,1072 @@ def assert_finalization_consistency(
         )
 
     return tuple(mismatches)
+
+
+# ==========================================================================
+# Chunk 10 — run-level orchestration
+# ==========================================================================
+
+
+class PipelineError(RuntimeError):
+    """Base class for a run-level pipeline abort."""
+
+
+class PipelineConfigurationError(PipelineError):
+    """The run configuration, credentials, or requested-category set is invalid."""
+
+
+class TaxonomyInvalidError(PipelineError):
+    """The taxonomy payload is invalid, stale, or missing a requested category."""
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineResult:
+    """The run outcome returned to the caller (Chunk 12 maps it to an exit code).
+
+    ``succeeded`` is ``True`` iff ``status == RunStatus.COMPLETED.value``.
+    ``scoring_cutoff_utc`` is ``None`` iff the run never reached the single
+    post-enrichment capture (a preflight failure or an abort before enrichment).
+    ``limitations`` names a category and a field only: it never carries an
+    identity string, a header value, a token, or a response body. An empty
+    ``limitations`` means no limitation was recorded, never a fabricated zero.
+    """
+
+    run_id: str
+    status: str
+    scoring_cutoff_utc: datetime | None
+    categories: tuple[str, ...]
+    identity_preflight_status: str
+    category_scores_written: int
+    limitations: tuple[str, ...]
+
+    @property
+    def succeeded(self) -> bool:
+        """True iff the run reached ``RunStatus.COMPLETED``."""
+        return self.status == RunStatus.COMPLETED.value
+
+
+def taxonomy_sha256_for(payload: object) -> str:
+    """Return the lowercase-hex SHA-256 over the canonical taxonomy payload.
+
+    The canonical form is ``json.dumps(payload, sort_keys=True,
+    separators=(",", ":"), ensure_ascii=False).encode("utf-8")`` — the same
+    convention Chunk 3 uses for ``template_sha256``. Raises ``ValueError`` when
+    the canonical form is empty. Pure: no I/O and no clock.
+    """
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    if canonical == "":
+        raise ValueError("the taxonomy payload yields an empty digest input")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def category_status_for(
+    discovery_status: str,
+    *,
+    warnings: Sequence[str],
+    evidence_grade: str,
+    rankability_status: str,
+) -> CategoryStatus:
+    """Roll up already-final category fields into the internal ``CategoryStatus``.
+
+    Pure: no I/O, no clock. ``CategoryStatus`` is a derived view over fields that
+    are already final and is never persisted or used as an input to evidence or
+    rankability. ``warnings``, ``evidence_grade``, and ``rankability_status`` are
+    carried so the signature names the final fields the roll-up reads; the rule
+    derives nothing from them:
+
+      - ``page_failed`` / ``request_failed`` -> ``FAILED``;
+      - ``truncated`` / ``filter_unverified`` / ``category_mismatch`` /
+        ``identity_incomplete`` -> ``DEGRADED``;
+      - otherwise -> ``HEALTHY``.
+    """
+    if discovery_status in (
+        DiscoveryStatus.PAGE_FAILED.value,
+        DiscoveryStatus.REQUEST_FAILED.value,
+    ):
+        return CategoryStatus.FAILED
+    if discovery_status in (
+        DiscoveryStatus.TRUNCATED.value,
+        DiscoveryStatus.FILTER_UNVERIFIED.value,
+        DiscoveryStatus.CATEGORY_MISMATCH.value,
+        DiscoveryStatus.IDENTITY_INCOMPLETE.value,
+    ):
+        return CategoryStatus.DEGRADED
+    return CategoryStatus.HEALTHY
+
+
+# --------------------------------------------------------------------------
+# Input, taxonomy, and run-row helpers
+# --------------------------------------------------------------------------
+
+
+def _validate_requested_categories(categories: Sequence[str]) -> tuple[str, ...]:
+    """Return the requested categories in declared order, or raise ``ValueError``.
+
+    A bare string, an empty sequence, a blank entry, or a duplicate raises: the
+    declared order is the caller's ordering authority for sampling, scoring, and
+    persistence, so it must be an ordered set of non-blank strings.
+    """
+    if isinstance(categories, (str, bytes)):
+        raise ValueError("categories must be a sequence of category path strings")
+    values = tuple(categories)
+    if not values:
+        raise ValueError("at least one category is required")
+    seen: set[str] = set()
+    for category in values:
+        if not isinstance(category, str) or not category.strip():
+            raise ValueError("every category must be a non-empty string")
+        if category in seen:
+            raise ValueError(f"duplicate category {category!r}")
+        seen.add(category)
+    return values
+
+
+def _read_taxonomy(path: Path) -> object:
+    """Read the taxonomy file at ``path``; raise ``TaxonomyInvalidError`` on I/O."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        raise TaxonomyInvalidError("the taxonomy file cannot be read") from None
+    try:
+        return json.loads(text)
+    except ValueError:
+        raise TaxonomyInvalidError("the taxonomy file is not valid JSON") from None
+
+
+def _taxonomy_capture(payload: object) -> tuple[str, datetime]:
+    """Return ``(schema_version, captured_at_utc)`` from a validated payload."""
+    if not isinstance(payload, Mapping):
+        raise TaxonomyInvalidError("the taxonomy payload is not an object")
+    version = payload.get("schema_version")
+    captured = payload.get("captured_at_utc")
+    if not isinstance(version, str) or not version.strip():
+        raise TaxonomyInvalidError("the taxonomy payload declares no schema_version")
+    if not isinstance(captured, str):
+        raise TaxonomyInvalidError("the taxonomy payload declares no captured_at_utc")
+    try:
+        parsed = ensure_utc(
+            datetime.fromisoformat(captured.strip().replace("Z", "+00:00"))
+        )
+    except ValueError:
+        raise TaxonomyInvalidError(
+            "the taxonomy captured_at_utc is not timezone-aware UTC"
+        ) from None
+    return version, parsed
+
+
+def _config_snapshot(config: NicheScoutConfig) -> str:
+    """Serialize the resolved configuration deterministically.
+
+    ``Path`` values become their string form so the payload is JSON-serializable.
+    The snapshot is the preimage of ``config_sha256`` and contains no credential.
+    """
+    snapshot: dict[str, object] = {}
+    for field in fields(config):
+        value = getattr(config, field.name)
+        snapshot[field.name] = str(value) if isinstance(value, Path) else value
+    return json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
+
+
+def _seed_preflight_summary(
+    *, correlation_mode: GraphQLOperationCorrelationMode, endpoint: str
+) -> str:
+    """Seed the ``NOT NULL`` ``identity_preflight_summary_json`` at insert.
+
+    The frozen key set (interfaces/chunk-6A.md §5.5) with ``status =
+    "insufficient"`` and zero counts; 6A overwrites it with the executed result.
+    """
+    return IdentityPreflightSummary(
+        status=IdentityPreflightStatus.INSUFFICIENT.value,
+        attempted_unique_identities=0,
+        successful_unique_identities=0,
+        conflicting_unique_identities=0,
+        other_failed_unique_identities=0,
+        success_rate=None,
+        conflict_rate=None,
+        graphql_operation_correlation_mode=correlation_mode.value,
+        graphql_endpoint_signature=graphql_endpoint_signature(endpoint),
+        identity_mapping_rule_version=IDENTITY_MAPPING_RULE_VERSION,
+        selected_category_count=0,
+        eligible_category_count=0,
+        reduced_coverage=False,
+        category_shortfall=0,
+        asset_shortfall=0,
+        diagnostic_summary_json=None,
+    ).to_json()
+
+
+def _failed_discovery_result(category: str) -> CategoryDiscoveryResult:
+    """Return the isolated per-category result for an unexpected adapter failure."""
+    return CategoryDiscoveryResult(
+        category=category,
+        discovery_status=DiscoveryStatus.REQUEST_FAILED,
+        ordinal_start=0,
+        ordinal_end=0,
+        observations_emitted=0,
+        canonical_identity_count=0,
+        unresolved_identity_count=0,
+        conflict_identity_count=0,
+        duplicate_observation_count=0,
+        pages_fetched=0,
+        total_count=None,
+        api_reported_count=None,
+        filter_status=CategoryFilterValidationStatus.UNVERIFIED,
+        conditions=(DiscoveryStatus.REQUEST_FAILED,),
+        issues=(),
+    )
+
+
+def _page_view_status(
+    repository: SqliteRepository, run_id: str
+) -> PageViewSemanticsStatus:
+    """Read the run-level page-view semantics status (one source of truth)."""
+    record = repository.get_run(run_id)
+    if record is None:
+        raise PipelineError("the runs row is missing")
+    try:
+        return PageViewSemanticsStatus(record.page_view_semantics_status)
+    except ValueError:
+        raise PipelineError(
+            "runs.page_view_semantics_status is not a known status"
+        ) from None
+
+
+# --------------------------------------------------------------------------
+# Warning, missing-component, and sensitivity JSON helpers (bounded §5.6)
+# --------------------------------------------------------------------------
+
+
+def _warning_codes(
+    *,
+    discovery: CategoryDiscoveryResult | None,
+    preflight_status: str,
+    decision: Any,
+    sensitivity_warning: bool | None,
+    page_view_status: PageViewSemanticsStatus,
+) -> tuple[str, ...]:
+    """Return the warning codes this run observed for one category.
+
+    Code values are ``models.WarningCode`` members (SRS Appendix C vocabulary)
+    plus the preflight/limitation codes named in the run's own fields. The result
+    is deduplicated and sorted at serialization, so it never depends on set or
+    dict iteration order. No identity, category, or secret is included.
+    """
+    codes: list[str] = []
+    if discovery is not None:
+        for condition in discovery.conditions:
+            if condition is DiscoveryStatus.TRUNCATED:
+                codes.append(WarningCode.DISCOVERY_TRUNCATED.value)
+            elif condition in (
+                DiscoveryStatus.PAGE_FAILED,
+                DiscoveryStatus.REQUEST_FAILED,
+            ):
+                codes.append(WarningCode.DISCOVERY_PAGE_FAILED.value)
+            elif condition is DiscoveryStatus.FILTER_UNVERIFIED:
+                codes.append(WarningCode.DISCOVERY_FILTER_UNVERIFIED.value)
+            elif condition is DiscoveryStatus.CATEGORY_MISMATCH:
+                codes.append(WarningCode.CATEGORY_MISMATCH.value)
+            elif condition is DiscoveryStatus.IDENTITY_INCOMPLETE:
+                if discovery.unresolved_identity_count:
+                    codes.append(WarningCode.IDENTITY_UNRESOLVED.value)
+                if discovery.conflict_identity_count:
+                    codes.append(WarningCode.IDENTITY_CONFLICT.value)
+    if preflight_status in (
+        IdentityPreflightStatus.FAILED.value,
+        IdentityPreflightStatus.INSUFFICIENT.value,
+    ):
+        codes.append(WarningCode.IDENTITY_PREFLIGHT_FAILED.value)
+    if page_view_status is PageViewSemanticsStatus.CONTRADICTED:
+        codes.append(WarningCode.PAGE_VIEW_SEMANTICS_CONTRADICTED.value)
+    if decision is not None:
+        for reason in decision.not_rankable_reasons:
+            if reason is scoring.NotRankableReason.REQUIRED_DEMAND_DATA_UNAVAILABLE:
+                codes.append(WarningCode.INSUFFICIENT_DEMAND_SAMPLE.value)
+            elif reason is scoring.NotRankableReason.RECENT_SUPPLY_MINIMUM_NOT_MET:
+                codes.append(WarningCode.INSUFFICIENT_RECENT_SAMPLE.value)
+            elif reason is scoring.NotRankableReason.QUALITY_UNAVAILABLE:
+                codes.append(WarningCode.INSUFFICIENT_QUALITY_SAMPLE.value)
+            elif reason is scoring.NotRankableReason.PAGE_VIEW_SEMANTICS_CONTRADICTED:
+                codes.append(WarningCode.PAGE_VIEW_SEMANTICS_CONTRADICTED.value)
+            elif reason in (
+                scoring.NotRankableReason.NO_VALID_LEAVE_ONE_OUT_REFERENCE,
+                scoring.NotRankableReason.FIELD_REFERENCE_SUPPORT_INSUFFICIENT,
+            ):
+                codes.append(WarningCode.REFERENCE_SET_SMALL.value)
+    if sensitivity_warning is True:
+        codes.append(WarningCode.RANKING_SENSITIVITY_HIGH.value)
+    return tuple(codes)
+
+
+def _warnings_json(codes: Sequence[str]) -> str:
+    """Serialize warning codes: unique, ascending lexical, compact JSON."""
+    return json.dumps(sorted(set(codes)), separators=(",", ":"))
+
+
+def _missing_components_json(score: Any) -> str:
+    """Serialize the missing component keys in the fixed weight-key order."""
+    values = {
+        "D": None if score is None else score.component_d,
+        "C": None if score is None else score.component_c,
+        "R": None if score is None else score.component_r,
+        "Q": None if score is None else score.component_q,
+    }
+    missing = [key for key in scoring.COMPONENT_WEIGHT_KEYS if values[key] is None]
+    return json.dumps(missing, separators=(",", ":"))
+
+
+def _reference_usable_counts_json(reference: Any) -> str:
+    """Serialize the leave-one-out field usable counts deterministically."""
+    return json.dumps(
+        asdict(reference.field_usable_counts),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _ranking_sensitivity_json(sensitivity: Any) -> str:
+    """Serialize the run-level sensitivity diagnostics (LREQ-SEN-020)."""
+    payload = {
+        "policies": list(sensitivity.policies),
+        "ranked_categories": list(sensitivity.ranked_categories),
+        "categories": [asdict(row) for row in sensitivity.categories],
+        "reference_set_size": sensitivity.reference_set_size,
+        "displacement_threshold": sensitivity.displacement_threshold,
+        "top_3_stability": sensitivity.top_3_stability,
+        "top_5_stability": sensitivity.top_5_stability,
+        "maximum_score_delta": sensitivity.maximum_score_delta,
+        "maximum_rank_displacement": sensitivity.maximum_rank_displacement,
+        "warning": sensitivity.warning,
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+# --------------------------------------------------------------------------
+# Metric and pre-sensitivity input builders
+# --------------------------------------------------------------------------
+
+
+def _breadth_verified_total(discovery: CategoryDiscoveryResult | None) -> int | None:
+    """Return the endpoint ``totalCount`` only when it is a verified complete read.
+
+    The total is supplied to Chunk 7B only when the filter verdict is
+    ``verified``, the count is present, and the terminal status is not
+    ``truncated``: a truncated read conceals part of the endpoint, so its
+    competition is not a complete observation (SRS §4.1, §8.2).
+    """
+    if discovery is None:
+        return None
+    if discovery.discovery_status is DiscoveryStatus.TRUNCATED:
+        return None
+    if discovery.filter_status is not CategoryFilterValidationStatus.VERIFIED:
+        return None
+    return discovery.total_count
+
+
+def _stratum_inputs(
+    repository: SqliteRepository, run_id: str, category: CategorySamplingResult
+) -> tuple[StratumMetricInput, ...]:
+    """Build the Chunk 7B per-stratum inputs from the persisted observations.
+
+    A sampled member with no persisted observation is an unrecoverable
+    data-integrity failure; it is never substituted with a zero-valued
+    observation. The error names the category and column only.
+    """
+    ranked: dict[int, list[tuple[int, MetricObservation]]] = {}
+    for member in category.members:
+        record = repository.get_enrichment_observation(
+            run_id, member.asset_identity_key
+        )
+        if record is None:
+            raise PipelineError(
+                f"category {category.category!r}: enrichment_observations"
+            )
+        ranked.setdefault(member.stratum_index, []).append(
+            (member.sample_rank_within_stratum, _metric_observation(record))
+        )
+    inputs: list[StratumMetricInput] = []
+    for stratum in sorted(category.strata, key=lambda item: item.stratum_index):
+        ordered = sorted(
+            ranked.get(stratum.stratum_index, ()), key=lambda item: item[0]
+        )
+        observations = tuple(observation for _, observation in ordered)
+        if len(observations) != stratum.selected_count:
+            raise PipelineError(f"category {category.category!r}: sample_members")
+        inputs.append(
+            StratumMetricInput(
+                stratum_index=stratum.stratum_index,
+                discovered_population_count=stratum.population_count,
+                sampled_population_count=stratum.selected_count,
+                observations=observations,
+            )
+        )
+    return tuple(inputs)
+
+
+def _presensitivity_input(
+    *,
+    metric: Any,
+    discovery: CategoryDiscoveryResult | None,
+    page_view_status: PageViewSemanticsStatus,
+    reference: Any,
+) -> Any:
+    """Build one Chunk 9A input from already-classified discovery and metric facts."""
+    if discovery is None:
+        discovery_status = DiscoveryStatus.REQUEST_FAILED
+        filter_verified = False
+        unresolved = 0
+        conflict = 0
+        bounded = False
+    else:
+        discovery_status = discovery.discovery_status
+        filter_verified = (
+            discovery.filter_status is CategoryFilterValidationStatus.VERIFIED
+        )
+        unresolved = discovery.unresolved_identity_count
+        conflict = discovery.conflict_identity_count
+        bounded = _breadth_verified_total(discovery) is not None
+    return scoring.PreSensitivityCategoryInput(
+        category=metric.category,
+        discovery_status=discovery_status,
+        discovery_filter_verified=filter_verified,
+        discovery_unresolved_identity_count=unresolved,
+        discovery_conflict_count=conflict,
+        discovery_bounded_by_verified_total=bounded,
+        page_view_semantics_status=page_view_status,
+        breadth_source=metric.breadth_source,
+        breadth_completeness_status=metric.breadth_completeness_status,
+        demand_stratum_eligibility_coverage=(
+            metric.demand_stratum_eligibility_coverage
+        ),
+        recent_supply_stratum_eligibility_coverage=(
+            metric.recent_supply_stratum_eligibility_coverage
+        ),
+        quality_stratum_eligibility_coverage=(
+            metric.quality_stratum_eligibility_coverage
+        ),
+        reference_size=reference.reference_size,
+        field_usable_counts=reference.field_usable_counts,
+    )
+
+
+def _distinct_discovered_canonical(
+    repository: SqliteRepository, run_id: str, categories: Sequence[str]
+) -> int:
+    """Return the run-wide distinct resolved canonical identity count."""
+    keys: set[str] = set()
+    for category in categories:
+        for observation in repository.iter_raw_discovery_observations(
+            run_id, category
+        ):
+            key = observation.asset_identity_key
+            if key is not None and not observation.is_duplicate:
+                keys.add(key)
+    return len(keys)
+
+
+def _discover_all(
+    *,
+    repository: SqliteRepository,
+    run_id: str,
+    categories: Sequence[str],
+    payload: object,
+    config: NicheScoutConfig,
+    credentials: Credentials,
+    reference_utc: datetime,
+    coveo_transport: Any,
+    template_path: "Path | str",
+    sleeper: Callable[[float], None],
+    clock: Callable[[], datetime],
+    limiter: CoveoRateLimiter,
+) -> dict[str, CategoryDiscoveryResult]:
+    """Discover every category, isolating a failure to its own transaction.
+
+    The Chunk 3 adapter already records a per-category failure as its
+    ``CategoryDiscoveryResult`` and persists its own ``set_category_status``
+    inside one ``category_transaction``. An unexpected adapter exception is
+    caught here, recorded as ``request_failed`` for that category only, and never
+    aborts a sibling category (LREQ-NFR-030).
+    """
+    results: dict[str, CategoryDiscoveryResult] = {}
+    for category in categories:
+        sink = CoveoObservationSink(
+            repository, run_id, category, clock=clock, taxonomy=payload
+        )
+        try:
+            result = discover_category(
+                category,
+                payload,
+                config=config,
+                credentials=credentials,
+                reference_utc=reference_utc,
+                sink=sink,
+                transport=coveo_transport,
+                sleeper=sleeper,
+                clock=clock,
+                run_id=run_id,
+                template_path=template_path,
+                shared_limiter=limiter,
+            )
+        except Exception:
+            with repository.transaction():
+                repository.set_category_status(
+                    run_id,
+                    category,
+                    DiscoveryStatus.REQUEST_FAILED.value,
+                    computed_at_utc=clock(),
+                )
+            result = _failed_discovery_result(category)
+        results[category] = result
+    return results
+
+
+def _persist_failure_limitation_rows(
+    *,
+    repository: SqliteRepository,
+    run_id: str,
+    categories: Sequence[str],
+    discovery_by_category: Mapping[str, CategoryDiscoveryResult],
+    preflight_status: str,
+    page_view_status: PageViewSemanticsStatus,
+    clock: Callable[[], datetime],
+) -> tuple[int, tuple[str, ...]]:
+    """Persist one null-score limitation row per requested category.
+
+    Each row carries the discovery/sampling fields it already holds,
+    ``evidence_grade = insufficient``, ``rankability_status = not_rankable``, the
+    four-component missing vector, and explicit preflight warnings. Returns the
+    number of rows written and the redacted per-category limitation strings.
+    """
+    persisted = {
+        row.category: row for row in repository.get_category_scores(run_id)
+    }
+    rows: list[CategoryScoreRecord] = []
+    limitations: list[str] = []
+    for category in categories:
+        base = persisted.get(category)
+        if base is None:
+            repository.set_category_status(
+                run_id,
+                category,
+                DiscoveryStatus.REQUEST_FAILED.value,
+                computed_at_utc=clock(),
+            )
+            base = next(
+                (
+                    row
+                    for row in repository.get_category_scores(run_id)
+                    if row.category == category
+                ),
+                None,
+            )
+            if base is None:
+                raise PipelineError(f"category {category!r}: category_scores")
+        discovery = discovery_by_category.get(category)
+        codes = _warning_codes(
+            discovery=discovery,
+            preflight_status=preflight_status,
+            decision=None,
+            sensitivity_warning=None,
+            page_view_status=page_view_status,
+        )
+        rows.append(
+            replace(
+                base,
+                component_d=None,
+                component_c=None,
+                component_r=None,
+                component_q=None,
+                market_opportunity_score=None,
+                score_state=ScoreState.UNAVAILABLE.value,
+                evidence_grade=EvidenceGrade.INSUFFICIENT.value,
+                rankability_status=RankabilityStatus.NOT_RANKABLE.value,
+                missing_components_json=_missing_components_json(None),
+                warnings_json=_warnings_json(codes),
+                top_3_stability=None,
+                top_5_stability=None,
+                maximum_score_delta=None,
+                maximum_rank_displacement=None,
+                sensitivity_warning=None,
+                ranking_sensitivity_json="{}",
+                computed_at_utc=clock(),
+            )
+        )
+        limitations.append(f"category {category!r}: identity_preflight_status")
+    with repository.transaction():
+        written = repository.upsert_category_scores(rows)
+    return written, tuple(limitations)
+
+
+def _build_scored_rows(
+    *,
+    repository: SqliteRepository,
+    run_id: str,
+    run: RunSamplingResult,
+    discovery_by_category: Mapping[str, CategoryDiscoveryResult],
+    preflight_status: IdentityPreflightStatus,
+    page_view_status: PageViewSemanticsStatus,
+    all_metrics: Sequence[Any],
+    scores: Sequence[Any],
+    references: Mapping[str, Any],
+    inputs: Sequence[Any],
+    candidates: Any,
+    sensitivity: Any,
+    finalization_mismatches: Sequence[str],
+    clock: Callable[[], datetime],
+) -> tuple[list[CategoryScoreRecord], tuple[str, ...]]:
+    """Build the final per-category rows from the pure scoring results.
+
+    Re-derives no 6A/6B/7A/7B/8/9A/9B output: it consumes the already-computed
+    metric, score, reference, candidate, and sensitivity results. The returned
+    rows carry the persisted discovery/sampling columns forward and write the
+    scoring-phase columns.
+    """
+    sensitivity_rows = {row.category: row for row in sensitivity.categories}
+    decision_by_category = {
+        decision.category: decision for decision in candidates.decisions
+    }
+    input_by_category = {item.category: item for item in inputs}
+    metric_by_category = {metric.category: metric for metric in all_metrics}
+    score_by_category = {
+        metric.category: score
+        for metric, score in zip(all_metrics, scores, strict=True)
+    }
+
+    persisted = {
+        row.category: row for row in repository.get_category_scores(run_id)
+    }
+    rows: list[CategoryScoreRecord] = []
+    limitations: list[str] = list(finalization_mismatches)
+    for category in run.categories:
+        base = persisted.get(category.category)
+        if base is None:
+            raise PipelineError(f"category {category.category!r}: category_scores")
+        discovery = discovery_by_category[category.category]
+        metric = metric_by_category[category.category]
+        score = score_by_category[category.category]
+        decision = decision_by_category[category.category]
+        reference = references[category.category]
+        sens_row = sensitivity_rows.get(category.category)
+        sens_warning = sens_row.warning if sens_row is not None else None
+        sample_facts = scoring.SampleEvidenceFacts(
+            category=category.category,
+            sample_is_census=category.sample_is_census,
+            discovered_population_count=category.discovered_population_count,
+            usable_demand_sample_count=metric.usable_demand_sample_count,
+            usable_recent_supply_sample_count=(
+                metric.usable_recent_supply_sample_count
+            ),
+            usable_quality_sample_count=metric.usable_quality_sample_count,
+        )
+        grade = scoring.final_evidence_grade(
+            input_by_category[category.category],
+            sample_facts,
+            decision,
+            run_category_count=len(all_metrics),
+            sensitivity_warning=sens_warning,
+        )
+        rank = scoring.final_rankability_status(
+            decision, sensitivity_warning=sens_warning
+        )
+        codes = _warning_codes(
+            discovery=discovery,
+            preflight_status=preflight_status.value,
+            decision=decision,
+            sensitivity_warning=sens_warning,
+            page_view_status=page_view_status,
+        )
+        roll_up = category_status_for(
+            base.discovery_status,
+            warnings=codes,
+            evidence_grade=grade.value,
+            rankability_status=rank.value,
+        )
+        if roll_up is not CategoryStatus.HEALTHY:
+            limitations.append(f"category {category.category!r}: discovery_status")
+        rows.append(
+            replace(
+                base,
+                discovery_filter_verified=(
+                    discovery is not None
+                    and discovery.filter_status
+                    is CategoryFilterValidationStatus.VERIFIED
+                ),
+                discovery_unresolved_identity_count=(
+                    0 if discovery is None else discovery.unresolved_identity_count
+                ),
+                discovery_conflict_count=(
+                    0 if discovery is None else discovery.conflict_identity_count
+                ),
+                discovery_duplicate_count=(
+                    0 if discovery is None else discovery.duplicate_observation_count
+                ),
+                usable_demand_sample_count=metric.usable_demand_sample_count,
+                usable_recent_supply_sample_count=(
+                    metric.usable_recent_supply_sample_count
+                ),
+                usable_quality_sample_count=metric.usable_quality_sample_count,
+                breadth_source=metric.breadth_source.value,
+                breadth_completeness_status=(
+                    metric.breadth_completeness_status.value
+                ),
+                discovery_bounded_by_verified_total=(
+                    _breadth_verified_total(discovery) is not None
+                ),
+                demand_stratum_eligibility_coverage=(
+                    metric.demand_stratum_eligibility_coverage
+                ),
+                recent_supply_stratum_eligibility_coverage=(
+                    metric.recent_supply_stratum_eligibility_coverage
+                ),
+                quality_stratum_eligibility_coverage=(
+                    metric.quality_stratum_eligibility_coverage
+                ),
+                demand_per_asset_raw=metric.raw.demand_per_asset_raw,
+                demand_median_raw=metric.raw.demand_median_raw,
+                breadth_raw=metric.raw.breadth_raw,
+                recent_share_raw=metric.raw.recent_share_raw,
+                median_age_raw=metric.raw.median_age_raw,
+                quality_raw=metric.raw.quality_raw,
+                component_d=score.component_d,
+                component_c=score.component_c,
+                component_r=score.component_r,
+                component_q=score.component_q,
+                market_opportunity_score=score.market_opportunity_score,
+                score_state=score.score_state.value,
+                evidence_grade=grade.value,
+                rankability_status=rank.value,
+                missing_components_json=_missing_components_json(score),
+                warnings_json=_warnings_json(codes),
+                reference_size=reference.reference_size,
+                reference_usable_counts_json=_reference_usable_counts_json(
+                    reference
+                ),
+                top_3_stability=sensitivity.top_3_stability,
+                top_5_stability=sensitivity.top_5_stability,
+                maximum_score_delta=sensitivity.maximum_score_delta,
+                maximum_rank_displacement=sensitivity.maximum_rank_displacement,
+                sensitivity_warning=sens_warning,
+                ranking_sensitivity_json=_ranking_sensitivity_json(sensitivity),
+                computed_at_utc=clock(),
+            )
+        )
+    return rows, tuple(limitations)
+
+
+def run_pipeline(
+    *,
+    config: NicheScoutConfig,
+    categories: Sequence[str],
+    credentials: Credentials,
+    repository: SqliteRepository,
+    clock: Callable[[], datetime],
+    coveo_transport: Any,
+    graphql_transport: GraphQLTransport,
+    sleeper: Callable[[float], None] = time.sleep,
+    run_id: str | None = None,
+    taxonomy_path: Path | None = None,
+    template_path: "Path | str" = COVEO_TEMPLATE_PATH,
+    correlation_mode: GraphQLOperationCorrelationMode = (
+        GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    ),
+    preflight_policy: PreflightPolicy | None = None,
+    retry_policy: GraphQLRetryPolicy = GraphQLRetryPolicy(),
+    taxonomy_sha256: str | None = None,
+) -> PipelineResult:
+    """Execute one complete run in the SRS-prescribed order (Chunk 10).
+
+    See ``Documents/plans/chunk-10-pipeline-orchestration.md`` §5.1 for the
+    normative sequence. The pipeline never calls ``sys.exit`` and never reads the
+    system clock: every timestamp comes from the injected ``clock``; every
+    transport and the sleeper are caller-injected. Configuration, credentials,
+    and taxonomy are validated before any transport call. A failed or
+    ``insufficient`` preflight returns ``status = failed`` after persisting one
+    null-score limitation row per requested category, and never overwrites an
+    existing ``failed`` run status with ``completed``.
+    """
+    requested = _validate_requested_categories(categories)
+    if len(requested) < MIN_CATEGORIES_PER_RUN:
+        raise PipelineConfigurationError(
+            "a run with fewer than "
+            f"{MIN_CATEGORIES_PER_RUN} requested categories is rejected "
+            "before ranking"
+        )
+    try:
+        credentials.require_for_collection()
+    except ValueError as exc:
+        raise PipelineConfigurationError(str(exc)) from None
+
+    policy = (
+        preflight_policy
+        if preflight_policy is not None
+        else preflight_policy_from_config(config)
+    )
+
+    taxonomy_reference_utc = clock()
+    resolved_taxonomy_path = (
+        taxonomy_path if taxonomy_path is not None else config.taxonomy_path
+    )
+    payload = _read_taxonomy(resolved_taxonomy_path)
+    validation = validate_taxonomy(
+        payload,
+        requested_categories=requested,
+        reference_utc=taxonomy_reference_utc,
+        max_taxonomy_age_days=config.max_taxonomy_age_days,
+    )
+    if not validation.is_valid or validation.is_fresh is not True:
+        raise TaxonomyInvalidError(
+            f"the taxonomy did not validate (status {validation.status!r})"
+        )
+    taxonomy_version, taxonomy_captured_at_utc = _taxonomy_capture(payload)
+
+    if taxonomy_sha256 is not None:
+        if not isinstance(taxonomy_sha256, str) or not taxonomy_sha256.strip():
+            raise ValueError("taxonomy_sha256 must be a non-empty string")
+        taxonomy_hash = taxonomy_sha256
+    else:
+        taxonomy_hash = taxonomy_sha256_for(payload)
+
+    run_started_at_utc = clock()
+    resolved_run_id = (
+        run_id
+        if run_id is not None
+        else f"run-{run_started_at_utc.isoformat()}"
+    )
+    config_snapshot_json = _config_snapshot(config)
+    repository.insert_run(
+        RunRecord(
+            run_id=resolved_run_id,
+            run_started_at_utc=run_started_at_utc,
+            scoring_cutoff_utc=None,
+            completed_at_utc=None,
+            categories_json=json.dumps(list(requested)),
+            config_snapshot_json=config_snapshot_json,
+            config_sha256=hashlib.sha256(
+                config_snapshot_json.encode("utf-8")
+            ).hexdigest(),
+            taxonomy_version=taxonomy_version,
+            taxonomy_captured_at_utc=taxonomy_captured_at_utc,
+            taxonomy_sha256=taxonomy_hash,
+            endpoint_contract_version=ENDPOINT_CONTRACT_VERSION,
+            identity_mapping_rule_version=IDENTITY_MAPPING_RULE_VERSION,
+            sampling_rule_version=SAMPLING_RULE_VERSION,
+            page_view_semantics_status=PageViewSemanticsStatus.UNVALIDATED.value,
+            graphql_operation_correlation_mode=correlation_mode.value,
+            identity_preflight_status=IdentityPreflightStatus.INSUFFICIENT.value,
+            identity_preflight_summary_json=_seed_preflight_summary(
+                correlation_mode=correlation_mode,
+                endpoint=GRAPHQL_BATCH_ENDPOINT,
+            ),
+            status=RunStatus.RUNNING.value,
+        )
+    )
+
+    discovery_by_category = _discover_all(
+        repository=repository,
+        run_id=resolved_run_id,
+        categories=requested,
+        payload=payload,
+        config=config,
+        credentials=credentials,
+        reference_utc=taxonomy_reference_utc,
+        coveo_transport=coveo_transport,
+        template_path=template_path,
+        sleeper=sleeper,
+        clock=clock,
+        limiter=CoveoRateLimiter(sleeper),
+    )
+
+    records_by_category: dict[str, tuple[DiscoveryPopulationRecord, ...]] = {}
+    for category in requested:
+        records_by_category[category] = tuple(
+            DiscoveryPopulationRecord(
+                discovery_ordinal=observation.discovery_ordinal,
+                asset_identity_key=observation.asset_identity_key,
+                is_duplicate=bool(observation.is_duplicate),
+            )
+            for observation in repository.iter_raw_discovery_observations(
+                resolved_run_id, category
+            )
+        )
+    run = select_run_sample(records_by_category, run_id=resolved_run_id)
+    with repository.transaction():
+        persist_run_sampling(repository, run, computed_at_utc=clock())
+
+    preflight_outcome = run_identity_preflight(
+        repository,
+        run,
+        credentials=credentials,
+        transport=graphql_transport,
+        correlation_mode=correlation_mode,
+        retrieved_at_utc=clock(),
+        policy=policy,
+        retry_policy=retry_policy,
+        sleep=sleeper,
+    )
+    preflight_status = preflight_outcome.status
+    page_view_status = _page_view_status(repository, resolved_run_id)
+
+    if preflight_status is not IdentityPreflightStatus.PASSED:
+        current = repository.get_run(resolved_run_id)
+        if current is None or current.status != RunStatus.FAILED.value:
+            repository.update_run_status(resolved_run_id, RunStatus.FAILED.value)
+        written, limitations = _persist_failure_limitation_rows(
+            repository=repository,
+            run_id=resolved_run_id,
+            categories=requested,
+            discovery_by_category=discovery_by_category,
+            preflight_status=preflight_status.value,
+            page_view_status=page_view_status,
+            clock=clock,
+        )
+        return PipelineResult(
+            run_id=resolved_run_id,
+            status=RunStatus.FAILED.value,
+            scoring_cutoff_utc=None,
+            categories=requested,
+            identity_preflight_status=preflight_status.value,
+            category_scores_written=written,
+            limitations=limitations,
+        )
+
+    already_enriched_keys = {
+        key
+        for key in run.enrichment_identity_keys
+        if repository.get_enrichment_observation(resolved_run_id, key) is not None
+    }
+    union = compute_enrichment_union(
+        run, already_enriched_keys=already_enriched_keys
+    )
+    projection = build_enrichment_projection(
+        union,
+        discovered_canonical_assets=_distinct_discovered_canonical(
+            repository, resolved_run_id, requested
+        ),
+        sampled_assets=len(union.members),
+        per_request_interval_seconds=retry_policy.min_request_interval_seconds,
+    )
+    enrich_unique_identities(
+        repository,
+        run,
+        preflight_status=preflight_status.value,
+        credentials=credentials,
+        transport=graphql_transport,
+        correlation_mode=correlation_mode,
+        retrieved_at_utc=clock(),
+        union=union,
+        projection=projection,
+        retry_policy=retry_policy,
+        sleep=sleeper,
+    )
+
+    cutoff = capture_scoring_cutoff_utc(clock())
+    repository.update_run_scoring_cutoff(resolved_run_id, cutoff)
+
+    finalization = finalize_enrichment(
+        repository,
+        run,
+        scoring_cutoff_utc=cutoff,
+        computed_at_utc=clock(),
+        page_view_semantics_status=page_view_status,
+        union=union,
+    )
+
+    metrics: list[Any] = []
+    for category in run.categories:
+        discovery = discovery_by_category[category.category]
+        metric_input = CategoryMetricInput(
+            category=category.category,
+            scoring_cutoff_utc=cutoff,
+            page_view_semantics_status=page_view_status,
+            strata=_stratum_inputs(repository, resolved_run_id, category),
+            min_usable_samples_per_stratum=config.min_usable_samples_per_stratum,
+            min_age_days_for_rate=config.min_age_days_for_rate,
+            recent_window_days=config.recent_window_days,
+            quality_min_rating_count=config.quality_min_rating_count,
+            quality_min_eligible_assets=config.quality_min_eligible_assets,
+        )
+        metrics.append(
+            compute_category_raw_metrics(
+                metric_input,
+                BreadthMetricInput(
+                    verified_total_count=_breadth_verified_total(discovery),
+                    distinct_canonical_discovered_count=(
+                        0 if discovery is None else discovery.canonical_identity_count
+                    ),
+                ),
+            )
+        )
+    all_metrics = tuple(metrics)
+    scores = tuple(
+        scoring.score_category(
+            metric, all_metrics, page_view_semantics_status=page_view_status
+        )
+        for metric in all_metrics
+    )
+    references = {
+        metric.category: scoring.leave_one_out_reference(all_metrics, metric.category)
+        for metric in all_metrics
+    }
+    inputs = tuple(
+        _presensitivity_input(
+            metric=metric,
+            discovery=discovery_by_category[metric.category],
+            page_view_status=page_view_status,
+            reference=references[metric.category],
+        )
+        for metric in all_metrics
+    )
+    candidates = scoring.build_base_rankable_candidates(
+        all_metrics,
+        inputs,
+        scores,
+        identity_preflight_status=preflight_status,
+    )
+    sensitivity = scoring.evaluate_sensitivity(
+        candidates,
+        all_metrics,
+        scores,
+        reference_set_size=candidates.run_category_count - 1,
+    )
+
+    rows, limitations = _build_scored_rows(
+        repository=repository,
+        run_id=resolved_run_id,
+        run=run,
+        discovery_by_category=discovery_by_category,
+        preflight_status=preflight_status,
+        page_view_status=page_view_status,
+        all_metrics=all_metrics,
+        scores=scores,
+        references=references,
+        inputs=inputs,
+        candidates=candidates,
+        sensitivity=sensitivity,
+        finalization_mismatches=finalization.mismatches,
+        clock=clock,
+    )
+    with repository.transaction():
+        written = repository.upsert_category_scores(rows)
+
+    current = repository.get_run(resolved_run_id)
+    if current is not None and current.status == RunStatus.FAILED.value:
+        final_status = RunStatus.FAILED.value
+    else:
+        repository.update_run_status(
+            resolved_run_id,
+            RunStatus.COMPLETED.value,
+            completed_at_utc=clock(),
+        )
+        final_status = RunStatus.COMPLETED.value
+
+    return PipelineResult(
+        run_id=resolved_run_id,
+        status=final_status,
+        scoring_cutoff_utc=cutoff,
+        categories=requested,
+        identity_preflight_status=preflight_status.value,
+        category_scores_written=written,
+        limitations=limitations,
+    )

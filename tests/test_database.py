@@ -17,6 +17,7 @@ JSON/timestamp round trips. Assertions follow the observed behavior of
 from __future__ import annotations
 
 import ast
+import dataclasses
 import importlib
 import json
 import sqlite3
@@ -2170,3 +2171,65 @@ def test_category_isolation_preserves_unrelated_observations(
                 )
         assert repository.count_raw_discovery_observations(run_record.run_id, first) == 1
         assert repository.count_discovery_observations(run_record.run_id) == 2
+
+
+# ---------------------------------------------------------------------------
+# LREQ-ARCH-030 — the runs provenance hash rejects an empty or whitespace value
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_runs_taxonomy_sha256_empty_is_rejected(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """An empty or whitespace ``taxonomy_sha256`` never persists.
+
+    Dependency-map §7 assigns the unmet ``runs.taxonomy_sha256`` obligation to
+    Chunk 10: the persistence layer rejects only ``None``, not ``""``, so an
+    empty provenance hash would persist silently. The guard is additive and
+    scoped to the ``runs`` table's non-nullable provenance strings; a valid
+    64-character lowercase-hex value still round-trips unchanged.
+    """
+    database = tmp_path / "niche_scout.sqlite3"
+    with SqliteRepository(database) as repository:
+        for rejected_value in ("", "   ", "\t\n"):
+            rejected = dataclasses.replace(run_record, taxonomy_sha256=rejected_value)
+            with pytest.raises(InvalidRecordValueError) as error:
+                repository.insert_run(rejected)
+            # The message names the table and column only: never the value.
+            # An empty needle is deliberately skipped (which is correct for
+            # ``""``? No: the guard is on the stored value, and the message must
+            # not echo a whitespace value either).
+            message = str(error.value)
+            assert "runs" in message
+            assert "taxonomy_sha256" in message
+            if rejected_value.strip():
+                assert rejected_value not in message
+            assert message.strip() == message, "the message is not the raw value"
+            assert repository.get_run(run_record.run_id) is None, (
+                "a rejected provenance hash writes nothing"
+            )
+
+        valid = dataclasses.replace(run_record, taxonomy_sha256="a1" * 32)
+        repository.insert_run(valid)
+        stored = repository.get_run(valid.run_id)
+        assert stored is not None
+        assert stored.taxonomy_sha256 == "a1" * 32
+        assert len(stored.taxonomy_sha256) == 64
+        assert stored.taxonomy_sha256 == stored.taxonomy_sha256.lower()
+        assert repository.get_run(valid.run_id) == valid
+
+        # The same guard covers the other provenance/identity string columns.
+        for column in (
+            "taxonomy_version",
+            "endpoint_contract_version",
+            "identity_mapping_rule_version",
+            "sampling_rule_version",
+        ):
+            broken = dataclasses.replace(valid, **{column: "  "})
+            with pytest.raises(InvalidRecordValueError):
+                repository.insert_run(broken)
+
+        # A nullable text column is untouched by the guard: supplying None is
+        # not this error and must not be turned into one.
+        assert stored.scoring_cutoff_utc is not None
