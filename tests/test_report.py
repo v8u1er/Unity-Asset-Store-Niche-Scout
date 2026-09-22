@@ -129,7 +129,11 @@ class _PrimaryTableHTML(HTMLParser):
             self._in_cell = False
             self._buffer = []
             if tag == "th":
-                self.headers.append(text)
+                # Only the primary table's own ``<thead>`` contributes headers;
+                # per-category detail tables are never entered, and ``_section``
+                # distinguishes the header row from any stray ``<th>``.
+                if self._section == "thead":
+                    self.headers.append(text)
             elif self.rows:
                 self.rows[-1].append(text)
         elif tag in ("thead", "tbody"):
@@ -274,6 +278,15 @@ def test_load_run_report_view_orders_ranked_then_unranked(tmp_path):
 def test_primary_table_renders_every_mandatory_column(tmp_path):
     """The rendered primary-table header set is exactly the mandatory label set.
 
+    The oracle is the literal ``expected_labels`` tuple below, transcribed from
+    SRS §10 ``LREQ-RPT-020`` (each entry annotated with the clause it stands
+    for). It is deliberately **not** derived from ``report._PRIMARY_COLUMNS``:
+    comparing against that module constant would be self-referential, because
+    deleting or renaming an entry shrinks the expected set together with both
+    renderers. The rendered HTML ``<th>`` set and the text renderer's header
+    list are checked against this literal; ``_PRIMARY_COLUMNS`` is only a
+    secondary consistency assertion afterwards.
+
     Asserts against the primary table's own header cells (parsed from the HTML
     ``<thead>`` and read from the text renderer's header line), so a missing,
     renamed, duplicated, or extra column fails even when its label is a
@@ -290,17 +303,54 @@ def test_primary_table_renders_every_mandatory_column(tmp_path):
         html = report.render_run_report_html(view)
         text = report.render_run_report_text(view)
 
-        # Every LREQ-RPT-020 column, and only those, as rendered header cells.
-        expected = {label for label, _ in report._PRIMARY_COLUMNS}
+        # Every LREQ-RPT-020 output as its actual rendered header label. Clause
+        # mapping (SRS §10, LREQ-RPT-020), in order:
+        expected_labels = (
+            "category",  # category
+            "rank",  # rank
+            "composite score",  # composite score
+            "D",  # D/C/R/Q (component D)
+            "C",  # D/C/R/Q (component C)
+            "R",  # D/C/R/Q (component R)
+            "Q",  # D/C/R/Q (component Q)
+            "discovered population",  # discovered population
+            "sample size",  # sample size
+            "census flag",  # census flag
+            "unique enrichment count",  # unique enrichment count
+            "sample fraction",  # sample fraction
+            "sampling basis",  # sampling basis
+            "cross-category overlap count",  # cross-category overlap count
+            "usable demand count",  # usable count ... per component (D)
+            "usable recent supply count",  # usable count ... per component (C)
+            "usable quality count",  # usable count ... per component (R)
+            # stratum eligibility coverage per component:
+            "demand stratum eligibility coverage",  # ... (D)
+            "recent supply stratum eligibility coverage",  # ... (C)
+            "quality stratum eligibility coverage",  # ... (R)
+            "evidence grade",  # evidence grade
+            "rankability",  # rankability
+            "discovery status",  # discovery status
+            "page-view semantic status",  # page-view semantic status
+            "top_3_stability",  # top_3_stability
+            "top_5_stability",  # top_5_stability
+            "maximum_score_delta",  # maximum_score_delta
+            "maximum_rank_displacement",  # maximum_rank_displacement
+            "sensitivity warning",  # sensitivity warning
+            # percentage of the category sample shared with other categories:
+            "sample shared with other categories (%)",
+        )
+        expected = set(expected_labels)
+
         html_headers = _PrimaryTableHTML_headers(html)
-        assert set(html_headers) == expected
-        assert len(html_headers) == len(expected)
-        assert _text_primary_headers(text) == [
-            label for label, _ in report._PRIMARY_COLUMNS
-        ]
+        assert tuple(html_headers) == expected_labels
+        assert len(html_headers) == len(expected_labels)
+        assert _text_primary_headers(text) == list(expected_labels)
+        # Secondary consistency: the renderer's own column table agrees with the
+        # literal above (this alone is not the oracle).
+        assert expected == {label for label, _ in report._PRIMARY_COLUMNS}
         # Every expected column has a real cell in a rendered data row.
         width, data_rows, populated_cells = _primary_row_cell_count(html)
-        assert width == len(expected)
+        assert width == len(expected_labels)
         assert data_rows == len(view.categories)
         assert populated_cells == len(expected) * data_rows
         assert len(view.categories) == 2
