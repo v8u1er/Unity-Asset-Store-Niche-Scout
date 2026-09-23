@@ -287,6 +287,90 @@ def test_acceptance_four_stratum_sampling_and_one_enrichment_per_identity(
 
 
 @pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-SMP-050")
+def test_acceptance_four_stratum_sampling_drives_non_census_strata(
+    tmp_path: Path,
+) -> None:
+    """A >100-asset category is sampled across four strata, never a census.
+
+    The acceptance fixture plants a 120-asset category, so SRS §5
+    ``LREQ-SMP-050`` applies: the category is divided into ``SAMPLE_STRATA`` (4)
+    contiguous ordinal strata and ``SAMPLE_PER_STRATUM`` (25) assets are selected
+    from each. Its persisted members therefore span strata 0-3, its
+    ``sampling_basis`` is ``deterministic_stratified_sample`` rather than
+    ``census``, and its persisted ``sample_fraction`` is ``100/120`` -- a value
+    strictly below the census ``1.0`` and not null. The run-wide GraphQL request
+    list contains each uniquely sampled identity exactly once, so a shared or
+    repeated identity never inflates the enrichment count (LREQ-SMP-050; SRS §5.1).
+    """
+    directory = tmp_path / "four-stratum"
+    directory.mkdir()
+    artifacts = afx.four_stratum_artifacts(directory, run_id="run-13-four-stratum")
+    assert _run_command(artifacts) == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        members_by_category = {
+            category: repository.get_sample_members(artifacts.run_id, category)
+            for category in afx.FOUR_STRATUM_CATEGORIES
+        }
+        rows = {
+            row.category: row
+            for row in repository.get_category_scores(artifacts.run_id)
+        }
+    finally:
+        repository.close()
+
+    expected = afx.FOUR_STRATUM_LARGE_EXPECTED
+    large_members = members_by_category[afx.FOUR_STRATUM_LARGE_CATEGORY]
+    by_stratum: dict[int, list[Any]] = {}
+    for member in large_members:
+        by_stratum.setdefault(member.stratum_index, []).append(member)
+
+    assert tuple(sorted(by_stratum)) == expected["stratum_indices"]
+    assert all(
+        len(group) == expected["members_per_stratum"] for group in by_stratum.values()
+    )
+    assert large_members
+    assert all(not member.sample_is_census for member in large_members)
+    assert all(member.selection_digest for member in large_members)
+
+    large_row = rows[afx.FOUR_STRATUM_LARGE_CATEGORY]
+    assert (
+        large_row.discovered_population_count == expected["discovered_population_count"]
+    )
+    assert large_row.enriched_sample_count == expected["enriched_sample_count"]
+    assert not large_row.sample_is_census
+    assert large_row.sampling_basis == expected["sampling_basis"]
+    assert large_row.sample_fraction is not None
+    assert large_row.sample_fraction < 1.0
+    assert large_row.sample_fraction == pytest.approx(
+        expected["sample_fraction"], abs=1e-9
+    )
+
+    # The one-asset categories stay census, so the four-stratum category is a
+    # genuine mixed-basis run rather than a run-wide basis switch.
+    census_rows = [rows[category] for category in afx.FOUR_STRATUM_SMALL_CATEGORIES]
+    assert census_rows
+    assert all(row.sample_is_census for row in census_rows)
+    assert all(
+        row.sampling_basis == models.SamplingBasis.CENSUS.value for row in census_rows
+    )
+    assert all(row.sample_fraction == pytest.approx(1.0) for row in census_rows)
+
+    # One enrichment request per unique sampled identity (SRS §5.1): no identity is
+    # requested twice, and the request set is exactly the sampled union.
+    requested = artifacts.scenario.graphql_transport.requested_identities
+    sampled_union = {
+        member.asset_identity_key
+        for group in members_by_category.values()
+        for member in group
+    }
+    assert len(requested) == len(set(requested))
+    assert set(requested) == sampled_union
+
+
+@pytest.mark.lreq("LREQ-TST-080")
 @pytest.mark.lreq("LREQ-GQL-050")
 def test_acceptance_partial_graphql_failure_retains_valid_operation(
     tmp_path: Path,
@@ -681,14 +765,12 @@ def test_acceptance_completed_run_is_durable_across_connections(
     returns. This node opens a second ``SqliteRepository`` on the same file after
     the CLI closed the run.
 
-    This node currently FAILS and is reported as a runtime defect: the success
-    path's ``update_run_status(..., COMPLETED, completed_at_utc=...)`` is the last
-    write and is not wrapped in ``repository.transaction()``, so it is never
-    committed (the failure path is committed because a later
-    ``upsert_category_scores`` transaction flushes it). On disk the run therefore
-    reads ``status = running`` with ``completed_at_utc = NULL``. The fix belongs to
-    the owning chunk (``pipeline.py`` / ``database.py``); Chunk 13 does not modify
-    runtime code.
+    The success path's terminal ``update_run_status(..., COMPLETED,
+    completed_at_utc=...)`` transition is committed (Chunk 10 remediation commit
+    ``1f0f4fe``), so this node asserts the durability contract directly: a fresh
+    connection on the same SQLite file reads ``status = completed`` with a
+    non-null ``completed_at_utc``. Chunk 13 verifies this frozen behavior and does
+    not modify runtime code.
     """
     artifacts = _scenario(tmp_path, run_id="run-13-durable")
     code = _run_command(artifacts)

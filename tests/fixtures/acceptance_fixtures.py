@@ -48,12 +48,15 @@ from niche_scout.metrics import (
 )
 from niche_scout.models import (
     MIN_CATEGORIES_PER_RUN,
+    SAMPLE_PER_STRATUM,
+    SAMPLE_STRATA,
     STRONG_REFERENCE_CATEGORY_COUNT,
     W_C,
     W_D,
     W_Q,
     W_R,
     PageViewSemanticsStatus,
+    SamplingBasis,
 )
 
 __all__ = [
@@ -62,6 +65,14 @@ __all__ = [
     "CATEGORY_COUNT_TWENTY_ONE",
     "EIGHT_CATEGORY_PROVISIONAL_EXPECTED",
     "FIXED_COMPOSITE_WEIGHTS",
+    "FOUR_STRATUM_CATEGORIES",
+    "FOUR_STRATUM_DISCOVERY_CAP",
+    "FOUR_STRATUM_LARGE_CATEGORY",
+    "FOUR_STRATUM_LARGE_EXPECTED",
+    "FOUR_STRATUM_LARGE_POPULATION",
+    "FOUR_STRATUM_SMALL_CATEGORIES",
+    "FOUR_STRATUM_SMALL_POPULATION",
+    "FourStratumScenario",
     "PROVISIONAL_CANDIDATE_COUNT",
     "SAMPLE_FRACTION_VS_COVERAGE_EXPECTED",
     "SENSITIVITY_AFTER_BASE_CANDIDATES_EXPECTED",
@@ -77,6 +88,13 @@ __all__ = [
     "contradicted_repository_factory",
     "close_opened",
     "eight_category_provisional_vector",
+    "four_stratum_artifacts",
+    "four_stratum_coveo_transport",
+    "four_stratum_graphql_transport",
+    "four_stratum_large_identities",
+    "four_stratum_population_records",
+    "four_stratum_scenario",
+    "four_stratum_small_identities",
     "logical_rows",
     "run_row_categories",
     "sample_fraction_vs_coverage_vector",
@@ -146,12 +164,13 @@ TWO_CATEGORY_REJECTION_CATEGORIES: tuple[str, ...] = two_category_rejection_vect
 # ``STRONG_REFERENCE_CATEGORY_COUNT`` (21) categories gives every target
 # ``reference_size = 21 - 1 = 20`` peers (SRS §8.1 LREQ-NRM-020).
 #
-# The vector fixes every raw field to a single constant per category, so:
+# The vector fixes every raw field to a single constant per category, so all 21
+# categories carry the same value in every field:
 #
-#   * every ``P_ref`` is a midrank against 20 peers,
-#   * the target is the median, so ``L = 10`` and ``E = 0`` (20 distinct
-#     peers: one value below the target and one above, for each of the 10 pairs),
-#     giving ``P_ref = (10 + 0.5 * 0) / 20 = 0.5`` for every field,
+#   * every ``P_ref`` is a midrank against the 20 leave-one-out peers,
+#   * every one of those 20 peers ties the target in every field, so ``L = 0``
+#     and ``E = 20``, giving ``P_ref = (0 + 0.5 * 20) / 20 = 0.5`` for every
+#     field,
 #   * ``D0 = 0.60 * 0.5 + 0.40 * 0.5 = 0.5`` (both demand sub-signals available),
 #   * ``C = clamp(1 - 0.5, 0, 1) = 0.5``,
 #   * ``Rpressure0 = 0.70 * 0.5 + 0.30 * (1 - 0.5) = 0.35 + 0.15 = 0.5``;
@@ -431,14 +450,6 @@ class _ContradictedRepositoryHandle:
     run_id: str
 
 
-@dataclass(frozen=True, slots=True)
-class _ContradictedRepositoryHandle:
-    """The opened wrapper plus the run id it rewrote, for a caller to read back."""
-
-    repository: "ContradictedPageViewRepository"
-    run_id: str
-
-
 class ContradictedPageViewRepository:
     """A ``SqliteRepository`` wrapper that marks one run's page views contradicted.
 
@@ -523,6 +534,235 @@ def close_opened(open_repository: Any) -> None:
     """Close every repository a :func:`contradicted_repository_factory` opened."""
     for repository in list(getattr(open_repository, "opened", ())):
         repository.close()
+
+
+# ---------------------------------------------------------------------------
+# Four-stratum (non-census) acceptance scenario (LREQ-TST-080, LREQ-SMP-050)
+# ---------------------------------------------------------------------------
+#
+# The census scenario reused from ``fixtures.pipeline_fixtures`` cannot exercise
+# four-stratum sampling: every one of its categories holds 0-2 canonical assets,
+# so ``sampling.build_strata`` returns the single census stratum and every member
+# carries ``stratum_index == 0`` with ``sample_is_census`` true. SRS §5
+# ``LREQ-SMP-050`` requires a category with MORE THAN 100 canonical assets to be
+# divided into four contiguous ordinal strata with ``SAMPLE_PER_STRATUM`` selected
+# from each, and ``LREQ-TST-080`` requires the end-to-end fixture to exercise
+# exactly that.
+#
+# This scenario plants one large category with 120 canonical assets, a size that
+# divides evenly by the four fixed strata: stratum ``h`` (zero-based) holds
+# ordinals ``floor(h*120/4)+1 .. floor((h+1)*120/4)`` = 30 assets, the run selects
+# the fixed 25 from each stratum for 100 enriched identities, and the category's
+# ``sample_fraction`` is ``100/120`` -- a value strictly below the census ``1.0``
+# and never null. The seven remaining categories hold one canonical asset each and
+# stay census, so the run is a genuine mixed-basis run at exactly
+# ``MIN_CATEGORIES_PER_RUN`` (8) categories.
+#
+# The discovery read cap is raised to ``FOUR_STRATUM_DISCOVERY_CAP`` (200), above
+# the large category's verified ``totalCount`` (120), so the large category is
+# read to completion across two pages of the fixed endpoint page size instead of
+# being capped into a three-asset truncated census.
+
+FOUR_STRATUM_LARGE_CATEGORY: str = "Category/FourStratum Large"
+"""The >100-asset category that drives four-stratum sampling."""
+
+FOUR_STRATUM_SMALL_CATEGORIES: tuple[str, ...] = tuple(
+    f"Category/FourStratum Small-{index}" for index in range(1, 8)
+)
+"""The seven one-asset census categories that complete the eight-category run."""
+
+FOUR_STRATUM_CATEGORIES: tuple[str, ...] = (
+    FOUR_STRATUM_LARGE_CATEGORY,
+    *FOUR_STRATUM_SMALL_CATEGORIES,
+)
+"""The declared category order handed to ``run_pipeline`` (8 categories)."""
+
+FOUR_STRATUM_LARGE_POPULATION: int = 120
+"""Canonical assets in the large category.
+
+The size exceeds ``ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY`` (100), so the category
+is not a census (SRS §5 ``LREQ-SMP-040``/``LREQ-SMP-050``).
+"""
+
+FOUR_STRATUM_DISCOVERY_CAP: int = 200
+"""The run's read cap: above the large category's verified ``totalCount``."""
+
+FOUR_STRATUM_SMALL_POPULATION: int = 1
+"""Canonical assets in each small census category."""
+
+#: Expected persisted facts for the large category, hand-derived from SRS §5
+#: ``LREQ-SMP-030``/``LREQ-SMP-050``: four strata (``SAMPLE_STRATA``), the fixed
+#: ``SAMPLE_PER_STRATUM`` selected from each, a non-census basis, and
+#: ``sample_fraction = 100/120``.
+FOUR_STRATUM_LARGE_EXPECTED: dict[str, Any] = {
+    "stratum_indices": tuple(range(SAMPLE_STRATA)),
+    "members_per_stratum": SAMPLE_PER_STRATUM,
+    "discovered_population_count": FOUR_STRATUM_LARGE_POPULATION,
+    "enriched_sample_count": SAMPLE_STRATA * SAMPLE_PER_STRATUM,
+    "sample_is_census": False,
+    "sampling_basis": SamplingBasis.DETERMINISTIC_STRATIFIED_SAMPLE.value,
+    "sample_fraction": (SAMPLE_STRATA * SAMPLE_PER_STRATUM)
+    / FOUR_STRATUM_LARGE_POPULATION,
+}
+
+
+def four_stratum_large_identities() -> tuple[str, ...]:
+    """Return the large category's canonical identities in retained ordinal order.
+
+    The keys carry no ``-<digits>`` suffix: under identity mapping rule 1.0.1 a
+    requested identity ending in ``-<digits>`` is canonicalized as a URL's
+    trailing identifier while the returned product-id aliases are not, which would
+    fabricate an identity conflict in the fixture rather than test the pipeline.
+    """
+    return tuple(f"FS{index:04d}" for index in range(FOUR_STRATUM_LARGE_POPULATION))
+
+
+def four_stratum_small_identities() -> dict[str, tuple[str, ...]]:
+    """Return the single canonical identity planted in each small category."""
+    return {
+        category: (f"SM{index:02d}",)
+        for index, category in enumerate(FOUR_STRATUM_SMALL_CATEGORIES, start=1)
+    }
+
+
+def four_stratum_population_records() -> dict[str, tuple[dict[str, Any], ...]]:
+    """Return the scenario's canonical population records in declared order."""
+    records: dict[str, tuple[dict[str, Any], ...]] = {
+        FOUR_STRATUM_LARGE_CATEGORY: tuple(
+            {
+                "discovery_ordinal": ordinal,
+                "asset_identity_key": key,
+                "is_duplicate": False,
+            }
+            for ordinal, key in enumerate(four_stratum_large_identities())
+        )
+    }
+    for category, keys in four_stratum_small_identities().items():
+        records[category] = tuple(
+            {
+                "discovery_ordinal": ordinal,
+                "asset_identity_key": key,
+                "is_duplicate": False,
+            }
+            for ordinal, key in enumerate(keys)
+        )
+    return {category: records[category] for category in FOUR_STRATUM_CATEGORIES}
+
+
+def four_stratum_coveo_transport() -> Any:
+    """Return the recording Coveo transport serving the two-page large category."""
+    from fixtures import pipeline_fixtures as pf
+    from niche_scout.collector_coveo import PAGE_SIZE
+
+    large = four_stratum_large_identities()
+    large_pages = (
+        pf.coveo_page(
+            [
+                pf.coveo_record(index, key, FOUR_STRATUM_LARGE_CATEGORY)
+                for index, key in enumerate(large[:PAGE_SIZE])
+            ],
+            total_count=FOUR_STRATUM_LARGE_POPULATION,
+            filtered_count=FOUR_STRATUM_LARGE_POPULATION,
+        ),
+        pf.coveo_page(
+            [
+                pf.coveo_record(index, key, FOUR_STRATUM_LARGE_CATEGORY)
+                for index, key in enumerate(large[PAGE_SIZE:], start=PAGE_SIZE)
+            ],
+            total_count=FOUR_STRATUM_LARGE_POPULATION,
+            filtered_count=FOUR_STRATUM_LARGE_POPULATION,
+        ),
+    )
+    pages: dict[str, tuple[bytes, ...]] = {FOUR_STRATUM_LARGE_CATEGORY: large_pages}
+    for category, keys in four_stratum_small_identities().items():
+        pages[category] = (
+            pf.coveo_page(
+                [pf.coveo_record(0, key, category) for key in keys],
+                total_count=len(keys),
+                filtered_count=len(keys),
+            ),
+        )
+    return pf.RecordingCoveoTransport(pages)
+
+
+def four_stratum_graphql_transport() -> Any:
+    """Return the recording GraphQL transport serving every planted identity.
+
+    Every sampled identity has a both-operations-success body queued, so the
+    identity preflight and the bulk enrichment phase both resolve without a live
+    request. Identities that are not selected are queued but never requested.
+    """
+    from fixtures import pipeline_fixtures as pf
+
+    identities = (
+        *four_stratum_large_identities(),
+        *(key for keys in four_stratum_small_identities().values() for key in keys),
+    )
+    return pf.RecordingGraphQLTransport(
+        body_for_identity={key: pf.identity_success_body(key) for key in identities}
+    )
+
+
+@dataclass(frozen=True)
+class FourStratumScenario:
+    """The four-stratum scenario's frozen clock and in-memory transports."""
+
+    run_id: str
+    categories: tuple[str, ...]
+    clock: Any
+    coveo_transport: Any
+    graphql_transport: Any
+
+
+def four_stratum_scenario(*, run_id: str) -> FourStratumScenario:
+    """Return the four-stratum scenario bundle (one large + seven census)."""
+    from fixtures import pipeline_fixtures as pf
+
+    return FourStratumScenario(
+        run_id=run_id,
+        categories=FOUR_STRATUM_CATEGORIES,
+        clock=pf.FixedClock(),
+        coveo_transport=four_stratum_coveo_transport(),
+        graphql_transport=four_stratum_graphql_transport(),
+    )
+
+
+def four_stratum_artifacts(directory: Path, *, run_id: str) -> Any:
+    """Write the four-stratum acceptance artifacts under ``directory``.
+
+    Returns the same ``cli_fixtures.ScenarioArtifacts`` shape the census scenario
+    returns, so ``tests/test_end_to_end.py``'s shared ``cli.run_command`` harness
+    drives it unchanged: a run-local Coveo template, categories file, taxonomy,
+    run-local TOML config, and the injected clock/transports. No live path,
+    network call, credential, or clock read is involved.
+    """
+    from fixtures import cli_fixtures as cf
+    from fixtures import pipeline_fixtures as pf
+
+    template_path = pf.write_run_local_template(directory, FOUR_STRATUM_CATEGORIES)
+    categories_path = cf.write_categories_file(directory, FOUR_STRATUM_CATEGORIES)
+    taxonomy_path = pf.write_taxonomy(
+        directory, pf.taxonomy_payload(FOUR_STRATUM_CATEGORIES)
+    )
+    config = pf.fixture_config(
+        directory,
+        min_categories_per_run=pf.MIN_CATEGORIES,
+        max_discovery_results_per_category=FOUR_STRATUM_DISCOVERY_CAP,
+        identity_preflight_min_categories=1,
+        identity_preflight_assets_per_category=1,
+        identity_preflight_min_success_rate=0.0,
+    )
+    config_path = cf.write_run_config(directory, config, name="four_stratum.toml")
+    return cf.ScenarioArtifacts(
+        scenario=four_stratum_scenario(run_id=run_id),
+        config=config,
+        template_path=template_path,
+        categories_path=categories_path,
+        taxonomy_path=taxonomy_path,
+        db_path=config.db_path,
+        config_path=config_path,
+        run_id=run_id,
+    )
 
 
 # ---------------------------------------------------------------------------
