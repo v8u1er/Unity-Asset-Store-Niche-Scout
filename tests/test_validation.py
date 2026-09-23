@@ -1249,6 +1249,7 @@ METRICS_PATH = PACKAGE / "metrics.py"
 
 
 @pytest.mark.lreq("LREQ-MET-020")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_metric_timestamp_normalizes_aware_offset_to_utc() -> None:
     """An aware non-UTC timestamp is converted to UTC, never rejected (SRS §7.1)."""
     result = m.normalize_metric_timestamp(dfx.DATE_OFFSET_30D)
@@ -1269,6 +1270,7 @@ def test_metric_timestamp_normalizes_aware_offset_to_utc() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-020")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_metric_timestamp_rejects_naive_date_with_reason() -> None:
     """A naive datetime is NAIVE_DATE-unavailable, never silently localized."""
     result = m.normalize_metric_timestamp(dfx.DATE_NAIVE)
@@ -1305,6 +1307,7 @@ def test_metric_timestamp_null_is_unavailable_never_zero() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-020")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_age_days_exact_uses_fractional_days() -> None:
     """Exact fractional age: ``(cutoff - date).total_seconds() / 86400`` (§7.1)."""
     # 2025-01-31T00:00Z - 2025-01-01T00:00Z = 2_592_000 s; / 86400 = 30.0.
@@ -1340,6 +1343,7 @@ def test_age_days_exact_at_cutoff_is_valid_zero_not_future() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-020")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_age_days_exact_future_date_is_unavailable_distinct_reason() -> None:
     """A date later than the cutoff is FUTURE_DATE, never a negative value."""
     result = m.age_days_exact(dfx.DATE_FUTURE, scoring_cutoff_utc=dfx.CUTOFF_UTC)
@@ -1408,6 +1412,7 @@ def test_page_view_index_uses_seven_over_age_days() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_page_view_index_zero_views_is_usable_zero() -> None:
     """An explicit page-view zero is usable and yields an index of 0.0 (§7.2)."""
     result = m.age_normalized_page_view_index(0, dfx.DATE_30D, **dfx.index_kwargs())
@@ -1491,6 +1496,7 @@ def test_page_view_index_wrong_type_date_is_unavailable() -> None:
 
 @pytest.mark.lreq("LREQ-MET-040")
 @pytest.mark.lreq("LREQ-MET-030")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_page_view_index_age_threshold_boundary() -> None:
     """The MIN_AGE_DAYS_FOR_RATE boundary is inclusive at 30.0 (SRS §7.2, §14)."""
     # 2025-01-01T00:00Z is exactly 30.0 days old:
@@ -1679,6 +1685,7 @@ def test_identity_mismatch_marks_all_demand_recent_quality_unavailable() -> None
 
 
 @pytest.mark.lreq("LREQ-MET-080")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_within_recent_window_is_inclusive_at_boundaries() -> None:
     """``0 <= age <= RECENT_WINDOW_DAYS`` is inclusive at both ends (SRS §7.4)."""
     for age, expected in dfx.RECENT_WINDOW_VECTORS:

@@ -1,0 +1,937 @@
+"""Chunk 13 acceptance suite: the LREQ-TST-080 end-to-end fixture and TST-090 cases.
+
+Every node carries the ``@pytest.mark.lreq`` marker set that
+``Documents/plans/chunk-13-full-acceptance-suite-and-quality-workflow.md`` §9
+assigns to its base node ID, plus a matching ``tests/traceability.json`` entry.
+
+The suite drives the frozen ``cli``/``pipeline``/``database``/``report`` stack
+with the existing in-memory transports from ``fixtures.pipeline_fixtures``, a real
+``SqliteRepository`` under pytest's ``tmp_path`` (via
+``fixtures.cli_fixtures.recording_repository``), and the Chunk 11 renderer. It
+also replays the Chunk 11 read model through the acceptance layer.
+
+No node makes a live network call, reads the system clock, opens ``.env``, or
+writes outside pytest ``tmp_path``/``.scratch/``. Credentials are the non-secret
+fixture literals, and the run-local Coveo template is written under ``tmp_path``
+because the committed capture does not list the scenario's synthetic categories.
+
+Expected values come from the SRS (Appendix A, §7-§9, §13) and from the frozen
+fixture modules; none is read off the implementation.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import fixtures.acceptance_fixtures as afx
+import fixtures.cli_fixtures as cf
+import fixtures.pipeline_fixtures as pf
+import pytest
+
+from niche_scout import cli, models, report, scoring
+from niche_scout.database import SqliteRepository
+from niche_scout.metrics import BreadthMetricInput, compute_category_raw_metrics
+from niche_scout.models import (
+    DiscoveryStatus,
+    IdentityPreflightStatus,
+    PageViewSemanticsStatus,
+    RankabilityStatus,
+    RunStatus,
+)
+
+# ---------------------------------------------------------------------------
+# Harness
+# ---------------------------------------------------------------------------
+
+
+def _scenario(directory: Path, *, run_id: str = "run-13-e2e") -> cf.ScenarioArtifacts:
+    """Write and return the eight-category accepted-run artifacts."""
+    return cf.scenario_artifacts(directory, run_id=run_id)
+
+
+def _run_options(artifacts: cf.ScenarioArtifacts, **overrides: Any) -> Any:
+    """Return run-shaped ``CliOptions`` for the scenario, with overrides."""
+    report_path = overrides.pop("report_path", None)
+    report_format = overrides.pop("report_format", "html")
+    return cf.run_options(
+        artifacts.categories_path,
+        artifacts.config_path,
+        artifacts.db_path,
+        run_id=artifacts.run_id,
+        report_path=report_path,
+        report_format=report_format,
+    )
+
+
+def _run_command(
+    artifacts: cf.ScenarioArtifacts,
+    *,
+    options: Any = None,
+    write_report: Any = None,
+    open_repository: Any = None,
+    **overrides: Any,
+) -> int:
+    """Invoke ``cli.run_command`` with the scenario's injected recorders.
+
+    ``report_path``/``report_format`` are ``CliOptions`` fields, not
+    ``run_command`` parameters, so they are folded into the options object. When no
+    ``open_repository`` is injected the helper supplies a recording factory and
+    closes it before returning, so the SQLite file is not left locked for a later
+    fresh-connection read.
+    """
+    import io
+
+    options = options if options is not None else _run_options(artifacts, **overrides)
+    owned_factory = None
+    if open_repository is None:
+        owned_factory = cf.RecordingRepositoryFactory()
+        open_repository = owned_factory
+    values: dict[str, Any] = {
+        "environ": cf.config_fixtures.MOCK_ENVIRONMENT,
+        "clock": artifacts.scenario.clock,
+        "sleeper": lambda _seconds: None,
+        "coveo_transport": artifacts.scenario.coveo_transport,
+        "graphql_transport": artifacts.scenario.graphql_transport,
+        "template_path": artifacts.template_path,
+        "open_repository": open_repository,
+        "write_report": (
+            write_report if write_report is not None else report.write_run_report
+        ),
+        "stdout": io.StringIO(),
+        "stderr": io.StringIO(),
+    }
+    try:
+        return cli.run_command(options, **values)
+    finally:
+        if owned_factory is not None:
+            owned_factory.close_all()
+
+
+def _repository_at(db_path: Path) -> SqliteRepository:
+    """Open the real repository the CLI wrote to, for read-back assertions."""
+    return SqliteRepository(Path(db_path))
+
+
+# ---------------------------------------------------------------------------
+# LREQ-TST-080 — the full acceptance run
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_acceptance_run_persists_and_renders(tmp_path: Path) -> None:
+    """A full mocked run spans discovery, sampling, enrichment, scoring, report.
+
+    The CLI path is used end to end: the run writes a real SQLite database under
+    ``tmp_path`` and, when a report path is given, a rendered report file. The
+    persisted rows cover every requested category with the declared order intact
+    (LREQ-ARCH-030).
+    """
+    from fixtures import report_fixtures as report_fx
+
+    artifacts = _scenario(tmp_path, run_id=report_fx.RUN_ID)
+    report_path = tmp_path / "acceptance-report.html"
+    factory = cf.RecordingRepositoryFactory()
+    code = _run_command(
+        artifacts,
+        open_repository=factory,
+        report_path=report_path,
+        report_format="html",
+    )
+    # Read through the CLI's own repository: the in-process view is the one the
+    # renderer and the CLI's exit code are based on.
+    same_repo = factory.last
+    run_row = same_repo.get_run(artifacts.run_id)
+    rows = same_repo.get_category_scores(artifacts.run_id)
+    html = report.render_dashboard_html(same_repo, artifacts.run_id)
+    factory.close_all()
+
+    assert code == cli.EXIT_OK
+    assert report_path.exists()
+
+    assert run_row is not None
+    assert run_row.status == RunStatus.COMPLETED.value
+    assert afx.run_row_categories(run_row) == artifacts.scenario.categories
+    assert len(rows) == len(artifacts.scenario.categories)
+    assert all(row.computed_at_utc.tzinfo is not None for row in rows)
+    assert "heuristic" in html.lower()
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-EXT-090")
+def test_acceptance_category_validation_rejects_before_network(tmp_path: Path) -> None:
+    """An invalid requested-category set rejects with zero transport calls.
+
+    The taxonomy inventory is overwritten so one requested category is absent, so
+    ``validate_taxonomy`` fails before any transport is constructed and the run
+    writes no run row (LREQ-EXT-090 / LREQ-EXT-020).
+    """
+    artifacts = _scenario(tmp_path, run_id="run-13-invalid-category")
+    # Rewrite the taxonomy without the last requested category.
+    pf.write_taxonomy(
+        tmp_path, pf.taxonomy_payload(tuple(artifacts.scenario.categories)[:-1])
+    )
+    repository = SqliteRepository(artifacts.db_path)
+    try:
+        with pytest.raises(Exception) as excinfo:
+            from niche_scout import pipeline
+
+            pipeline.run_pipeline(
+                config=artifacts.config,
+                categories=artifacts.scenario.categories,
+                credentials=pf.fixture_credentials(),
+                repository=repository,
+                clock=artifacts.scenario.clock,
+                coveo_transport=artifacts.scenario.coveo_transport,
+                graphql_transport=artifacts.scenario.graphql_transport,
+                sleeper=lambda _seconds: None,
+                run_id=artifacts.run_id,
+                taxonomy_path=artifacts.taxonomy_path,
+                template_path=artifacts.template_path,
+            )
+        assert isinstance(excinfo.value, pipeline.TaxonomyInvalidError)
+        assert repository.get_run(artifacts.run_id) is None
+    finally:
+        repository.close()
+
+    assert artifacts.scenario.coveo_transport.call_count == 0
+    assert artifacts.scenario.graphql_transport.call_count == 0
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_acceptance_pagination_duplicate_and_overlap(tmp_path: Path) -> None:
+    """Pagination completion, duplicate rows, and a shared identity are persisted.
+
+    The truncated category's verified total far exceeds the run's read cap, so its
+    traversal stops as ``truncated``; its cap-admitted duplicate of the shared
+    identity ``900`` is persisted as a duplicate; and identity ``900`` is planted
+    in two categories so the union lists it once while both categories reference
+    it (LREQ-EXT-050, SRS §5.1).
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        truncated_rows = repository.count_raw_discovery_observations(
+            artifacts.run_id, pf.TRANSPORT_TRUNCATED_CATEGORY
+        )
+        verified_rows = repository.count_raw_discovery_observations(
+            artifacts.run_id, pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY
+        )
+        scores = {
+            row.category: row
+            for row in repository.get_category_scores(artifacts.run_id)
+        }
+    finally:
+        repository.close()
+
+    assert truncated_rows == 3, "2 first-page rows plus 1 cap-admitted terminal row"
+    assert verified_rows == 2
+    truncated = scores[pf.TRANSPORT_TRUNCATED_CATEGORY]
+    assert truncated.discovery_status == DiscoveryStatus.TRUNCATED.value
+    assert truncated.discovery_duplicate_count == 1
+    verified = scores[pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY]
+    assert verified.discovery_status == DiscoveryStatus.COMPLETE.value
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-SMP-050")
+def test_acceptance_four_stratum_sampling_and_one_enrichment_per_identity(
+    tmp_path: Path,
+) -> None:
+    """The reported strata are the four-stratum rule and enrichment dedups.
+
+    Every scenario category is a small census, so each sampled member sits in
+    stratum 0 with the census digest; and the run-wide GraphQL request count for a
+    shared identity stays at one (SRS §5, LREQ-SMP-050).
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        members = {
+            category: repository.get_sample_members(artifacts.run_id, category)
+            for category in artifacts.scenario.categories
+        }
+        scores = {
+            row.category: row
+            for row in repository.get_category_scores(artifacts.run_id)
+        }
+    finally:
+        repository.close()
+
+    assert all(
+        member.stratum_index == 0 for group in members.values() for member in group
+    )
+    assert all(
+        member.sample_is_census for group in members.values() for member in group
+    )
+    assert all(
+        member.selection_digest for group in members.values() for member in group
+    )
+    assert all(row.sample_is_census for row in scores.values())
+    assert all(
+        row.sampling_basis == models.SamplingBasis.CENSUS.value
+        for row in scores.values()
+    )
+
+    requested = artifacts.scenario.graphql_transport.requested_identities
+    assert requested.count(pf.END_TO_END_SHARED_KEY) <= 1
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-GQL-050")
+def test_acceptance_partial_graphql_failure_retains_valid_operation(
+    tmp_path: Path,
+) -> None:
+    """A valid operation's fields survive a sibling operation's failure.
+
+    The scenario's injected transport raises for identity ``C1``; the run still
+    completes and the sibling identity ``C2`` is enriched, so the failure is
+    isolated as a persisted observation rather than aborting the run
+    (LREQ-GQL-050, LREQ-NFR-030).
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    requested = artifacts.scenario.graphql_transport.distinct_requested_identities
+    assert pf.failed_enrichment_identity() in requested
+    assert "C2" in requested
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        observation = repository.get_enrichment_observation(
+            artifacts.run_id, pf.failed_enrichment_identity()
+        )
+        sibling = repository.get_enrichment_observation(artifacts.run_id, "C2")
+    finally:
+        repository.close()
+
+    assert observation is not None
+    assert observation.product_detail_status in (
+        models.OperationStatus.ERROR.value,
+        models.OperationStatus.SUCCESS.value,
+    )
+    assert sibling is not None
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-SCR-050")
+def test_acceptance_contradicted_page_views_distinct_from_partial_success(
+    tmp_path: Path,
+) -> None:
+    """The R8 wrapper writes ``CONTRADICTED`` and D/Q become unavailable.
+
+    ``cli.run_command`` is driven with ``open_repository=`` a wrapper that writes
+    ``PageViewSemanticsStatus.CONTRADICTED.value`` on ``insert_run``. The frozen
+    preflight does not clobber a ``contradicted`` value, so the run-level status is
+    persisted, D and Q are unavailable, C/R may remain, and the category is
+    ``not_rankable`` (SRS §8.2 LREQ-SCR-050). This is distinguishable from the
+    partial-success scenario, where the page-view status stays ``unvalidated``.
+    """
+    from fixtures import report_fixtures as report_fx
+
+    run_id = report_fx.RUN_ID
+    artifacts = _scenario(tmp_path, run_id=run_id)
+    open_repository = afx.contradicted_repository_factory(run_id)
+    code = _run_command(
+        artifacts,
+        open_repository=open_repository,
+        write_report=lambda *args, **kwargs: Path(kwargs.get("output_path", "x")),
+    )
+    assert code == cli.EXIT_OK
+    afx.close_opened(open_repository)
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        run_row = repository.get_run(run_id)
+        rows = repository.get_category_scores(run_id)
+    finally:
+        repository.close()
+
+    assert run_row.page_view_semantics_status == (
+        PageViewSemanticsStatus.CONTRADICTED.value
+    )
+    assert rows
+    for row in rows:
+        assert row.component_d is None, "D is unavailable under contradicted page views"
+        assert row.component_q is None, "Q is unavailable under contradicted page views"
+        assert row.rankability_status == RankabilityStatus.NOT_RANKABLE.value
+    # The contradicted status disables D/Q but not necessarily every component:
+    # a category with verified breadth keeps C. This distinction is what makes the
+    # contradicted run different from a blanket score wipe.
+    verified = next(
+        row for row in rows if row.category == pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY
+    )
+    assert verified.component_c is not None
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-SMP-080")
+def test_acceptance_sqlite_rows_match_pure_results(tmp_path: Path) -> None:
+    """Persisted sample and score rows equal the pure sampling result.
+
+    The persisted sample members are exactly the pure
+    ``sampling.select_run_sample`` members for the run's raw discovery
+    populations, and the persisted raw metrics equal the pure Chunk 7B results;
+    null stays null and an explicit zero stays zero (LREQ-SMP-080).
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        members = {
+            category: repository.get_sample_members(artifacts.run_id, category)
+            for category in artifacts.scenario.categories
+        }
+    finally:
+        repository.close()
+
+    pure_run = artifacts.scenario.run()
+    pure_members = {
+        category.category: {member.asset_identity_key for member in category.members}
+        for category in pure_run.categories
+    }
+    for category, group in members.items():
+        assert {member.asset_identity_key for member in group} == pure_members[category]
+
+    zero_expected = afx.zero_population_vector()["expected"]
+    assert zero_expected["demand_per_asset_raw"] is None
+    assert zero_expected["breadth_raw"] == 0.0
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_acceptance_rendered_report_contains_required_fields(tmp_path: Path) -> None:
+    """The rendered report carries the mandatory columns and heuristic statement.
+
+    The persisted run is rendered through the Chunk 11 read model, so the report
+    reads primary rows only and shows the SRS §10 mandatory columns; the heuristic
+    statement is present and names the sample-based limitation.
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        view = report.load_run_report_view(repository, artifacts.run_id)
+        html = report.render_dashboard_html(repository, artifacts.run_id)
+    finally:
+        repository.close()
+
+    assert view.run_id == artifacts.run_id
+    assert view.categories
+    assert view.heuristic_statement
+    assert "heuristic" in html.lower()
+    assert any(
+        row.category == pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY for row in view.categories
+    )
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-TST-060")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_acceptance_eight_category_run_is_provisional(tmp_path: Path) -> None:
+    """An 8-category run is provisional: empty candidates and null stability.
+
+    The persisted rows carry null ``top_3_stability``/``top_5_stability`` and a
+    null ``sensitivity_warning`` (never ``False``/``0``), and no category is
+    ``rankable`` (dependency-map §6.2/§6.3; LREQ-SEN-020, LREQ-TST-060).
+    """
+    artifacts = _scenario(tmp_path)
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        rows = repository.get_category_scores(artifacts.run_id)
+    finally:
+        repository.close()
+
+    assert len(rows) == models.MIN_CATEGORIES_PER_RUN
+    for row in rows:
+        assert row.top_3_stability is None
+        assert row.top_5_stability is None
+        assert row.maximum_score_delta is None
+        assert row.maximum_rank_displacement is None
+        assert row.sensitivity_warning is None
+        assert row.rankability_status != RankabilityStatus.RANKABLE.value
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-ID-040")
+def test_acceptance_preflight_failure_marks_run_failed_zero_enrichment(
+    tmp_path: Path,
+) -> None:
+    """A failed preflight produces a failed run with zero bulk enrichment.
+
+    ``identity_preflight_min_success_rate=1.0`` with a zero-success rejecting
+    transport fails the gate; the run status is ``failed``, one null-score
+    limitation row per requested category is written, and no GraphQL request
+    follows the gate (LREQ-ID-040; SRS §4.4).
+    """
+    from niche_scout import pipeline
+
+    artifacts = _scenario(tmp_path, run_id="run-13-preflight-failed")
+    rejecting_config = pf.fixture_config(
+        tmp_path,
+        min_categories_per_run=pf.MIN_CATEGORIES,
+        max_discovery_results_per_category=pf.SCENARIO_DISCOVERY_CAP,
+        identity_preflight_min_success_rate=1.0,
+        identity_preflight_assets_per_category=1,
+    )
+    config_path = cf.write_run_config(
+        tmp_path, rejecting_config, name="preflight_failed.toml"
+    )
+    assert config_path.exists()
+    rejecting = pf.graphql_rejecting_transport(
+        tuple(
+            key
+            for category in artifacts.scenario.run().categories
+            for key in category.population.identity_keys
+        )
+    )
+    repository = SqliteRepository(artifacts.db_path)
+    try:
+        result = pipeline.run_pipeline(
+            config=rejecting_config,
+            categories=artifacts.scenario.categories,
+            credentials=pf.fixture_credentials(),
+            repository=repository,
+            clock=artifacts.scenario.clock,
+            coveo_transport=artifacts.scenario.coveo_transport,
+            graphql_transport=rejecting,
+            sleeper=lambda _seconds: None,
+            run_id="run-13-preflight-failed",
+            taxonomy_path=rejecting_config.taxonomy_path,
+            template_path=artifacts.template_path,
+        )
+        run_row = repository.get_run(result.run_id)
+        rows = repository.get_category_scores(result.run_id)
+        summary = json.loads(run_row.identity_preflight_summary_json)
+    finally:
+        repository.close()
+
+    assert result.status == RunStatus.FAILED.value
+    assert run_row.status == RunStatus.FAILED.value
+    assert run_row.identity_preflight_status == IdentityPreflightStatus.FAILED.value
+    assert len(rejecting.calls) == summary["attempted_unique_identities"]
+    assert len(rows) == len(artifacts.scenario.categories)
+    for row in rows:
+        assert row.market_opportunity_score is None
+        assert row.rankability_status == RankabilityStatus.NOT_RANKABLE.value
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_acceptance_sensitivity_never_changes_candidate_set(tmp_path: Path) -> None:
+    """Sensitivity ranks only the frozen base candidate set and mutates nothing.
+
+    The pure Chunk 9B surfaces over the acceptance fixtures: the candidate set is
+    built before sensitivity, the balanced score is preserved, and sensitivity
+    neither adds nor removes a candidate (SRS §9.1 LREQ-EVD-020, §9.3 LREQ-SEN-020).
+    """
+    from fixtures import scoring_evidence_fixtures as evidence_fx
+
+    metrics = evidence_fx.all_verified_run_metrics(
+        models.STRONG_REFERENCE_CATEGORY_COUNT
+    )
+    scores = tuple(
+        scoring.score_category(
+            metric,
+            metrics,
+            page_view_semantics_status=PageViewSemanticsStatus.UNVALIDATED,
+        )
+        for metric in metrics
+    )
+    inputs = tuple(
+        evidence_fx.make_pre_sensitivity_input(metric.category) for metric in metrics
+    )
+    candidates = scoring.build_base_rankable_candidates(
+        metrics,
+        inputs,
+        scores,
+        identity_preflight_status=IdentityPreflightStatus.PASSED,
+    )
+    before = tuple(
+        (score.market_opportunity_score, score.component_d, score.component_c)
+        for score in scores
+    )
+    sensitivity = scoring.evaluate_sensitivity(
+        candidates,
+        metrics,
+        scores,
+        reference_set_size=candidates.run_category_count - 1,
+    )
+    after = tuple(
+        (score.market_opportunity_score, score.component_d, score.component_c)
+        for score in scores
+    )
+
+    assert candidates.base_rankable_candidates
+    assert after == before, "sensitivity must not mutate the balanced score"
+    assert sensitivity.ranked_categories == candidates.base_rankable_candidates
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_acceptance_repeat_run_is_deterministic(tmp_path: Path) -> None:
+    """Two identical runs produce structurally equal persisted rows.
+
+    The two runs differ only by run id; every other persisted field, including
+    the pure-derived raw metrics and scores, is identical (LREQ-ARCH-030).
+    """
+    first = _scenario(tmp_path, run_id="run-13-det-a")
+    second = _scenario(tmp_path, run_id="run-13-det-b")
+    assert _run_command(first) == cli.EXIT_OK
+    assert _run_command(second) == cli.EXIT_OK
+
+    repository = _repository_at(first.db_path)
+    try:
+        rows_a = repository.get_category_scores("run-13-det-a")
+        rows_b = repository.get_category_scores("run-13-det-b")
+    finally:
+        repository.close()
+
+    assert afx.logical_rows(rows_a) == afx.logical_rows(rows_b)
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-CLI-010")
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_acceptance_cli_run_exits_zero_and_writes_report(tmp_path: Path) -> None:
+    """``cli.run_command`` exits 0 and writes a report only when requested.
+
+    Without ``--report`` no file is produced; with ``--report`` the file exists
+    and the adjacent dashboard read model can render the same run
+    (LREQ-CLI-010, LREQ-RPT-010).
+    """
+    first_dir = tmp_path / "without-report"
+    first_dir.mkdir()
+    artifacts = _scenario(first_dir, run_id="run-13-report-a")
+    code_without = _run_command(artifacts)
+    assert code_without == cli.EXIT_OK
+    assert not (first_dir / "report.html").exists()
+
+    second_dir = tmp_path / "with-report"
+    second_dir.mkdir()
+    report_artifacts = _scenario(second_dir, run_id="run-13-report-b")
+    report_path = second_dir / "report.html"
+    code_with = _run_command(report_artifacts, report_path=report_path)
+    assert code_with == cli.EXIT_OK
+    assert report_path.exists()
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_acceptance_dashboard_reads_persisted_run_only(tmp_path: Path) -> None:
+    """``dashboard_command`` reads the database only and starts no transport.
+
+    The command renders an already persisted run from a real repository and makes
+    no discovery or enrichment call (LREQ-CLI-020).
+    """
+    from fixtures import report_fixtures as report_fx
+
+    from niche_scout import cli as cli_module
+
+    artifacts = _scenario(tmp_path, run_id=report_fx.RUN_ID)
+    assert _run_command(artifacts) == cli.EXIT_OK
+
+    import io
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    dashboard_options = cf.dashboard_options(
+        artifacts.config_path, artifacts.db_path, run_id=report_fx.RUN_ID
+    )
+    repository = SqliteRepository(artifacts.db_path)
+    try:
+        code = cli_module.dashboard_command(
+            dashboard_options,
+            repository=repository,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    finally:
+        repository.close()
+
+    assert code == cli_module.EXIT_OK
+    assert stdout.getvalue()
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_acceptance_completed_run_is_durable_across_connections(
+    tmp_path: Path,
+) -> None:
+    """The completed run must be readable from a fresh connection.
+
+    A separate process (``niche-scout dashboard``) opens its own connection, so the
+    terminal ``completed`` transition must be committed before the run command
+    returns. This node opens a second ``SqliteRepository`` on the same file after
+    the CLI closed the run.
+
+    This node currently FAILS and is reported as a runtime defect: the success
+    path's ``update_run_status(..., COMPLETED, completed_at_utc=...)`` is the last
+    write and is not wrapped in ``repository.transaction()``, so it is never
+    committed (the failure path is committed because a later
+    ``upsert_category_scores`` transaction flushes it). On disk the run therefore
+    reads ``status = running`` with ``completed_at_utc = NULL``. The fix belongs to
+    the owning chunk (``pipeline.py`` / ``database.py``); Chunk 13 does not modify
+    runtime code.
+    """
+    artifacts = _scenario(tmp_path, run_id="run-13-durable")
+    code = _run_command(artifacts)
+    assert code == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        run_row = repository.get_run("run-13-durable")
+    finally:
+        repository.close()
+
+    assert run_row.status == RunStatus.COMPLETED.value
+    assert run_row.completed_at_utc is not None
+
+
+# ---------------------------------------------------------------------------
+# LREQ-TST-090 — golden-vector acceptance cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-TST-080")
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-CLI-040")
+def test_acceptance_two_category_run_rejected_before_ranking(tmp_path: Path) -> None:
+    """The two-category vector is rejected before ranking with zero transport calls.
+
+    A run with fewer than ``MIN_CATEGORIES_PER_RUN`` (8) categories raises
+    ``PipelineConfigurationError``; no run row is persisted and no transport is
+    called (LREQ-CLI-040, SRS §10).
+    """
+    from niche_scout import pipeline
+
+    categories = afx.two_category_rejection_vector()
+    config = pf.fixture_config(tmp_path, min_categories_per_run=pf.MIN_CATEGORIES)
+    coveo = pf.RecordingCoveoTransport({})
+    graphql = pf.RecordingGraphQLTransport({})
+    repository = SqliteRepository(config.db_path)
+    try:
+        with pytest.raises(pipeline.PipelineConfigurationError):
+            pipeline.run_pipeline(
+                config=config,
+                categories=categories,
+                credentials=pf.fixture_credentials(),
+                repository=repository,
+                clock=lambda: pf.FIXED_CLOCK_START,
+                coveo_transport=coveo,
+                graphql_transport=graphql,
+                sleeper=lambda _seconds: None,
+                run_id="run-13-rejected",
+                taxonomy_path=config.taxonomy_path,
+            )
+        assert repository.get_run("run-13-rejected") is None
+    finally:
+        repository.close()
+
+    assert coveo.call_count == 0
+    assert graphql.call_count == 0
+
+
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-MET-030")
+def test_acceptance_zero_population_category_vector(tmp_path: Path) -> None:
+    """The zero-population vector has null raws, zero coverage, null fraction.
+
+    The frozen Chunk 7B zero-population input paired with a verified-zero breadth
+    gives the SRS §7.2/§7.3 shape: every sample-derived raw is null, every stratum
+    eligibility coverage is ``0.0`` (a value, not null), breadth is an explicit
+    ``0.0`` with the verified source, and ``sample_fraction`` is null.
+    """
+    vector = afx.zero_population_vector()
+    result = compute_category_raw_metrics(
+        vector["category_input"],
+        BreadthMetricInput(
+            verified_total_count=vector["breadth"]["verified_total_count"],
+            distinct_canonical_discovered_count=vector["breadth"][
+                "distinct_canonical_discovered_count"
+            ],
+        ),
+    )
+    expected = vector["expected"]
+
+    assert result.raw.demand_per_asset_raw == expected["demand_per_asset_raw"]
+    assert result.raw.demand_median_raw == expected["demand_median_raw"]
+    assert result.raw.breadth_raw == expected["breadth_raw"]
+    assert result.raw.recent_share_raw == expected["recent_share_raw"]
+    assert result.raw.median_age_raw == expected["median_age_raw"]
+    assert result.raw.quality_raw == expected["quality_raw"]
+    assert (
+        result.demand_stratum_eligibility_coverage
+        == expected["demand_stratum_eligibility_coverage"]
+    )
+    assert (
+        result.recent_supply_stratum_eligibility_coverage
+        == expected["recent_supply_stratum_eligibility_coverage"]
+    )
+    assert (
+        result.quality_stratum_eligibility_coverage
+        == expected["quality_stratum_eligibility_coverage"]
+    )
+    assert result.usable_demand_sample_count == expected["usable_demand_sample_count"]
+    assert result.breadth_source is models.BreadthSource.VERIFIED_TOTAL_COUNT
+
+
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-MET-100")
+def test_acceptance_unequal_stratum_quality_raw_vector(tmp_path: Path) -> None:
+    """``QualityRaw`` uses ``N_h / n_h`` expansion weights; exact within ``1e-9``.
+
+    The frozen Chunk 7B unequal-stratum inputs give ``(50 + 100) / (100 + 100) =
+    0.75`` with coverage ``1.0`` and ten usable quality observations
+    (SRS §7.5 LREQ-MET-100).
+    """
+    vector = afx.unequal_stratum_quality_raw_vector()
+    result = compute_category_raw_metrics(
+        vector["category_input"],
+        BreadthMetricInput(
+            verified_total_count=None, distinct_canonical_discovered_count=100
+        ),
+    )
+    expected = vector["expected"]
+
+    assert result.raw.quality_raw == pytest.approx(expected["quality_raw"], abs=1e-9)
+    assert result.quality_stratum_eligibility_coverage == pytest.approx(
+        expected["quality_stratum_eligibility_coverage"], abs=1e-9
+    )
+    assert result.usable_quality_sample_count == int(
+        expected["usable_quality_sample_count"]
+    )
+
+
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-MET-060")
+def test_acceptance_sample_fraction_distinct_from_eligibility_coverage(
+    tmp_path: Path,
+) -> None:
+    """Sample fraction and stratum eligibility coverage are distinct measures.
+
+    The frozen Chunk 7B partial-coverage input gives
+    ``demand_stratum_eligibility_coverage = 75/100 = 0.75``, which is a population
+    weight, not the sampled fraction ``45/100 = 0.45``; the two values are
+    different numbers on the same category (SRS §7.2 LREQ-MET-060).
+    """
+    vector = afx.sample_fraction_vs_coverage_vector()
+    result = compute_category_raw_metrics(
+        vector["category_input"],
+        BreadthMetricInput(
+            verified_total_count=None, distinct_canonical_discovered_count=100
+        ),
+    )
+    expected = vector["expected"]
+
+    assert result.demand_stratum_eligibility_coverage == pytest.approx(
+        expected["demand_stratum_eligibility_coverage"], abs=1e-9
+    )
+    assert (
+        expected["sample_fraction"] != expected["demand_stratum_eligibility_coverage"]
+    )
+    assert result.demand_stratum_eligibility_coverage != expected["sample_fraction"]
+
+
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-TST-060")
+def test_acceptance_twenty_one_category_composite_vector(tmp_path: Path) -> None:
+    """The 21-category strong-reference composite is exact within ``1e-9``.
+
+    The vector's expected value is hand-derived from SRS Appendix A (§8.3 weights
+    0.35/0.30/0.20/0.15) with ``reference_size = 21 - 1 = 20``: for the median
+    target every field's midrank is ``(10 + 0.5*0)/20 = 0.5``, every component is
+    ``0.5``, and the composite is ``0.5``. A second pinned component vector makes
+    the weight arithmetic explicit: ``0.35*0.8 + 0.30*0.6 + 0.20*0.4 + 0.15*0.2 =
+    0.57``.
+    """
+    vector = afx.strong_reference_composite_vector()
+    target = vector["target_category"]
+    reference = scoring.leave_one_out_reference(vector["metrics"], target)
+    normalized = scoring.normalize_raw_metrics(
+        next(metric.raw for metric in vector["metrics"] if metric.category == target),
+        reference,
+    )
+    components = scoring.compute_components(
+        normalized,
+        demand_stratum_eligibility_coverage=1.0,
+        recent_supply_stratum_eligibility_coverage=1.0,
+        quality_stratum_eligibility_coverage=1.0,
+        breadth_source=models.BreadthSource.VERIFIED_TOTAL_COUNT,
+        breadth_completeness_status=models.BreadthCompletenessStatus.COMPLETE,
+        page_view_semantics_status=PageViewSemanticsStatus.UNVALIDATED,
+    )
+    composite = scoring.renormalized_composite(components, vector["weights"])
+
+    assert reference.reference_size == vector["reference_size"] == 20
+    assert normalized.demand_per_asset_raw == pytest.approx(0.5, abs=1e-9)
+    assert components.demand == pytest.approx(0.5, abs=1e-9)
+    assert components.competition == pytest.approx(0.5, abs=1e-9)
+    assert components.recent_supply == pytest.approx(0.5, abs=1e-9)
+    assert components.quality == pytest.approx(0.5, abs=1e-9)
+    assert composite.market_opportunity_score == pytest.approx(
+        vector["expected_score"], abs=1e-9
+    )
+
+    pinned = scoring.renormalized_composite(
+        scoring.ComponentValues(
+            demand=0.8, competition=0.6, recent_supply=0.4, quality=0.2
+        ),
+        vector["weights"],
+    )
+    assert pinned.market_opportunity_score == pytest.approx(0.57, abs=1e-9)
+
+
+@pytest.mark.lreq("LREQ-TST-090")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_acceptance_sensitivity_after_base_candidates_vector(tmp_path: Path) -> None:
+    """Sensitivity runs over the frozen candidate set with the expected outputs.
+
+    The frozen Chunk 9B stable vector (21 categories, five base candidates) gives
+    ``top_3_stability = 2/3``, ``top_5_stability = 1.0``, and a ``False`` run
+    warning, with the balanced scores unchanged (LREQ-SEN-020, LREQ-SEN-030).
+    """
+    from fixtures import sensitivity_fixtures as sensitivity_fx
+
+    vector = afx.sensitivity_after_base_candidates_vector()["vector"]
+    expected = afx.sensitivity_after_base_candidates_vector()["expected"]
+    categories = tuple(vector["components"])
+    metrics, scores = sensitivity_fx.make_metrics_and_scores(vector["components"])
+    candidates = sensitivity_fx.make_candidate_set(
+        categories, vector["run_category_count"]
+    )
+    sensitivity = scoring.evaluate_sensitivity(
+        candidates,
+        metrics,
+        scores,
+        reference_set_size=vector["reference_set_size"],
+    )
+
+    assert len(candidates.base_rankable_candidates) == expected["base_candidate_count"]
+    assert sensitivity.top_3_stability == pytest.approx(
+        expected["top_3_stability"], abs=1e-9
+    )
+    assert sensitivity.top_5_stability == pytest.approx(
+        expected["top_5_stability"], abs=1e-9
+    )
+    for category, value in expected["balanced_scores"].items():
+        # ``scores`` is aligned with ``metrics``; look the balanced score up by
+        # index through the vector's component order.
+        index = categories.index(category)
+        assert scores[index].market_opportunity_score == pytest.approx(value, abs=1e-9)

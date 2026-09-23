@@ -1095,6 +1095,7 @@ def test_transient_429_and_5xx_are_retried_with_backoff_and_retry_after(
 
 
 @pytest.mark.lreq("LREQ-EXT-100")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_permanent_auth_csrf_and_malformed_request_are_not_retried(
     repository: SqliteRepository,
 ) -> None:
@@ -1679,6 +1680,7 @@ def test_request_construction_requires_graphql_credential() -> None:
 
 
 @pytest.mark.lreq("LREQ-GQL-030")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_reversed_response_order_correlates_by_explicit_key() -> None:
     """The page-view item arriving first still matches its own operation."""
     _transport, _sleeper, (result, draft) = gql_exchange(
@@ -1718,6 +1720,7 @@ def test_reversed_response_order_correlates_by_explicit_key() -> None:
 
 
 @pytest.mark.lreq("LREQ-GQL-030")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_missing_correlation_key_is_malformed_not_positional() -> None:
     """An item with no explicit key is never attached by its index."""
     transport, _sleeper, (result, draft) = gql_exchange(
@@ -2112,6 +2115,7 @@ def test_invalid_state_value_and_missing_identity_are_operation_errors() -> None
 
 
 @pytest.mark.lreq("LREQ-GQL-040")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_page_view_scalar_type_and_range_acceptance() -> None:
     """Every page-view scalar case takes the acceptance the fixtures pin."""
     for case in gqlfx.PAGE_VIEW_SCALAR_CASES:
@@ -2216,6 +2220,7 @@ def test_retry_backoff_on_transient_and_no_indefinite_retry() -> None:
 
 
 @pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_partial_success_retains_valid_operation_fields() -> None:
     """One operation's failure leaves the other's validated fields standing."""
     _transport, _sleeper, (result, draft) = gql_exchange(
@@ -2331,6 +2336,7 @@ def test_state_annotation_covers_published_excluded_and_unknown() -> None:
 
 
 @pytest.mark.lreq("LREQ-GQL-060")
+@pytest.mark.lreq("LREQ-TST-040")
 def test_state_excluded_and_unknown_assets_remain_recorded() -> None:
     """State-excluded and state-unknown assets are retained pre-record values."""
     _t1, _s1, (excluded, draft_excluded) = gql_exchange(
@@ -2559,6 +2565,7 @@ def test_request_metadata_json_carries_real_operation_names_and_correlation_keys
     assert direct["correlation_keys"][GQL_ORDERED_OPERATIONS[0]] == "1234567"
 
 
+@pytest.mark.lreq("LREQ-SEC-020")
 def test_error_summaries_and_metadata_are_redacted() -> None:
     """Neither an error summary, an issue, nor metadata carries a credential."""
     secret_bearing_body = json.dumps(

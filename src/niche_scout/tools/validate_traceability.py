@@ -1,17 +1,24 @@
 """Bidirectional requirement-to-test traceability validator.
 
-Checks, for Chunk 0's requirement set:
+Checks, against the full SRS-defined requirement set:
 
-* every LREQ referenced by ``tests/traceability.json`` exists in the SRS
+* every ``LREQ-*`` referenced by ``tests/traceability.json`` exists in the SRS
   definition list (Appendix B wildcard prefixes);
-* every Chunk 0 requirement from the dependency map has at least one mapped
-  test;
+* every individually defined ``LREQ-*`` is referenced by at least one mapped
+  test (the required set is the whole SRS set, not one chunk's subset);
 * every analytical test carrying an ``@pytest.mark.lreq`` marker has a matrix
-  entry whose LREQ list matches the marker exactly;
-* no matrix entry references a pytest node ID that does not exist.
+  entry whose LREQ list matches the marker set exactly;
+* no matrix entry references a pytest node ID that does not exist;
+* every analytical test carries at least one marker, except the exact
+  non-analytical node IDs in :data:`NON_ANALYTICAL_EXEMPT`.
 
-Chunk 0 intentionally checks its own seven requirements only; later chunks widen
-the required set as their requirements become testable.
+The exemption is a deliberate, exact ``frozenset`` of three module-contract
+tests that assert import safety or a builder signature and exercise no
+requirement behaviour; every other unmarked test makes :func:`main` return 1.
+
+Chunk 0 originally checked its own seven requirements only. Chunk 13 widens the
+required set to ``defined_ids(srs_text)`` (all 89 individual IDs) and fixes the
+marker parser to read every argument of ``@pytest.mark.lreq(...)``.
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ import ast
 import json
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -31,6 +39,19 @@ TRACEABILITY_PATH = TESTS_DIR / "traceability.json"
 LREQ_PATTERN = re.compile(r"\bLREQ-[A-Z]+-\d{3}\b")
 WILDCARD_PATTERN = re.compile(r"`(LREQ-[A-Z]+)-\*`")
 LREQ_MARKER = "pytest.mark.lreq"
+
+#: The exact node IDs that are deliberately allowed to carry no
+#: ``@pytest.mark.lreq`` marker because they exercise a module contract, not an
+#: ``LREQ-*`` behaviour: the two ``collector.py`` contract tests and the
+#: ``sampling.py`` import-purity gate. R2c/R6 fixes this set at exactly three
+#: IDs; any other unmarked test fails the validator.
+NON_ANALYTICAL_EXEMPT: frozenset[str] = frozenset(
+    {
+        "tests/test_collector.py::test_module_imports_without_side_effects",
+        "tests/test_collector.py::test_request_body_builder_signature_is_stable",
+        "tests/test_sampling.py::test_sampling_module_imports_are_pure",
+    }
+)
 
 
 def individual_ids(text: str) -> set[str]:
@@ -51,8 +72,22 @@ def defined_ids(text: str) -> set[str]:
     return {item for item in individual_ids(text) if item.rsplit("-", 1)[0] in prefixes}
 
 
+def required_ids(srs_text: str) -> set[str]:
+    """Return every individually defined LREQ ID the SRS declares.
+
+    Supersedes :func:`chunk_requirements` for the widened check: the validator
+    no longer restricts the required set to one chunk, so every defined
+    requirement must be referenced by at least one mapped test.
+    """
+    return defined_ids(srs_text)
+
+
 def chunk_requirements(text: str, chunk: str = "0") -> set[str]:
-    """Return the requirement IDs listed for ``chunk`` in the dependency map."""
+    """Return the requirement IDs listed for ``chunk`` in the dependency map.
+
+    Retained as a public helper for dependency-map inspection; the widened
+    validator uses :func:`required_ids` instead.
+    """
     header = f"## Chunk {chunk} "
     if header not in text:
         raise ValueError(
@@ -74,7 +109,13 @@ def chunk_requirements(text: str, chunk: str = "0") -> set[str]:
 
 
 def test_markers(path: Path) -> dict[str, set[str]]:
-    """Map pytest node ID -> declared LREQ marker set for one test module."""
+    """Map pytest node ID -> declared LREQ marker set for one test module.
+
+    Parses EVERY string argument of every ``@pytest.mark.lreq(...)`` call, so
+    ``@pytest.mark.lreq("A", "B")`` contributes both ``A`` and ``B``. The
+    single-argument parser this replaces silently misclassified 99 multi-argument
+    markers as unmarked.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     marked: dict[str, set[str]] = {}
     for node in ast.walk(tree):
@@ -88,12 +129,11 @@ def test_markers(path: Path) -> dict[str, set[str]]:
                 continue
             if ast.unparse(decorator.func) != LREQ_MARKER:
                 continue
-            if (
-                len(decorator.args) == 1
-                and isinstance(decorator.args[0], ast.Constant)
-                and isinstance(decorator.args[0].value, str)
-            ):
-                requirements.add(decorator.args[0].value)
+            for argument in decorator.args:
+                if isinstance(argument, ast.Constant) and isinstance(
+                    argument.value, str
+                ):
+                    requirements.add(argument.value)
         marked[f"tests/{path.name}::{node.name}"] = requirements
     return marked
 
@@ -104,6 +144,20 @@ def collect_tests() -> dict[str, set[str]]:
     for path in sorted(TESTS_DIR.glob("test_*.py")):
         tests.update(test_markers(path))
     return tests
+
+
+def unmarked_analytical_tests(
+    tests: Mapping[str, set[str]],
+    *,
+    exempt: frozenset[str] = NON_ANALYTICAL_EXEMPT,
+) -> list[str]:
+    """Node IDs of test functions with no marker and no exact exemption.
+
+    A non-empty result makes :func:`main` return 1.
+    """
+    return sorted(
+        node for node, markers in tests.items() if not markers and node not in exempt
+    )
 
 
 def load_matrix(path: Path = TRACEABILITY_PATH) -> dict[str, list[str]]:
@@ -124,11 +178,17 @@ def load_matrix(path: Path = TRACEABILITY_PATH) -> dict[str, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Validate traceability in both directions; return a process exit code."""
+    """Validate traceability in both directions; return a process exit code.
+
+    Fails (exit 1) on an unknown/retired referenced ID, a required ID with no
+    mapped test, a marked test with no matrix entry, a marker/matrix mismatch, an
+    orphan matrix node, or an unmarked analytical test outside
+    :data:`NON_ANALYTICAL_EXEMPT`.
+    """
     _ = argv
     srs_text = SRS_PATH.read_text(encoding="utf-8")
     defined = defined_ids(srs_text)
-    required = chunk_requirements(DEPENDENCY_MAP_PATH.read_text(encoding="utf-8"))
+    required = required_ids(srs_text)
 
     try:
         matrix = load_matrix()
@@ -150,17 +210,25 @@ def main(argv: list[str] | None = None) -> int:
         if markers and set(matrix.get(node, ())) != markers
     )
     orphan_nodes = sorted(node for node in matrix if node not in tests)
-    unmarked_tests = sorted(node for node, markers in tests.items() if not markers)
+    unmarked = unmarked_analytical_tests(tests)
+    exempt_unmarked = sorted(
+        node
+        for node, markers in tests.items()
+        if not markers and node in NON_ANALYTICAL_EXEMPT
+    )
 
     problems = bool(
-        unknown or missing_required or missing_nodes or marker_mismatch or orphan_nodes
+        unknown
+        or missing_required
+        or missing_nodes
+        or marker_mismatch
+        or orphan_nodes
+        or unmarked
     )
     if unknown:
         print(f"Unknown or retired requirement IDs: {', '.join(unknown)}")
     if missing_required:
-        print(
-            f"Chunk 0 requirements without mapped tests: {', '.join(missing_required)}"
-        )
+        print(f"Requirements without mapped tests: {', '.join(missing_required)}")
     if missing_nodes:
         print(
             f"Tests with lreq markers but no matrix entry: {', '.join(missing_nodes)}"
@@ -169,16 +237,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Marker/matrix LREQ mismatch: {', '.join(marker_mismatch)}")
     if orphan_nodes:
         print(f"Matrix entries not found in the test suite: {', '.join(orphan_nodes)}")
+    if unmarked:
+        print(
+            "Unmarked analytical tests outside the exemption set: "
+            f"{', '.join(unmarked)}"
+        )
     if problems:
         return 1
 
-    if unmarked_tests:
-        print(
-            f"Note: {len(unmarked_tests)} test(s) carry no lreq marker: {', '.join(unmarked_tests)}"
-        )
     print(
-        f"Traceability valid: {len(required)} Chunk 0 requirements mapped, "
-        f"{len(matrix)} matrix nodes, {len(defined)} defined LREQ IDs"
+        f"Traceability valid: {len(required)} required/defined LREQ IDs mapped, "
+        f"{len(matrix)} matrix nodes, "
+        f"{len(unmarked)} unmarked analytical tests outside exemption "
+        f"({len(exempt_unmarked)} exempted non-analytical nodes)"
     )
     return 0
 

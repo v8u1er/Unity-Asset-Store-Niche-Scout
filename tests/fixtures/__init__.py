@@ -8,6 +8,7 @@ existing modules for convenience only; they add no symbols of their own.
 from __future__ import annotations
 
 from fixtures import (
+    acceptance_fixtures,
     config_fixtures,
     coveo_discovery,
     date_eligibility_fixtures,
@@ -23,6 +24,7 @@ from fixtures import (
 )
 
 __all__ = [
+    "acceptance_fixtures",
     "config_fixtures",
     "coveo_discovery",
     "date_eligibility_fixtures",

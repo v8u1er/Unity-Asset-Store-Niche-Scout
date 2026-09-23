@@ -29,6 +29,7 @@ from niche_scout.tools.check_import_boundaries import (
 
 @pytest.mark.lreq("LREQ-MET-050")
 @pytest.mark.lreq("LREQ-MET-100")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_stratum_expansion_weight_is_population_over_sample() -> None:
     """``stratum_expansion_weight(N_h, n_h)`` is the expansion weight ``N_h / n_h``.
 
@@ -98,6 +99,7 @@ def test_weighted_median_single_value_and_first_at_or_above_half() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-050")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_weighted_median_exact_half_averages_with_next() -> None:
     """Exact-half cumulative weight averages the boundary and next sorted value.
 
@@ -554,6 +556,7 @@ def test_recent_zero_population_is_null_and_coverage_zero() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-100")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_quality_raw_uses_n_h_over_n_h_weights() -> None:
     """``QualityRaw`` weights each stratum by ``N_h / n_h``, not by sample size.
 
@@ -576,6 +579,7 @@ def test_quality_raw_uses_n_h_over_n_h_weights() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-100")
+@pytest.mark.lreq("LREQ-TST-050")
 def test_quality_raw_zero_visibility_denominator_is_null() -> None:
     """A zero visibility denominator is null, never a zero quality score.
 

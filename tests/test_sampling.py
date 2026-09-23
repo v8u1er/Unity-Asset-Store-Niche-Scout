@@ -153,6 +153,7 @@ def test_digest_matches_nul_delimited_sha256_literal():
 
 
 @pytest.mark.lreq("LREQ-SMP-060")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_digest_changes_with_rule_version():
     """Fixture E: a different rule version changes every member digest.
 
@@ -267,6 +268,7 @@ def test_no_randomness_module_used():
 
 
 @pytest.mark.lreq("LREQ-SMP-040")
+@pytest.mark.lreq("LREQ-TST-020")
 @pytest.mark.parametrize("n", [0, 1, 99, 100])
 def test_census_population_sizes_zero_one_99_100(n):
     """Fixture A: populations of 0, 1, 99, 100 are census (SRS §5.1 LREQ-SMP-040).
@@ -343,6 +345,7 @@ def test_census_sample_fraction_is_exactly_one():
 
 
 @pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_four_strata_boundaries_at_101():
     """Fixture B: N = 101 divides into 1..25, 26..50, 51..75, 76..101.
 
@@ -562,6 +565,7 @@ def test_duplicate_row_excluded_and_counted():
 
 
 @pytest.mark.lreq("LREQ-SMP-090")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_reduced_stratum_selects_all_and_reports_reduced_count():
     """Fixture D: a stratum below 25 selects all and reports the reduced count.
 
@@ -624,6 +628,7 @@ def test_reduced_stratum_selects_all_and_reports_reduced_count():
 
 
 @pytest.mark.lreq("LREQ-SMP-070")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_early_middle_late_positions_represented():
     """Fixture I: the N = 101 sample draws from all four ordinal ranges.
 
@@ -673,6 +678,7 @@ def test_sample_is_not_first_page_prefix():
 
 
 @pytest.mark.lreq("LREQ-SMP-030", "LREQ-SMP-040")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_sampling_basis_and_census_flag():
     """``census`` at/under 100; ``deterministic_stratified_sample`` above.
 
@@ -797,6 +803,7 @@ def test_malformed_population_input_raises_value_error():
 
 
 @pytest.mark.lreq("LREQ-SMP-010")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_no_duplicate_membership_within_category():
     """Members within one category are identity-unique.
 
@@ -877,6 +884,7 @@ def test_shared_identity_appears_in_both_categories():
 
 
 @pytest.mark.lreq("LREQ-SMP-080")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_sample_fraction_distinct_from_stratum_aggregates():
     """``sample_fraction`` is its own field; no coverage or usable count emitted.
 
@@ -931,6 +939,7 @@ def test_sample_fraction_distinct_from_stratum_aggregates():
 
 
 @pytest.mark.lreq("LREQ-SMP-060")
+@pytest.mark.lreq("LREQ-TST-020")
 def test_census_member_ranks_follow_digest_order():
     """Census ``sample_rank_within_stratum`` is 1-based in ``(digest, key)`` order.
 
