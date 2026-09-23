@@ -3354,11 +3354,12 @@ def run_pipeline(
     if current is not None and current.status == RunStatus.FAILED.value:
         final_status = RunStatus.FAILED.value
     else:
-        repository.update_run_status(
-            resolved_run_id,
-            RunStatus.COMPLETED.value,
-            completed_at_utc=clock(),
-        )
+        with repository.transaction():
+            repository.update_run_status(
+                resolved_run_id,
+                RunStatus.COMPLETED.value,
+                completed_at_utc=clock(),
+            )
         final_status = RunStatus.COMPLETED.value
 
     return PipelineResult(
