@@ -2627,3 +2627,421 @@ def test_error_summaries_and_metadata_are_redacted() -> None:
     for name, value in gql_headers(_transport).items():
         assert name.casefold() in {n.casefold() for n in draft.request_metadata_json} or True
         assert value not in draft.request_metadata_json
+
+
+# ---------------------------------------------------------------------------
+# Chunk 16 — the live nested Coveo Search v2 record shape
+# ---------------------------------------------------------------------------
+#
+# Scope authority:
+# Documents/plans/chunk-16-coveo-discovery-record-shape.md section 9. The live
+# response nests the five requested discovery fields under a per-record ``raw``
+# object while the adapter reads each record flat (plan section 1, human-supplied
+# live capture). Every expectation below is hand-derived from that shape; none is
+# read off the implementation. Every existing node above is untouched.
+
+
+def _chunk16_case(
+    page_records: Any,
+    *,
+    category: str = CATEGORY,
+    taxonomy: Mapping[str, Any] | None = None,
+) -> tuple[Any, SqliteRepository]:
+    """Discovery harness variant whose opener serves live-nested records.
+
+    The run row is inserted under the module's ``RUN_ID`` because the suite's
+    ``discover()`` helper and ``rows_by_ordinal()`` are both hard-coded to it;
+    every call gets a fresh repository, so one ``RUN_ID`` per case cannot
+    collide. ``page_response`` routes through ``fx.make_page``, which copies each
+    record shallowly; the live record's nested ``raw`` mapping is therefore
+    shared with the served page, exactly as the real adapter receives it. Both
+    envelope counts are the served record count, so the plan section 9 Node 8
+    literal ``filtered_count=PAGE_SIZE`` holds for its 96-record page.
+    """
+    opener = RecordingOpener(
+        lambda index: page_response(
+            page_records,
+            total_count=len(page_records),
+            filtered_count=len(page_records),
+        )
+    )
+    repository = SqliteRepository(Path(tempfile.mkdtemp()) / "chunk16.fixture.sqlite3")
+    try:
+        _insert_run(repository)
+        result = discover(repository, opener, category=category, taxonomy=taxonomy)
+    except BaseException:
+        repository.close()
+        raise
+    return result, repository
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+@pytest.mark.lreq("LREQ-EXT-060")
+def test_raw_nested_discovery_fields_are_read_from_the_live_record_shape() -> None:
+    """The live nested record is read as an asset with its verbatim category.
+
+    Hand-derived from plan section 1: ``live_raw_record(0)`` nests the five
+    discovery fields under ``raw`` and keeps ``uri``/``clickUri`` top-level with
+    no trailing ``-<digits>`` identifier, so the identity resolves through the
+    string ``permanentid`` (``"379642"``) alone and the persisted
+    ``category_value_json`` is the verbatim live list ``["3d", " 3d > characters"]``.
+    """
+    result, repository = _chunk16_case(
+        [fx.live_raw_record(0)], taxonomy=fx.live_form_taxonomy_payload()
+    )
+    try:
+        rows = rows_by_ordinal(repository)
+        assert result.discovery_status is DiscoveryStatus.COMPLETE
+        assert len(rows) == 1
+        assert json.loads(rows[0].category_value_json) == ["3d", " 3d > characters"]
+        sources = [
+            item["source_field"]
+            for item in json.loads(rows[0].identity_candidates_json)
+        ]
+        assert "permanentid" in sources
+        assert "ec_product_id" not in sources
+        assert rows[0].asset_identity_key == "379642"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-060")
+@pytest.mark.lreq("LREQ-EXT-080")
+def test_live_nested_record_resolves_identity_and_category_from_normalized_shape() -> (
+    None
+):
+    """The live record resolves one identity and one verified category match.
+
+    Hand-derived: exactly one record, one resolved identity, no conflict or
+    unresolved identity, the live-form taxonomy inventory contains
+    ``3d/characters`` (``fx.LIVE_FORM_INVENTORY_CANONICAL``), so the category
+    filter is ``VERIFIED`` and there are no conditions.
+    """
+    result, repository = _chunk16_case(
+        [fx.live_raw_record(0)],
+        taxonomy=fx.live_form_taxonomy_payload(),
+    )
+    try:
+        assert result.canonical_identity_count == 1
+        assert result.unresolved_identity_count == 0
+        assert result.conflict_identity_count == 0
+        assert result.filter_status is CategoryFilterValidationStatus.VERIFIED
+        assert result.conditions == ()
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+def test_top_level_member_wins_over_raw_fallback() -> None:
+    """A top-level ``ec_category`` wins; ``raw`` is only a fallback.
+
+    The record carries the fixture's canonical 3-segment path at the top level
+    and ``["vfx", " vfx > particles"]`` under ``raw``, so the persisted verbatim
+    value is the top-level ``CATEGORY`` and the row is ``verified``.
+    """
+    record = fx.live_raw_record(0)
+    record["ec_category"] = CATEGORY
+    record["raw"]["ec_category"] = ["vfx", " vfx > particles"]
+    result, repository = _chunk16_case([record])
+    try:
+        rows = rows_by_ordinal(repository)
+        assert len(rows) == 1
+        assert json.loads(rows[0].category_value_json) == CATEGORY
+        assert rows[0].category_filter_validation_status == (
+            CategoryFilterValidationStatus.VERIFIED.value
+        )
+        assert result.filter_status is CategoryFilterValidationStatus.VERIFIED
+    finally:
+        repository.close()
+
+    # Presence is not truthiness (plan section 8): a top-level ``ec_category``
+    # that is present but false-y (``None``/``""``) still wins over the ``raw``
+    # list, so the verbatim persisted value is the top-level one. A truthiness
+    # fallback (``record.get(k) or raw.get(k)``) would persist the ``raw`` list
+    # and classify the row from it instead.
+    explicit_none = fx.live_raw_record(0)
+    explicit_none["ec_category"] = None
+    explicit_none["raw"]["ec_category"] = ["vfx", " vfx > particles"]
+    blank = fx.live_raw_record(1)
+    blank["ec_category"] = ""
+    blank["raw"]["ec_category"] = ["vfx", " vfx > particles"]
+    presence_result, presence_repository = _chunk16_case([explicit_none, blank])
+    try:
+        presence_rows = rows_by_ordinal(presence_repository)
+        assert len(presence_rows) == 2
+        assert json.loads(presence_rows[0].category_value_json) is None
+        assert json.loads(presence_rows[1].category_value_json) == ""
+        assert presence_rows[0].category_filter_validation_status == (
+            CategoryFilterValidationStatus.UNVERIFIED.value
+        )
+    finally:
+        presence_repository.close()
+    assert presence_result.canonical_identity_count == 2
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+def test_flat_record_without_raw_is_normalized_unchanged() -> None:
+    """A flat record with no ``raw`` is the pre-change behavior, unchanged.
+
+    Two flat ``fx.record``s resolve and match exactly as before the fix, so this
+    node passes pre- and post-change.
+    """
+    result, repository = _chunk16_case([fx.record(0), fx.record(1)])
+    try:
+        rows = rows_by_ordinal(repository)
+        assert result.discovery_status is DiscoveryStatus.COMPLETE
+        assert len(rows) == 2
+        assert all(
+            row.identity_resolution_status == IdentityResolutionStatus.RESOLVED.value
+            for row in rows.values()
+        )
+        assert all(
+            row.category_filter_validation_status
+            == CategoryFilterValidationStatus.VERIFIED.value
+            for row in rows.values()
+        )
+        assert result.canonical_identity_count == 2
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_non_mapping_raw_is_inert_and_not_a_structural_failure() -> None:
+    """A non-mapping ``raw`` is inert; a genuine gap still fails the page.
+
+    The first two records (``raw: None``, ``raw: "text"``) read as flat, add no
+    ``response_missing_required_member``, and are not structural failures. The
+    third carries **no** required member at either level (``raw`` holds only a
+    non-discovery member), so it keeps the existing per-record behavior: the
+    whole page is ``page_failed`` with ``response_missing_required_member``
+    (plan section 2 R4 and section 8's "neither level's required member").
+    """
+    inert = [fx.record(0), fx.record(1)]
+    inert[0]["raw"] = None
+    inert[1]["raw"] = "text"
+    result, repository = _chunk16_case(inert)
+    try:
+        assert result.discovery_status is DiscoveryStatus.COMPLETE
+        assert not any(
+            issue.code == "response_missing_required_member" for issue in result.issues
+        )
+        assert len(rows_by_ordinal(repository)) == 2
+    finally:
+        repository.close()
+
+    gapped = [
+        {
+            "ec_name": "Gapped Asset",
+            "raw": {"sysurihash": "fixture-hash"},
+        }
+    ]
+    result_gap, repository_gap = _chunk16_case(gapped)
+    try:
+        assert result_gap.discovery_status is DiscoveryStatus.PAGE_FAILED
+        assert any(
+            issue.code == "response_missing_required_member"
+            for issue in result_gap.issues
+        )
+        assert rows_by_ordinal(repository_gap) == {}
+    finally:
+        repository_gap.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-040")
+def test_live_raw_is_not_lifted_and_forbidden_metadata_is_unchanged() -> None:
+    """Only ``raw`` itself counts as one extra member; no other ``raw`` member leaves.
+
+    A live record plus ``raw.sysurihash`` records exactly one forbidden member
+    (``raw``) at ``extra_member_count`` 1, and neither ``sysurihash`` nor its
+    value appears in any persisted column. The no-lift rule is also pinned on the
+    page the adapter returns: its normalized record's top-level keys are the
+    served keys plus exactly the five ``COVEO_DISCOVERY_FIELD_SET`` names, so no
+    ``sysurihash``/``urihash`` is lifted out of ``raw``.
+    """
+    record = fx.live_raw_record(0)
+    record["raw"]["sysurihash"] = "fixture-hash"
+    result, repository = _chunk16_case(
+        [record], taxonomy=fx.live_form_taxonomy_payload()
+    )
+    try:
+        assert result.discovery_status is DiscoveryStatus.COMPLETE
+        rows = rows_by_ordinal(repository)
+        assert len(rows) == 1
+        row = rows[0]
+        metadata = json.loads(row.request_metadata_json)
+        assert metadata["forbidden_field_presence"] == [
+            {"record_index": 0, "extra_member_count": 1}
+        ]
+        persisted = " ".join(
+            filter(
+                None,
+                (
+                    row.identity_candidates_json,
+                    row.request_metadata_json,
+                    row.error_summary_json,
+                    row.category_value_json,
+                ),
+            )
+        )
+        assert "sysurihash" not in persisted
+        assert "fixture-hash" not in persisted
+    finally:
+        repository.close()
+
+    # A lifted non-discovery member would never reach a persisted column (only
+    # the four identity fields and ``ec_category`` are read), so the no-lift rule
+    # is only observable on the page the adapter returns. Read the same record
+    # shape through the public page entry point and inspect the normalized record.
+    served = fx.live_raw_record(0)
+    served["raw"]["sysurihash"] = "fixture-hash"
+    served["raw"]["urihash"] = "fixture-urihash"
+    opener = RecordingOpener(lambda index: page_response([served], total_count=1))
+    page = collector_coveo.fetch_category_page(
+        fx.request_body(),
+        headers=collector_coveo.build_coveo_headers(fx.BEARER_TOKEN),
+        url=collector_coveo.coveo_search_url(),
+        transport=opener,
+        sleeper=Recorder(),
+    )
+    assert len(page.records) == 1
+    normalized = page.records[0]
+    lifted_names = set(collector_coveo.COVEO_DISCOVERY_FIELD_SET)
+    assert set(normalized) == set(served) | lifted_names
+    assert "sysurihash" not in normalized
+    assert "urihash" not in normalized
+    assert normalized["raw"]["sysurihash"] == "fixture-hash"
+    assert normalized["raw"]["urihash"] == "fixture-urihash"
+
+
+@pytest.mark.lreq("LREQ-EXT-080")
+def test_live_multivalued_category_is_matched_verbatim_after_normalization() -> None:
+    """The live multi-valued category is matched verbatim; a non-inventory one
+    mismatches.
+
+    ``["3d", " 3d > characters"]`` is in ``fx.LIVE_FORM_INVENTORY_CANONICAL``, so
+    it is ``VERIFIED`` with the verbatim list persisted and no conditions; the
+    ``["2d", " 2d > textures-materials > lava"]`` variant is a ``MISMATCH``
+    condition.
+    """
+    result, repository = _chunk16_case(
+        [fx.live_raw_record(0)],
+        taxonomy=fx.live_form_taxonomy_payload(),
+    )
+    try:
+        rows = rows_by_ordinal(repository)
+        assert result.filter_status is CategoryFilterValidationStatus.VERIFIED
+        assert result.conditions == ()
+        assert json.loads(rows[0].category_value_json) == ["3d", " 3d > characters"]
+    finally:
+        repository.close()
+
+    mismatched, repository_m = _chunk16_case(
+        [fx.live_raw_record(0, category=["2d", " 2d > textures-materials > lava"])],
+        taxonomy=fx.live_form_taxonomy_payload(),
+    )
+    try:
+        assert DiscoveryStatus.CATEGORY_MISMATCH in mismatched.conditions
+        assert mismatched.filter_status is CategoryFilterValidationStatus.MISMATCH
+    finally:
+        repository_m.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+@pytest.mark.lreq("LREQ-EXT-090")
+def test_live_nested_record_yields_complete_status_and_no_page_failed() -> None:
+    """A full live page is not a structural failure and emits every record.
+
+    ``PAGE_SIZE`` distinct live-nested records served against the live-form
+    taxonomy yield ``COMPLETE`` with ``PAGE_SIZE`` observations -- the direct
+    regression pin for the live "96 x response_missing_required_member" failure.
+    """
+    records = [fx.live_raw_record(index) for index in range(PAGE_SIZE)]
+    result, repository = _chunk16_case(
+        records,
+        taxonomy=fx.live_form_taxonomy_payload(),
+    )
+    try:
+        assert DiscoveryStatus.PAGE_FAILED not in result.conditions
+        assert result.discovery_status is DiscoveryStatus.COMPLETE
+        assert result.observations_emitted == PAGE_SIZE
+        assert (
+            repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == PAGE_SIZE
+        )
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-EXT-060")
+def test_live_nested_record_populates_identity_candidates_without_ec_product_id() -> (
+    None
+):
+    """The live list ``ec_product_id`` is dropped as a candidate, not coerced.
+
+    The served record's ``raw.ec_product_id`` is the one-element list
+    ``["379642"]`` (hand-derived from the capture), so ``_usable_candidate``
+    drops it and the candidate JSON carries no ``ec_product_id`` entry; identity
+    still resolves to ``"379642"`` through the string ``permanentid`` (the
+    recorded section 2 limitation, pinned rather than silently handled).
+    """
+    record = fx.live_raw_record(0)
+    assert record["raw"]["ec_product_id"] == ["379642"]
+    result, repository = _chunk16_case(
+        [record], taxonomy=fx.live_form_taxonomy_payload()
+    )
+    try:
+        rows = rows_by_ordinal(repository)
+        candidates = json.loads(rows[0].identity_candidates_json)
+        sources = [item["source_field"] for item in candidates]
+        assert "ec_product_id" not in sources
+        assert all(
+            item["canonical_value"] == "379642"
+            for item in candidates
+            if item["canonical_value"] is not None
+        )
+        assert rows[0].identity_resolution_status == (
+            IdentityResolutionStatus.RESOLVED.value
+        )
+        assert rows[0].asset_identity_key == "379642"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_normalization_is_deterministic_for_equal_live_records() -> None:
+    """Two fresh runs of the same live page persist equal, row-for-row, columns.
+
+    The persisted ``category_value_json``, ``identity_candidates_json``,
+    ``identity_resolution_status``, and ``category_filter_validation_status`` are
+    equal ordinal for ordinal: the normalization observes no set/dict ordering.
+    """
+    first, repository_a = _chunk16_case(
+        [fx.live_raw_record(0), fx.live_raw_record(1)],
+        taxonomy=fx.live_form_taxonomy_payload(),
+    )
+    try:
+        second, repository_b = _chunk16_case(
+            [fx.live_raw_record(0), fx.live_raw_record(1)],
+            taxonomy=fx.live_form_taxonomy_payload(),
+        )
+        try:
+            rows_a = rows_by_ordinal(repository_a)
+            rows_b = rows_by_ordinal(repository_b)
+        finally:
+            repository_b.close()
+    finally:
+        repository_a.close()
+    assert sorted(rows_a) == sorted(rows_b) == [0, 1]
+    assert first.conditions == second.conditions
+
+    def projection(row: Any) -> tuple[Any, Any, Any, Any]:
+        return (
+            row.category_value_json,
+            row.identity_candidates_json,
+            row.identity_resolution_status,
+            row.category_filter_validation_status,
+        )
+
+    assert [projection(rows_a[ordinal]) for ordinal in sorted(rows_a)] == [
+        projection(rows_b[ordinal]) for ordinal in sorted(rows_b)
+    ]

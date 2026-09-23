@@ -1010,6 +1010,61 @@ def fetch_category_page(
     )
 
 
+#: The one member whose presence may be lifted from a record's nested ``raw``
+#: mapping (the live Coveo Search v2 shape). It is ``COVEO_DISCOVERY_FIELD_SET``
+#: and nothing else: no other ``raw`` member is read, copied, or renamed
+#: (LREQ-EXT-040).
+_RAW_FALLBACK_FIELD_SET: tuple[str, ...] = tuple(COVEO_DISCOVERY_FIELD_SET)
+
+
+def _normalize_discovery_record(
+    record: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Return ``record`` with the five discovery fields exposed at the top level.
+
+    The live Coveo Search v2 response nests the requested discovery fields under a
+    per-record ``raw`` object, while the adapter's required-member check, identity
+    step, category matcher, and ``category_value_json`` all read the record flat.
+    This is the single place that bridges the two: for each member of
+    :data:`COVEO_DISCOVERY_FIELD_SET` in that fixed order, the top-level value wins
+    when the key is present (even as ``None``), else the value found under ``raw``
+    when ``raw`` is a mapping that carries the key.
+
+    Backward compatible: a record with no ``raw``, a non-mapping ``raw``, or a
+    ``raw`` mapping missing a member is returned **unchanged** (the identical
+    object), so flat synthetic fixtures keep exactly today's behavior. ``raw``
+    itself is never removed, never validated, and never treated as a structural
+    failure — an absent or non-mapping ``raw`` adds no issue.
+
+    Only the five discovery-set names are lifted. A member that is present but
+    unusable (for example the live one-element list ``ec_product_id``) is copied
+    **as supplied** and stays unusable downstream; nothing is coerced, and a
+    missing member is never replaced by a zero or an empty value (AGENTS.md hard
+    rule 2). The result is a deterministic function of ``record``: the copy order
+    is the fixed field-set order and no set/dict iteration order is observed
+    (``LREQ-ARCH-030``).
+
+    The copy is a shallow ``dict`` per field, constructed only when a field
+    actually needs lifting; a record that needs none is returned as the same
+    mapping object, so the forbidden-member check below still sees exactly the
+    record's own (top-level) keys and a lifted field cannot create a terminator.
+    """
+    raw = record.get("raw")
+    if not isinstance(raw, Mapping):
+        return record
+    lifted: dict[str, object] | None = None
+    for member in _RAW_FALLBACK_FIELD_SET:
+        if member in record:
+            continue
+        if member in raw:
+            if lifted is None:
+                lifted = dict(record)
+            lifted[member] = raw[member]
+    if lifted is None:
+        return record
+    return lifted
+
+
 def _read_page(
     body: bytes,
     *,
@@ -1088,6 +1143,7 @@ def _read_page(
                 )
             )
             continue
+        item = _normalize_discovery_record(item)
         missing_members = [
             member for member in _RESPONSE_FIELD_SET_MEMBERS if member not in item
         ]

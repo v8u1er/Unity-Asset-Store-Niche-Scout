@@ -27,6 +27,7 @@ from typing import Any
 
 import fixtures.acceptance_fixtures as afx
 import fixtures.cli_fixtures as cf
+import fixtures.coveo_discovery as fx
 import fixtures.pipeline_fixtures as pf
 import pytest
 
@@ -79,10 +80,14 @@ def _run_command(
     ``run_command`` parameters, so they are folded into the options object. When no
     ``open_repository`` is injected the helper supplies a recording factory and
     closes it before returning, so the SQLite file is not left locked for a later
-    fresh-connection read.
+    fresh-connection read. A caller may replace the scenario's discovery transport
+    with ``coveo_transport=``; every other call site keeps the scenario default.
     """
     import io
 
+    coveo_transport = overrides.pop(
+        "coveo_transport", artifacts.scenario.coveo_transport
+    )
     options = options if options is not None else _run_options(artifacts, **overrides)
     owned_factory = None
     if open_repository is None:
@@ -92,7 +97,7 @@ def _run_command(
         "environ": cf.config_fixtures.MOCK_ENVIRONMENT,
         "clock": artifacts.scenario.clock,
         "sleeper": lambda _seconds: None,
-        "coveo_transport": artifacts.scenario.coveo_transport,
+        "coveo_transport": coveo_transport,
         "graphql_transport": artifacts.scenario.graphql_transport,
         "template_path": artifacts.template_path,
         "open_repository": open_repository,
@@ -1017,3 +1022,171 @@ def test_acceptance_sensitivity_after_base_candidates_vector(tmp_path: Path) -> 
         # index through the vector's component order.
         index = categories.index(category)
         assert scores[index].market_opportunity_score == pytest.approx(value, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Chunk 16 — the live-shaped raw discovery record (LREQ-EXT-060/050, TST-080)
+# ---------------------------------------------------------------------------
+#
+# Scope authority: Documents/plans/chunk-16-coveo-discovery-record-shape.md
+# section 9, Node 11. The node is inline-built from the published
+# ``pipeline_fixtures``/``cli_fixtures`` helpers plus the new live-shape helper
+# in ``fixtures/coveo_discovery.py``; neither fixture module is edited, so the
+# frozen Chunk 13 scenario stays byte-identical.
+#
+# Hand-derived expected value (plan section 1 live capture; not read off the
+# implementation): the live Coveo Search v2 response nests the five discovery
+# fields under a per-record ``raw`` object, while the adapter reads each record
+# flat. ``live_raw_summary_record`` nests every discovery field under ``raw``,
+# so before Chunk 16's normalization the per-record required-member check fails
+# for all 15 served records (response_missing_required_member) and every
+# category is ``page_failed``.
+
+
+def _live_shaped_transport(categories: Any) -> pf.RecordingCoveoTransport:
+    """Map every scenario category to page(s) of live-nested summary records.
+
+    Each category serves exactly the identities the scenario's designed
+    populations use (plan section 9 Node 11): the transport-fed ``Verified``
+    and ``Truncated`` categories serve ``900``/``901`` and ``900``/``902``
+    (two records each), every synthetic complete category serves its own two
+    ``A1``..``E2``, and the filter-unverified category serves none. The page
+    envelope, page count, ``total_count``, and ``filtered_count`` mirror the
+    flat scenario of ``pipeline_fixtures.end_to_end_scenario`` page for page,
+    so 15 records reach the read cap and the durable row count is the same 15.
+    """
+
+    def summary_page(
+        records: Any, *, total_count: int | None, filtered_count: int | None = None
+    ) -> bytes:
+        body = fx.live_raw_page(
+            records, total_count=total_count, filtered_count=filtered_count
+        )
+        return json.dumps(body).encode("utf-8")
+
+    def summary_records(identities: Any, category: str) -> list[dict[str, Any]]:
+        return [
+            fx.live_raw_summary_record(identity=identity, category=category)
+            for identity in identities
+        ]
+
+    served: dict[str, tuple[bytes, ...]] = {}
+    for category in categories:
+        if category == pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY:
+            served[category] = (
+                summary_page(
+                    summary_records((pf.END_TO_END_SHARED_KEY, "901"), category),
+                    total_count=2,
+                    filtered_count=2,
+                ),
+            )
+        elif category == pf.TRANSPORT_TRUNCATED_CATEGORY:
+            # Mirrors the flat scenario's ``truncated_page`` plus
+            # ``truncated_terminal_page``: the verified total (2000) far exceeds
+            # the records served, so the adapter requests a second page and the
+            # run's read cap (``SCENARIO_DISCOVERY_CAP`` = 3) admits only its
+            # leading record -- persisted as a duplicate of the first page's
+            # ``900``.
+            truncated = summary_records((pf.END_TO_END_SHARED_KEY, "902"), category)
+            served[category] = (
+                summary_page(truncated, total_count=2000),
+                summary_page(truncated, total_count=2000),
+            )
+        elif category == pf.TRANSPORT_FAILED_CATEGORY:
+            served[category] = (summary_page([], total_count=None),)
+        else:
+            served[category] = (
+                summary_page(
+                    summary_records(_scenario_category_identities(category), category),
+                    total_count=2,
+                    filtered_count=2,
+                ),
+            )
+    return pf.RecordingCoveoTransport(served)
+
+
+def _scenario_category_identities(category: str) -> tuple[str, ...]:
+    """Return the two identities the scenario's synthetic category serves.
+
+    Derived from ``pipeline_fixtures``' own design (``END_TO_END_CATEGORIES``
+    order and the ``A1``..``E2`` labels), never read off the pipeline. The
+    transport-fed categories are handled by the caller.
+    """
+    index = pf.SYNTHETIC_COMPLETE_CATEGORIES.index(category)
+    letter = "ABCDE"[index]
+    return (f"{letter}1", f"{letter}2")
+
+
+@pytest.mark.lreq("LREQ-EXT-060")
+@pytest.mark.lreq("LREQ-EXT-050")
+@pytest.mark.lreq("LREQ-TST-080")
+def test_acceptance_run_reads_live_shaped_raw_records(tmp_path: Path) -> None:
+    """A run over live-nested Coveo records reads them as assets, not as failures.
+
+    Hand-derived expected state (plan section 9 Node 11): every transport-fed
+    category's persisted discovery status must exclude ``page_failed`` and the
+    durable raw discovery row count must equal the scenario's cap-admitted live
+    records (15: the verified category's 2, the read cap's 3 from the truncated
+    category's two pages, the unverified category's 0, and 5 synthetic
+    categories of 2). The run completes because the permissive identity
+    preflight (``identity_preflight_min_success_rate=0.0``, the
+    ``scenario_artifacts`` default) cannot block it.
+
+    The live-shaped transport is forwarded through ``_run_command``'s
+    ``coveo_transport=`` override, so the run reads the live pages rather than the
+    flat scenario's: the transport call count is the eight first-page fetches plus
+    the truncated category's terminal second page, and every persisted row's
+    ``category_value_json`` is the live record's verbatim one-element
+    ``[category]`` list (the flat records persist the scalar path string).
+    """
+    directory = tmp_path / "live-raw-record-shape"
+    directory.mkdir()
+    artifacts = cf.scenario_artifacts(directory, run_id="run-16-live-raw")
+    live_transport = _live_shaped_transport(artifacts.scenario.categories)
+    assert _run_command(artifacts, coveo_transport=live_transport) == cli.EXIT_OK
+
+    repository = _repository_at(artifacts.db_path)
+    try:
+        scores = {
+            row.category: row
+            for row in repository.get_category_scores(artifacts.run_id)
+        }
+        run_row = repository.get_run(artifacts.run_id)
+        counts = {
+            category: repository.count_raw_discovery_observations(
+                artifacts.run_id, category
+            )
+            for category in artifacts.scenario.categories
+        }
+        live_rows = {
+            category: list(
+                repository.iter_raw_discovery_observations(artifacts.run_id, category)
+            )
+            for category in artifacts.scenario.categories
+        }
+    finally:
+        repository.close()
+
+    assert run_row.status == RunStatus.COMPLETED.value
+    assert counts[pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY] == 2
+    assert counts[pf.TRANSPORT_TRUNCATED_CATEGORY] == 3, "2 rows plus 1 cap-admitted"
+    assert counts[pf.TRANSPORT_FAILED_CATEGORY] == 0
+    for category in pf.SYNTHETIC_COMPLETE_CATEGORIES:
+        assert counts[category] == 2
+    assert sum(counts.values()) == pf.EXPECTED_RAW_DISCOVERY_ROWS == 15
+
+    # The live transport is the one the run consumed: every scenario category was
+    # fetched once, plus the truncated category's terminal second page (its
+    # cap-admitted third row), a count the flat scenario's transport cannot reach
+    # by construction.
+    assert live_transport.call_count == len(artifacts.scenario.categories) + 1
+
+    # Liveness: the persisted rows carry the live-nested record's verbatim
+    # one-element ``ec_category`` list, never the flat record's scalar path string.
+    for category, rows in live_rows.items():
+        assert all(json.loads(row.category_value_json) == [category] for row in rows)
+
+    for category in artifacts.scenario.categories:
+        assert scores[category].discovery_status != DiscoveryStatus.PAGE_FAILED.value, (
+            category
+        )

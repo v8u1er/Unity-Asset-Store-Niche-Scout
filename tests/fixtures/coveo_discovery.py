@@ -69,6 +69,10 @@ __all__ = [
     "LIVE_FORM_PARENT_VALUE",
     "LIVE_FORM_PARENT_VALUE_CANONICAL",
     "LIVE_FORM_SEPARATOR",
+    "LIVE_RAW_RECORD_FIELDS",
+    "live_raw_page",
+    "live_raw_record",
+    "live_raw_summary_record",
     "MALFORMED_PAGE_JSON",
     "NON_ADVANCING_PAGE_COUNT",
     "REFERENCE_UTC",
@@ -533,6 +537,89 @@ def live_form_taxonomy_payload() -> dict[str, Any]:
         "source_url": TAXONOMY_FIXTURE["source_url"],
         "template_sha256": TAXONOMY_FIXTURE["template_sha256"],
         "canonical_category_paths": list(LIVE_FORM_INVENTORY),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Live raw-nested record shape (Chunk 16) — hand-derived, offline
+# ---------------------------------------------------------------------------
+# The Chunk 16 plan §1 records the live Coveo Search v2 shape: the five
+# requested discovery fields arrive nested under a per-record ``raw`` object,
+# while ``uri``/``clickUri`` stay top-level. ``ec_product_id`` and
+# ``ec_category`` are one-element / multi-element lists and ``permanentid`` is
+# a string. These helpers are hand-derived from that human-supplied live
+# capture; they are not a committed captured response.
+
+#: The five live ``raw`` members, verbatim from the capture in plan §1.
+LIVE_RAW_RECORD_FIELDS: dict[str, object] = {
+    "permanentid": "379642",
+    "ec_product_id": ["379642"],
+    "ec_name": "Fixture Live Asset",
+    "ec_category": ["3d", " 3d > characters"],
+    "publisher_name": "Fixture Publisher",
+}
+
+
+def live_raw_record(index: int = 0, *, category: object = None) -> dict[str, Any]:
+    """Return one record in the live nested shape (discovery fields under ``raw``).
+
+    The top level carries the response fields the capture shows there
+    (``uri``, ``clickUri``, ``uniqueId``, ``title``, ``excerpt``, ``score``) and
+    the requested discovery fields live under ``raw``. ``uri``/``clickUri`` have
+    no trailing ``-<digits>`` identifier, so the URI fallback contributes no
+    candidate and the identity resolves through the string ``permanentid``.
+    """
+    identity = f"{379642 + index}"
+    raw = dict(LIVE_RAW_RECORD_FIELDS)
+    raw["permanentid"] = identity
+    raw["ec_product_id"] = [identity]
+    if category is not None:
+        raw["ec_category"] = category
+    return {
+        "title": f"Fixture Live Asset {identity}",
+        "uri": f"assetstore://product/{identity}",
+        "clickUri": f"https://assetstore.unity.com/packages/package/{identity}",
+        "uniqueId": f"42.20568$assetstore://product/{identity}",
+        "excerpt": "Fixture live excerpt",
+        "score": 2711,
+        "raw": raw,
+    }
+
+
+def live_raw_page(
+    page_records: Iterable[Mapping[str, Any]],
+    *,
+    total_count: int | None,
+    filtered_count: int | None = None,
+) -> dict[str, Any]:
+    """Return one live-nested Coveo page body (same envelope as ``make_page``)."""
+    return make_page(
+        page_records, total_count=total_count, filtered_count=filtered_count
+    )
+
+
+def live_raw_summary_record(*, identity: str, category: str) -> dict[str, Any]:
+    """Return one live-nested record for a synthetic e2e category.
+
+    ``permanentid`` is the scenario identity and ``ec_product_id`` its
+    one-element list; ``ec_category`` is the requested category; ``uri`` and
+    ``clickUri`` carry no usable trailing identifier, so identity resolves
+    through ``permanentid`` alone.
+    """
+    return {
+        "title": f"Fixture Live Asset {identity}",
+        "uri": f"assetstore://product/{identity}",
+        "clickUri": f"https://assetstore.unity.com/packages/package/{identity}",
+        "uniqueId": f"42.20568$assetstore://product/{identity}",
+        "excerpt": "Fixture live excerpt",
+        "score": 2711,
+        "raw": {
+            "permanentid": identity,
+            "ec_product_id": [identity],
+            "ec_name": f"Fixture Live Asset {identity}",
+            "ec_category": [category],
+            "publisher_name": "Fixture Publisher",
+        },
     }
 
 
