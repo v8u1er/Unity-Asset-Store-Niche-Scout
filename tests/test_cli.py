@@ -24,10 +24,12 @@ from __future__ import annotations
 import argparse
 import importlib
 import io
+import logging
 import sys
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fixtures import cli_fixtures as cf
@@ -948,3 +950,77 @@ def test_module_entry_point_is_reachable() -> None:
     assert "from .cli import main" in source
     assert "SystemExit(main())" in source
     _ = sys  # ``__main__`` raises SystemExit; this module never calls sys.exit.
+
+
+# --------------------------------------------------------------------------
+# Chunk 15 — production logging configuration (R3a).
+#
+# Source of truth: ``Documents/plans/chunk-15-failure-path-limitations-and-
+# logging.md`` §9 nodes 7-8 and §7.2 E8; SRS §11 ``LREQ-NFR-020`` is the only
+# logging requirement, so the wiring nodes map to it (they assert handler wiring
+# and the ``main`` invocation only, never NFR-020's four named quantities).
+# ``cli.main`` must configure logging and must still return the usage code
+# without calling ``sys.exit`` (interfaces/chunk-12.md §6).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-NFR-020")
+def test_configure_logging_attaches_exactly_one_handler_and_is_idempotent() -> None:
+    """The helper attaches exactly one marked INFO handler, idempotently.
+
+    The assertion is on the *marked* handler set only: other tooling may have
+    added handlers to the ``niche_scout`` logger, and the helper's contract is
+    that repeated calls leave exactly one of its own. The handler level and
+    format must match the helper's frozen constants. The pre-existing handlers
+    and level are restored so no state leaks into the rest of the session.
+    """
+    configure_logging = getattr(cli, "_configure_logging", None)
+    assert configure_logging is not None, (
+        "niche_scout.cli._configure_logging is not implemented yet"
+    )
+    handler_marker = cli._HANDLER_MARKER
+    logger = logging.getLogger("niche_scout")
+    before_handlers = list(logger.handlers)
+    before_level = logger.level
+    try:
+        configure_logging(io.StringIO())
+        configure_logging(io.StringIO())
+        marked = [
+            handler
+            for handler in logger.handlers
+            if getattr(handler, handler_marker, False)
+        ]
+        assert len(marked) == 1
+        assert marked[0].level == logging.INFO
+        assert marked[0].formatter is not None
+        assert marked[0].formatter._fmt == cli._LOG_FORMAT
+    finally:
+        for handler in list(logger.handlers):
+            if handler not in before_handlers:
+                logger.removeHandler(handler)
+        logger.setLevel(before_level)
+
+
+@pytest.mark.lreq("LREQ-NFR-020")
+def test_main_invokes_configure_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``cli.main`` calls ``_configure_logging`` exactly once per invocation.
+
+    The helper is replaced by a recorder so the real handler is never installed
+    for the rest of the session (plan §7.2 E8 edge contract); the usage-error
+    return value proves ``main`` completed its own dispatch without
+    ``sys.exit``.
+    """
+    configure_logging = getattr(cli, "_configure_logging", None)
+    assert configure_logging is not None, (
+        "niche_scout.cli._configure_logging is not implemented yet"
+    )
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def recorder(*args: Any, **kwargs: Any) -> None:
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(cli, "_configure_logging", recorder)
+    code = cli.main([])
+
+    assert code == cli.EXIT_USAGE_ERROR
+    assert len(calls) == 1

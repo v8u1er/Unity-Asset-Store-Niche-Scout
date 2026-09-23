@@ -2534,6 +2534,33 @@ def _page_view_status(
         ) from None
 
 
+def _log_preflight_outcome(outcome: IdentityPreflightOutcome) -> None:
+    """Emit one bounded run-level identity-preflight outcome line (LREQ-ID-040).
+
+    ``WARNING`` when the status is not ``passed``, ``INFO`` otherwise. The
+    message carries the status and the four integer unique-identity counts only:
+    never an identity string, endpoint URL, header value, correlation payload,
+    or diagnostic summary. The message never contains the substring
+    ``"enrichment"`` (case-insensitive).
+    """
+    summary = outcome.summary
+    message = (
+        "identity preflight: status=%s attempted=%d successful=%d "
+        "conflicting=%d other_failed=%d"
+    )
+    arguments = (
+        outcome.status.value,
+        summary.attempted_unique_identities,
+        summary.successful_unique_identities,
+        summary.conflicting_unique_identities,
+        summary.other_failed_unique_identities,
+    )
+    if outcome.status is IdentityPreflightStatus.PASSED:
+        _LOGGER.info(message, *arguments)
+    else:
+        _LOGGER.warning(message, *arguments)
+
+
 # --------------------------------------------------------------------------
 # Warning, missing-component, and sensitivity JSON helpers (bounded §5.6)
 # --------------------------------------------------------------------------
@@ -2809,7 +2836,12 @@ def _discover_all(
                 template_path=template_path,
                 shared_limiter=limiter,
             )
-        except Exception:
+        except Exception as exc:
+            _LOGGER.warning(
+                "category %s: discovery request failed (%s)",
+                category,
+                type(exc).__name__,
+            )
             with repository.transaction():
                 repository.set_category_status(
                     run_id,
@@ -2819,7 +2851,42 @@ def _discover_all(
                 )
             result = _failed_discovery_result(category)
         results[category] = result
+        _log_discovery_outcome(result)
     return results
+
+
+def _log_discovery_outcome(discovery: CategoryDiscoveryResult) -> None:
+    """Emit one bounded per-category discovery outcome line (LREQ-NFR-030).
+
+    INFO when the category roll-up is ``CategoryStatus.HEALTHY``, WARNING
+    otherwise. The message carries the category, the terminal discovery status,
+    the ordered condition codes, and the issue codes only: never an identity
+    string, credential, header value, cookie, or response body
+    (LREQ-SEC-010/020). ``warnings``/``evidence_grade``/``rankability_status``
+    are the values :func:`category_status_for` carries but derives nothing from;
+    the roll-up reads ``discovery_status`` alone. The message never contains the
+    substring ``"enrichment"`` (case-insensitive) so the LREQ-NFR-020 projection
+    filter and its redaction nodes keep their scope.
+    """
+    roll_up = category_status_for(
+        discovery.discovery_status.value,
+        warnings=(),
+        evidence_grade=EvidenceGrade.INSUFFICIENT.value,
+        rankability_status=RankabilityStatus.NOT_RANKABLE.value,
+    )
+    conditions = ",".join(condition.value for condition in discovery.conditions)
+    issues = ",".join(issue.code for issue in discovery.issues)
+    message = "category %s: discovery %s conditions=[%s] issues=[%s]"
+    arguments = (
+        discovery.category,
+        discovery.discovery_status.value,
+        conditions,
+        issues,
+    )
+    if roll_up is CategoryStatus.HEALTHY:
+        _LOGGER.info(message, *arguments)
+    else:
+        _LOGGER.warning(message, *arguments)
 
 
 def _persist_failure_limitation_rows(
@@ -2845,12 +2912,15 @@ def _persist_failure_limitation_rows(
     rows: list[CategoryScoreRecord] = []
     limitations: list[str] = []
     for category in categories:
+        discovery = discovery_by_category.get(category)
         base = persisted.get(category)
         if base is None:
+            if discovery is None:
+                raise PipelineError(f"category {category!r}: category_scores")
             repository.set_category_status(
                 run_id,
                 category,
-                DiscoveryStatus.REQUEST_FAILED.value,
+                discovery.discovery_status.value,
                 computed_at_utc=clock(),
             )
             base = next(
@@ -2863,7 +2933,6 @@ def _persist_failure_limitation_rows(
             )
             if base is None:
                 raise PipelineError(f"category {category!r}: category_scores")
-        discovery = discovery_by_category.get(category)
         codes = _warning_codes(
             discovery=discovery,
             preflight_status=preflight_status,
@@ -2893,7 +2962,16 @@ def _persist_failure_limitation_rows(
                 computed_at_utc=clock(),
             )
         )
-        limitations.append(f"category {category!r}: identity_preflight_status")
+        roll_up = category_status_for(
+            base.discovery_status,
+            warnings=codes,
+            evidence_grade=EvidenceGrade.INSUFFICIENT.value,
+            rankability_status=RankabilityStatus.NOT_RANKABLE.value,
+        )
+        if roll_up is not CategoryStatus.HEALTHY:
+            limitations.append(f"category {category!r}: discovery_status")
+        elif preflight_status != IdentityPreflightStatus.PASSED.value:
+            limitations.append(f"category {category!r}: identity_preflight_status")
     with repository.transaction():
         written = repository.upsert_category_scores(rows)
     return written, tuple(limitations)
@@ -3207,6 +3285,7 @@ def run_pipeline(
     )
     preflight_status = preflight_outcome.status
     page_view_status = _page_view_status(repository, resolved_run_id)
+    _log_preflight_outcome(preflight_outcome)
 
     if preflight_status is not IdentityPreflightStatus.PASSED:
         current = repository.get_run(resolved_run_id)
@@ -3221,6 +3300,7 @@ def run_pipeline(
             page_view_status=page_view_status,
             clock=clock,
         )
+        _LOGGER.info("run %s: %s", resolved_run_id, RunStatus.FAILED.value)
         return PipelineResult(
             run_id=resolved_run_id,
             status=RunStatus.FAILED.value,
@@ -3362,6 +3442,7 @@ def run_pipeline(
             )
         final_status = RunStatus.COMPLETED.value
 
+    _LOGGER.info("run %s: %s", resolved_run_id, final_status)
     return PipelineResult(
         run_id=resolved_run_id,
         status=final_status,

@@ -27,6 +27,7 @@ one-directional and no report/CLI cycle exists.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 import urllib.error
@@ -51,6 +52,41 @@ EXIT_USAGE_ERROR: int = 2
 """argparse-compatible usage or configuration error."""
 
 _DEFAULT_GRAPHQL_TIMEOUT_SECONDS: float = 30.0
+
+#: The logger root every package module nests under (``niche_scout.pipeline``
+#: is ``logging.getLogger("niche_scout.pipeline")``).
+_LOGGER_ROOT: str = "niche_scout"
+
+#: Concise, single-line production format: level, logger, message.
+_LOG_FORMAT: str = "%(levelname)s %(name)s: %(message)s"
+
+#: Marker attribute set on the handler this helper installs, so a repeated call
+#: can recognize and replace its own handler instead of duplicating it.
+_HANDLER_MARKER: str = "_niche_scout_logging_handler"
+
+
+def _configure_logging(stream: TextIO | None = None) -> None:
+    """Attach exactly one INFO ``StreamHandler`` to the ``niche_scout`` logger.
+
+    ``stream`` defaults to the *current* ``sys.stderr``, resolved at call time so
+    a caller's captured buffer is honoured. Idempotent: any handler this function
+    previously installed is removed before the new one is added, so repeated calls
+    leave exactly one marked handler. Called from :func:`main` only — never from
+    :func:`run_command` or :func:`dashboard_command` — so direct-call test seams
+    stay silent. Reads no environment variable and defines no verbosity flag
+    (SRS §10 names none).
+    """
+    logger = logging.getLogger(_LOGGER_ROOT)
+    logger.setLevel(logging.INFO)
+    for handler in list(logger.handlers):
+        if getattr(handler, _HANDLER_MARKER, False):
+            logger.removeHandler(handler)
+    handler = logging.StreamHandler(sys.stderr if stream is None else stream)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    setattr(handler, _HANDLER_MARKER, True)
+    logger.addHandler(handler)
+
 
 #: The documented in-code default database path, used as a pre-parse placeholder
 #: only. The authoritative value comes from the resolved configuration or the
@@ -493,6 +529,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     usage and returns ``EXIT_OK``; no subcommand or an unrecognized one is a
     usage error and performs no pipeline or report call.
     """
+    _configure_logging()
     parser = build_parser()
     try:
         namespace = parser.parse_args(list(argv) if argv is not None else sys.argv[1:])

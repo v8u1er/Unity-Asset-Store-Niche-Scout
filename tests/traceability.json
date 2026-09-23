@@ -6,6 +6,9 @@
   "tests/test_cli.py::test_cli_option_overrides_toml_and_toml_overrides_default": [
     "LREQ-CLI-030"
   ],
+  "tests/test_cli.py::test_configure_logging_attaches_exactly_one_handler_and_is_idempotent": [
+    "LREQ-NFR-020"
+  ],
   "tests/test_cli.py::test_dashboard_missing_run_is_nonzero": [
     "LREQ-CLI-020"
   ],
@@ -20,6 +23,9 @@
   ],
   "tests/test_cli.py::test_main_help_returns_ok": [
     "LREQ-CLI-010"
+  ],
+  "tests/test_cli.py::test_main_invokes_configure_logging": [
+    "LREQ-NFR-020"
   ],
   "tests/test_cli.py::test_main_unknown_subcommand_is_a_usage_error": [
     "LREQ-CLI-010"
@@ -977,6 +983,13 @@
     "LREQ-MET-080",
     "LREQ-MET-100"
   ],
+  "tests/test_pipeline.py::test_discovery_failure_log_omits_exception_message_and_sentinels": [
+    "LREQ-NFR-030",
+    "LREQ-SEC-020"
+  ],
+  "tests/test_pipeline.py::test_discovery_outcome_log_line_is_emitted_on_pipeline_logger": [
+    "LREQ-NFR-030"
+  ],
   "tests/test_pipeline.py::test_eight_category_run_has_empty_candidates_and_null_stability": [
     "LREQ-EVD-020",
     "LREQ-SEN-020"
@@ -1013,6 +1026,18 @@
     "LREQ-ID-040",
     "LREQ-EVD-020"
   ],
+  "tests/test_pipeline.py::test_failure_path_limitation_strings_name_category_and_field_only": [
+    "LREQ-NFR-030",
+    "LREQ-SEC-020"
+  ],
+  "tests/test_pipeline.py::test_failure_path_limitations_use_discovery_status_when_rollup_is_failed": [
+    "LREQ-NFR-030",
+    "LREQ-EVD-020"
+  ],
+  "tests/test_pipeline.py::test_failure_path_limitations_use_identity_preflight_status_when_discovery_healthy": [
+    "LREQ-NFR-030",
+    "LREQ-ID-040"
+  ],
   "tests/test_pipeline.py::test_final_evidence_and_rankability_are_persisted_per_category": [
     "LREQ-SEN-020",
     "LREQ-EVD-020"
@@ -1041,6 +1066,10 @@
   ],
   "tests/test_pipeline.py::test_repeat_run_produces_structurally_equal_persisted_rows": [
     "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_run_level_preflight_and_run_status_lines_are_logged": [
+    "LREQ-ID-040",
+    "LREQ-NFR-030"
   ],
   "tests/test_pipeline.py::test_run_record_seeds_required_not_null_columns": [
     "LREQ-ARCH-030"

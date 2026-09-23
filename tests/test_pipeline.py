@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import socket
 from pathlib import Path
 from typing import Any, Iterator, Sequence
@@ -1187,3 +1188,344 @@ def test_run_uses_injected_clock_transports_and_sleeper(tmp_path: Path) -> None:
     assert result.status == RunStatus.COMPLETED.value
     assert scenario.coveo_transport.call_count > 0
     assert scenario.graphql_transport.call_count > 0
+
+
+# ---------------------------------------------------------------------------
+# Chunk 15 — failure-path limitation truthfulness and production logging.
+#
+# Source of truth: ``Documents/plans/chunk-15-failure-path-limitations-and-
+# logging.md`` §9 (nodes 1-6) and §7 (the frozen log templates); the LREQ
+# sections it cites: LREQ-EVD-020 (SRS §9.1), LREQ-ID-040 (§4.4),
+# LREQ-NFR-020/LREQ-NFR-030 (§11), LREQ-SEC-020 (§4.3).
+#
+# The plan's §9 node 5 originally proposed an ``_ExplodingCoveoTransport`` whose
+# ``send`` raises. That cannot reach ``pipeline._discover_all``'s ``except`` arm:
+# the adapter calls ``transport.send`` inside ``discover_category``'s per-page
+# ``try/except Exception`` (lead-verified against the source), which turns the
+# raise into ``DiscoveryStatus.PAGE_FAILED``. The arm is exercised here by
+# replacing the ``discover_category`` symbol ``pipeline`` imports as a module
+# global (``pipeline.py:39``), which is the seam the frozen node ID and marker
+# set still pin.
+# ---------------------------------------------------------------------------
+
+
+def _failure_path_config(tmp_path: Path):
+    """Write the end-to-end fixtures and return the failing-gate run inputs.
+
+    Mirrors ``test_insufficient_preflight_leaves_run_non_completed``: every
+    category holds at most two sampled members and
+    ``identity_preflight_assets_per_category = 3`` makes every one of them
+    ineligible, so the selection is empty, both rates are null, and the gate is
+    ``insufficient`` (SRS §4.4). Returns ``(scenario, config, template_path)``.
+    """
+    template_path = fx.write_run_local_template(tmp_path, fx.END_TO_END_CATEGORIES)
+    scenario = fx.end_to_end_scenario(template_path=template_path)
+    fx.write_categories(tmp_path, scenario.categories)
+    fx.write_taxonomy(tmp_path, scenario.taxonomy_payload)
+    config = fx.fixture_config(
+        tmp_path,
+        min_categories_per_run=SCENARIO_CATEGORY_COUNT,
+        max_discovery_results_per_category=fx.SCENARIO_DISCOVERY_CAP,
+        identity_preflight_assets_per_category=3,
+        identity_preflight_min_success_rate=1.0,
+    )
+    return scenario, config, template_path
+
+
+def _complete_coveo_transport() -> fx.RecordingCoveoTransport:
+    """Return an all-``complete`` Coveo transport over the declared categories.
+
+    Plan §9 node 2 recipe: one page per category with two agreeing-identity
+    records and a verified ``totalCount``/``totalCountFiltered`` pair of two, so
+    every persisted row's ``discovery_status`` is ``complete``.
+    """
+    return fx.RecordingCoveoTransport(
+        {
+            category: (
+                fx.coveo_page(
+                    [
+                        fx.coveo_record(0, f"k{index}-a", category),
+                        fx.coveo_record(1, f"k{index}-b", category),
+                    ],
+                    total_count=2,
+                    filtered_count=2,
+                ),
+            )
+            for index, category in enumerate(fx.END_TO_END_CATEGORIES)
+        }
+    )
+
+
+def _run_failure_path(
+    tmp_path: Path,
+    *,
+    run_id: str,
+    coveo_transport: Any,
+    graphql_transport: Any | None = None,
+    discover_category: Any | None = None,
+    monkeypatch: pytest.MonkeyPatch | None = None,
+):
+    """Run the failing-gate scenario with an explicit injection seam.
+
+    ``graphql_transport=None`` uses the scenario's transport (never called,
+    because the empty preflight selection stops bulk enrichment before any
+    request). When ``discover_category`` is given, the ``pipeline`` module global
+    is replaced for the run and restored before returning, so no later node
+    inherits it. Returns ``(result, scenario, config, rows)``; ``rows`` is the
+    persisted ``category_scores`` read-back taken before the repository closes.
+    """
+    scenario, config, template_path = _failure_path_config(tmp_path)
+    restore = None
+    if discover_category is not None:
+        assert monkeypatch is not None, (
+            "a discover_category replacement needs a monkeypatch"
+        )
+        restore = _pipeline_symbol("discover_category")
+        monkeypatch.setattr(pipeline, "discover_category", discover_category)
+    repository = SqliteRepository(config.db_path)
+    try:
+        result = _run_pipeline(
+            config=config,
+            categories=scenario.categories,
+            credentials=fx.fixture_credentials(),
+            repository=repository,
+            clock=scenario.clock,
+            coveo_transport=coveo_transport,
+            graphql_transport=(
+                graphql_transport
+                if graphql_transport is not None
+                else scenario.graphql_transport
+            ),
+            sleeper=lambda _seconds: None,
+            run_id=run_id,
+            taxonomy_path=config.taxonomy_path,
+            taxonomy_sha256=scenario.taxonomy_sha256,
+            template_path=template_path,
+        )
+        rows = repository.get_category_scores(result.run_id)
+    finally:
+        if restore is not None:
+            monkeypatch.setattr(pipeline, "discover_category", restore)
+        repository.close()
+    return result, scenario, config, rows
+
+
+@pytest.mark.lreq("LREQ-NFR-030")
+@pytest.mark.lreq("LREQ-EVD-020")
+def test_failure_path_limitations_use_discovery_status_when_rollup_is_failed(
+    tmp_path: Path,
+) -> None:
+    """A discovery-failed category is named by ``discovery_status``.
+
+    Golden (hand-derived, plan §9 node 1 from the ``interfaces/chunk-10.md`` §5
+    roll-up rule): ``request_failed`` is ``CategoryStatus.FAILED``, so R1 appends
+    ``f"category {category!r}: discovery_status"`` for every requested category
+    and never the run-level ``identity_preflight_status`` field. Every category
+    is ``request_failed`` because ``ErrorCoveoTransport`` answers each discovery
+    request with HTTP 500 (SRS §4.1), and the empty preflight selection leaves
+    the gate ``insufficient`` (SRS §4.4): two independent failure kinds, one
+    limitation field each (SRS §9.1 ``LREQ-EVD-020``).
+    """
+    result, scenario, _config, _rows = _run_failure_path(
+        tmp_path,
+        run_id="run-15-discovery-limitations",
+        coveo_transport=fx.ErrorCoveoTransport(),
+    )
+
+    assert result.status == RunStatus.FAILED.value
+    assert result.identity_preflight_status == (
+        IdentityPreflightStatus.INSUFFICIENT.value
+    )
+    assert result.limitations == tuple(
+        f"category {category!r}: discovery_status"
+        for category in fx.END_TO_END_CATEGORIES
+    )
+    for limitation in result.limitations:
+        assert "identity_preflight_status" not in limitation
+    assert len(result.limitations) == len(scenario.categories), (
+        "one limitation per requested category; no run-level string"
+    )
+
+
+@pytest.mark.lreq("LREQ-NFR-030")
+@pytest.mark.lreq("LREQ-ID-040")
+def test_failure_path_limitations_use_identity_preflight_status_when_discovery_healthy(
+    tmp_path: Path,
+) -> None:
+    """A healthy category on a failed run is named by the preflight field.
+
+    Golden (hand-derived, plan §9 node 2): the all-complete transport makes every
+    persisted row ``DiscoveryStatus.COMPLETE.value``, so ``category_status_for``
+    is ``HEALTHY`` and R1's ``elif`` fires for every requested category; the
+    empty preflight selection leaves the gate ``insufficient`` (SRS §4.4), so
+    every limitation is ``f"category {category!r}: identity_preflight_status"``.
+    """
+    result, _scenario, _config, rows = _run_failure_path(
+        tmp_path,
+        run_id="run-15-preflight-limitations",
+        coveo_transport=_complete_coveo_transport(),
+    )
+
+    assert result.status == RunStatus.FAILED.value
+    assert result.identity_preflight_status == (
+        IdentityPreflightStatus.INSUFFICIENT.value
+    )
+    assert rows, "the failure path persists one row per requested category"
+    for row in rows:
+        assert row.discovery_status == DiscoveryStatus.COMPLETE.value, row.category
+    assert result.limitations == tuple(
+        f"category {category!r}: identity_preflight_status"
+        for category in fx.END_TO_END_CATEGORIES
+    )
+
+
+@pytest.mark.lreq("LREQ-NFR-030")
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_failure_path_limitation_strings_name_category_and_field_only(
+    tmp_path: Path,
+) -> None:
+    """Every limitation is ``category <repr>: <field>`` and carries no value.
+
+    The format is frozen by ``interfaces/chunk-10.md`` §4 and the field set by
+    plan §8; the fixture identities (including the ``k<index>-<letter>`` records
+    of the sibling all-complete transport) and every recorded sentinel must be
+    absent (SRS §4.3 ``LREQ-SEC-020``).
+    """
+    result, scenario, _config, _rows = _run_failure_path(
+        tmp_path,
+        run_id="run-15-limitation-format",
+        coveo_transport=fx.ErrorCoveoTransport(),
+    )
+    fixture_identities = ("k0-a", "900", "901", "902")
+
+    assert result.limitations
+    assert len(result.limitations) == len(scenario.categories)
+    for limitation in result.limitations:
+        assert re.fullmatch(
+            r"category .+: (discovery_status|identity_preflight_status)", limitation
+        ), limitation
+        assert any(
+            f"category {category!r}: " in limitation
+            for category in fx.END_TO_END_CATEGORIES
+        ), limitation
+        for sentinel in fx.RECORDED_SENTINELS:
+            assert sentinel not in limitation
+        for identity in fixture_identities:
+            assert identity not in limitation
+
+
+@pytest.mark.lreq("LREQ-NFR-030")
+def test_discovery_outcome_log_line_is_emitted_on_pipeline_logger(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """One per-category discovery outcome line reaches the pipeline logger.
+
+    Plan §7 E2 template: category, terminal discovery status, ordered condition
+    codes, and issue codes only. A failed discovery rolls up to ``FAILED``, so
+    the record is a WARNING. No message contains ``"enrichment"`` (the
+    LREQ-NFR-020 projection filter keeps its scope) or a recorded sentinel. The
+    condition/issue token lists are discovery-internal and are asserted as
+    present, not by exact value.
+    """
+    with caplog.at_level(logging.INFO, logger="niche_scout.pipeline"):
+        result, _scenario, _config, _rows = _run_failure_path(
+            tmp_path,
+            run_id="run-15-discovery-outcome",
+            coveo_transport=fx.ErrorCoveoTransport(),
+        )
+    messages = _logs(caplog)
+    prefix = f"category {fx.END_TO_END_CATEGORIES[0]}: discovery "
+    outcome = [
+        record
+        for record in caplog.records
+        if record.name == "niche_scout.pipeline"
+        and record.getMessage().startswith(prefix)
+    ]
+
+    assert outcome, f"no discovery outcome line for {prefix!r}"
+    assert all(record.levelno == logging.WARNING for record in outcome)
+    assert any("conditions=[" in record.getMessage() for record in outcome)
+    assert any("issues=[" in record.getMessage() for record in outcome)
+    assert result.status == RunStatus.FAILED.value
+    for message in messages:
+        assert "enrichment" not in message.lower()
+        for sentinel in fx.RECORDED_SENTINELS:
+            assert sentinel not in message
+
+
+@pytest.mark.lreq("LREQ-NFR-030")
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_discovery_failure_log_omits_exception_message_and_sentinels(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A discovery-request exception logs its class name only, never its message.
+
+    The ``discover_category`` symbol ``pipeline._discover_all`` calls is replaced
+    by a raiser (a raising transport ``send`` is caught inside the adapter's
+    per-page ``try`` and becomes ``PAGE_FAILED``, so a transport cannot reach
+    this ``except`` arm). The warning is exactly
+    ``f"category {category}: discovery request failed (RuntimeError)"`` for every
+    requested category, and the raising message — a recorded sentinel — appears
+    in no record (SRS §4.3 ``LREQ-SEC-020``). The run still fails gracefully with
+    every category isolated (SRS §11 ``LREQ-NFR-030``).
+    """
+
+    def boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError(fx.RECORDED_SENTINELS[4])
+
+    with caplog.at_level(logging.INFO, logger="niche_scout.pipeline"):
+        result, scenario, _config, _rows = _run_failure_path(
+            tmp_path,
+            run_id="run-15-discovery-request-failed",
+            coveo_transport=fx.RecordingCoveoTransport({}),
+            graphql_transport=fx.RecordingGraphQLTransport({}),
+            discover_category=boom,
+            monkeypatch=monkeypatch,
+        )
+    messages = _logs(caplog)
+
+    for category in scenario.categories:
+        expected = f"category {category}: discovery request failed (RuntimeError)"
+        matching = [
+            record for record in caplog.records if record.getMessage() == expected
+        ]
+        assert matching, expected
+        assert matching[0].levelno == logging.WARNING
+        assert matching[0].name == "niche_scout.pipeline"
+    assert all(fx.RECORDED_SENTINELS[4] not in message for message in messages)
+    assert result.status == RunStatus.FAILED.value
+
+
+@pytest.mark.lreq("LREQ-ID-040")
+@pytest.mark.lreq("LREQ-NFR-030")
+def test_run_level_preflight_and_run_status_lines_are_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """One run-level preflight line and one run-status line are emitted.
+
+    Hand-derived from plan §7 E5/E6 and SRS §4.4 (``attempted = 0`` ⇒ both rates
+    null, status ``insufficient``): the preflight line is exactly
+    ``identity preflight: status=insufficient attempted=0 successful=0
+    conflicting=0 other_failed=0`` and the failure path logs
+    ``f"run {run_id}: failed"``. No identity or sentinel appears.
+    """
+    run_id = "run-15-run-lines"
+    with caplog.at_level(logging.INFO, logger="niche_scout.pipeline"):
+        result, _scenario, _config, _rows = _run_failure_path(
+            tmp_path,
+            run_id=run_id,
+            coveo_transport=_complete_coveo_transport(),
+        )
+    messages = _logs(caplog)
+
+    assert result.status == RunStatus.FAILED.value
+    assert (
+        "identity preflight: status=insufficient attempted=0 successful=0 "
+        "conflicting=0 other_failed=0"
+    ) in messages
+    assert f"run {run_id}: failed" in messages
+    for message in messages:
+        for identity in ("k0-a", "k1-a"):
+            assert identity not in message
+        for sentinel in fx.RECORDED_SENTINELS:
+            assert sentinel not in message
