@@ -65,3 +65,41 @@ permitted sharing the transaction, but the implementation did not), and was surf
 Chunk 13's durability acceptance node (`tests/test_end_to_end.py::test_acceptance_completed_run_is_durable_across_connections`),
 which opens a fresh connection like the `dashboard` command. The Chunk 13 acceptance test is the
 red→green evidence and remains a normal (non-xfail) node.
+
+## Chunk 13 step 7 — review and fix rounds
+
+| Stage | Status | Evidence / notes |
+|---|---|---|
+| Review round 1 (`spec-reviewer`, session `ses_f334b0fa6ffe8JulcnfLrRmUP6`) | **FAIL** | One **Major**: `tests/test_end_to_end.py::test_acceptance_four_stratum_sampling_and_one_enrichment_per_identity` asserted only census/stratum-0 members (fixture categories hold 0–2 assets), so SRS §13 LREQ-TST-080 "four-stratum sampling" and the gate bullet "End-to-end fixture covers all required … sampling … behaviors" were not discharged (node ID/name vs. plan §9 "Four strata"). Minors: stale durable-node docstring; duplicate `_ContradictedRepositoryHandle`; N=21 derivation comment mismatch; `quality_workflow` exits non-zero on repo-wide ruff (244 pre-existing, R10); NFR-050/NFR-060 attribution on some tooling nodes; scope-check self-exclusion; `check_secrets` wording. Full suite 595 passed, validator 89/581/0/3 by the reviewer's own run. |
+| Fix round 1 (`impl-deep`, session `ses_f333e432bffeHvttelGJ5emvoN`) | DONE | New node `test_acceptance_four_stratum_sampling_drives_non_census_strata` + fixture `afx.four_stratum_artifacts` (120-asset category + seven one-asset census categories): asserts persisted strata 0–3 × 25 members, non-census `sampling_basis`, `sample_fraction = 100/120 < 1.0`, census siblings 1.0, `set(requested) == sampled_union` (one enrichment per unique identity). No existing node renamed/weakened. Three doc Minors fixed. Files: `tests/test_end_to_end.py`, `tests/fixtures/acceptance_fixtures.py`, `tests/traceability.json`. |
+| Review round 2 (`spec-reviewer`, session `ses_f3329f247ffeIWe23YEssXwHkI`) | **PASS** | Major confirmed genuinely resolved through the real `cli.run_command`/SQLite path; no renamed node, no weakened assertion, no marker-only file touched; marker/entry match; validator clean. Remaining **Minors** (record only, no loop): unused `_ContradictedRepositoryHandle` (pre-existing dead code); unused `FOUR_STRATUM_SMALL_POPULATION`/`four_stratum_population_records` (inert fixture data); `quality_workflow` non-zero on repo-wide ruff (R10). |
+| Commit (lead) | DONE | `40f70d5` `chunk-13: review fixes - four-stratum acceptance coverage and doc minors` (3 files, +347 −21). |
+| Lead verification after fix | PASS | `python -m pytest -q` → `596 passed in 20.73s`; `validate_traceability` → 89/582/0/3; `check_import_boundaries` valid; `check_scope_prohibitions` valid (6 tokens); `check_secrets` valid; `ruff check tests/test_end_to_end.py tests/fixtures/acceptance_fixtures.py` → `All checks passed!`; `ruff format --check` → `2 files already formatted`. |
+
+**Open note (not a gate gap):** the fixture's four-stratum identity keys deliberately avoid a
+`-<digits>` suffix so identity mapping rule 1.0.1 (URI trailing-identifier extraction, an open
+inference obligation) does not fabricate a conflict. The obligation remains open and unverified;
+nothing in Chunk 13 claims it resolved. Recorded per AGENTS.md "Open obligations".
+
+## Chunk 13 gate (dependency-map lines 1090–1099)
+
+Gate bullets walked one by one, each with evidence:
+
+| # | Gate bullet (verbatim, dependency-map) | Evidence |
+|---|---|---|
+| 1 | Exact golden outputs pass within `1e-9`. | `python -m pytest -q -k golden` → `5 passed, 591 deselected` (`test_scoring::test_midrank_golden_vectors`, `test_scoring_evidence::test_pre_sensitivity_golden_vectors`, `test_scoring_sensitivity::test_sensitivity_golden_vectors`, `test_identity_preflight::test_compute_preflight_rates_two_identity_golden`, `test_pipeline::test_taxonomy_sha256_is_non_empty_and_matches_golden`); acceptance `1e-9` vectors `test_acceptance_unequal_stratum_quality_raw_vector`, `test_acceptance_sample_fraction_distinct_from_eligibility_coverage`, `test_acceptance_twenty_one_category_composite_vector`, `test_acceptance_zero_population_category_vector`, `test_acceptance_two_category_run_rejected_before_ranking` all passed. |
+| 2 | End-to-end fixture covers all required collection, sampling, enrichment, scoring, persistence, and reporting behaviors. | `python -m pytest tests/test_end_to_end.py -q -k acceptance` → `22 passed` (collection: `test_acceptance_pagination_duplicate_and_overlap`, `test_acceptance_category_validation_rejects_before_network`; sampling: `test_acceptance_four_stratum_sampling_and_one_enrichment_per_identity`, `test_acceptance_four_stratum_sampling_drives_non_census_strata`; enrichment: `test_acceptance_partial_graphql_failure_retains_valid_operation`; scoring/persistence: `test_acceptance_sqlite_rows_match_pure_results`, `test_acceptance_run_persists_and_renders`; reporting: `test_acceptance_rendered_report_contains_required_fields`). |
+| 3 | 8-category provisional run behaves correctly. | `test_acceptance_eight_category_run_is_provisional` passed (empty candidate set, null stability, provisional scores). |
+| 4 | 21-category strong-reference run behaves correctly. | `test_acceptance_twenty_one_category_composite_vector` passed; `tests/test_scoring.py::test_eight_and_twenty_one_category_run_reference_sizes` passed. |
+| 5 | Preflight failure produces a failed run and zero bulk-enrichment requests. | `test_acceptance_preflight_failure_marks_run_failed_zero_enrichment` passed. |
+| 6 | Partial GraphQL operation success and contradicted page-view semantics remain distinguishable. | `test_acceptance_partial_graphql_failure_retains_valid_operation` and `test_acceptance_contradicted_page_views_distinct_from_partial_success` passed. |
+| 7 | Sensitivity is null when the fixed candidate set is empty and never changes that set. | `test_acceptance_eight_category_run_is_provisional` (null stability), `test_acceptance_sensitivity_never_changes_candidate_set`, `test_acceptance_sensitivity_after_base_candidates_vector` passed. |
+| 8 | Every analytical test contains an explicit LREQ marker and a matching matrix entry; missing markers or entries fail local test execution, and a machine-checkable bidirectional traceability check verifies every required test maps to valid individual `LREQ-*` IDs and every individual `LREQ-*` has at least one required test reference. | `python -m niche_scout.tools.validate_traceability` → `Traceability valid: 89 required/defined LREQ IDs mapped, 582 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical nodes)`; the validator command (not a conftest hook) is the enforcement mechanism (R2c). |
+| 9 | `python -m niche_scout.tools.validate_traceability` passes for `tests/traceability.json` and pytest markers. | Same command/output as #8 (exit 0). |
+| 10 | The scope-prohibition check passes against the maintained retired-feature list; no stale requirement from the retired SRS is accidentally implemented. | `python -m niche_scout.tools.check_scope_prohibitions` → `Scope prohibitions valid: no retired token found … (6 tokens checked)` (exit 0). |
+
+**GATE: PASSED** — every bullet has evidence. Full suite `596 passed, 0 failed`;
+`check_import_boundaries` valid; `check_secrets` valid. Out of scope and recorded: repo-wide
+`ruff check` debt (244 errors) / `ruff format --check` (14 files), unchanged (R10), and the
+`quality_workflow` command therefore exits non-zero on the repo-wide ruff step; the files Chunk 13
+added/changed pass both ruff steps.
