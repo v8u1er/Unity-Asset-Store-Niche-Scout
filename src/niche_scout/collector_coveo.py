@@ -637,8 +637,10 @@ def build_coveo_request_body(
 
     ``page_index`` is zero-based and non-negative. Raises :class:`ValueError`
     when the page index is invalid, when the template carries no usable
-    ``ec_category`` facet, or when the resulting body contains ``q`` or
-    ``query`` at any nesting depth (LREQ-EXT-030).
+    ``ec_category`` facet, when no template ``currentValue`` equals ``category``
+    (a capture/config filter mismatch must never silently issue an unfiltered
+    request), or when the resulting body contains ``q`` or ``query`` at any
+    nesting depth (LREQ-EXT-030).
     """
     if isinstance(page_index, bool) or not isinstance(page_index, int) or page_index < 0:
         raise ValueError("page_index must be a non-negative integer")
@@ -688,6 +690,13 @@ def build_coveo_request_body(
         else:
             state = "idle"
         current_values.append({"value": value, "state": state})
+
+    if matched_selected == 0:
+        raise ValueError(
+            f"the requested category {category!r} matches no currentValue of the "
+            f"captured '{COVEO_FACET_ID}' facet: the capture/config filter does not "
+            "carry this category, so an unfiltered request must not be issued"
+        )
 
     source = _template_field_source(template)
     body: dict[str, object] = {}

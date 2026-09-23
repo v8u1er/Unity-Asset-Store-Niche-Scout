@@ -339,9 +339,9 @@ def test_taxonomy_reports_missing_requested_categories() -> None:
     absent = v.validate_requested_categories(_taxonomy_payload(), fx.ONE_ABSENT_CATEGORY)
     assert absent.is_valid is False
     assert absent.status == "missing_categories"
-    assert absent.missing_requested_categories == ("Audio/Music/Orchestral",)
+    assert absent.missing_requested_categories == ("audio/music/dnb",)
     assert _issues_of(absent) == ["taxonomy_missing_requested_category"]
-    assert absent.issues[0].context["category"] == "Audio/Music/Orchestral"
+    assert absent.issues[0].context["category"] == "audio/music/dnb"
 
     parent_requested = v.validate_requested_categories(
         _taxonomy_payload(), fx.PARENT_PATH_REQUESTED_CATEGORIES
@@ -421,7 +421,7 @@ def test_validate_taxonomy_combines_structure_freshness_and_presence() -> None:
     )
     assert categories_missing.status == "missing_categories"
     assert categories_missing.is_fresh is True, "freshness still holds when presence fails"
-    assert categories_missing.missing_requested_categories == ("Audio/Music/Orchestral",)
+    assert categories_missing.missing_requested_categories == ("audio/music/dnb",)
     assert categories_missing.age_days_exact == pytest.approx(27.5)
 
     naive = v.validate_taxonomy(

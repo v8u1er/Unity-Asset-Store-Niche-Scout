@@ -16,6 +16,13 @@ tests and the capture covers the request only, so the page and record shapes
 below are hand-derived assumptions about the live contract (plan §12.9), not
 capture-derived facts.
 
+**Live-form vocabulary (Chunk 14).** The ``LIVE_FORM_*`` literals encode the
+live facet/record shape the human probe observed: lowercase slugs joined by the
+exact ``" > "`` sequence, leading-space child entries in a multi-valued
+``ec_category``, and a canonical slash-form round-trip. They are hand-derived
+offline literals (plan §8), so the compatibility tests ground on them rather
+than on the committed regeneration.
+
 Nothing here writes into ``config/``: the only path under it that is read is the
 committed capture, and ``configured_config`` uses the committed taxonomy path
 solely as a harmless ``NicheScoutConfig`` option value.
@@ -51,6 +58,17 @@ __all__ = [
     "CREDENTIALS_WITH_BEARER_SCHEME",
     "DROPPED_CAPTURE_FACET_IDS",
     "EXHAUSTED_CAPTURE_FACET_IDS",
+    "LIVE_FORM_ABSENT_FACET_VALUE",
+    "LIVE_FORM_CHILD_VALUE",
+    "LIVE_FORM_CHILD_VALUE_CANONICAL",
+    "LIVE_FORM_FACET_VALUE",
+    "LIVE_FORM_FACET_VALUE_CANONICAL",
+    "LIVE_FORM_INVENTORY",
+    "LIVE_FORM_INVENTORY_CANONICAL",
+    "LIVE_FORM_MULTI_VALUED_CATEGORY",
+    "LIVE_FORM_PARENT_VALUE",
+    "LIVE_FORM_PARENT_VALUE_CANONICAL",
+    "LIVE_FORM_SEPARATOR",
     "MALFORMED_PAGE_JSON",
     "NON_ADVANCING_PAGE_COUNT",
     "REFERENCE_UTC",
@@ -68,6 +86,8 @@ __all__ = [
     "credentials",
     "credentials_from_environment",
     "env_credentials_with_bearer_scheme",
+    "live_form_record",
+    "live_form_taxonomy_payload",
     "load_template",
     "make_page",
     "malformed_page",
@@ -129,12 +149,13 @@ TEMPLATE_HEADER_FIELDS: tuple[str, ...] = (
     "endpoint",
 )
 
-#: The category under discovery in most tests: a real captured facet value, so
-#: exactly one captured value is marked ``selected``.
-COVEO_FIXTURE_CATEGORY = "Tools/Level Design/Tilemap"
+#: The category under discovery in most tests: one of the eight committed Q4
+#: categories (chunk-14 plan §9), so the regenerated template facet carries it
+#: and the builder marks exactly it ``selected``.
+COVEO_FIXTURE_CATEGORY = "3d/characters/humanoids"
 
-#: A second captured facet value, used for the multi-category isolation test.
-COVEO_FIXTURE_CATEGORY_OTHER = "VFX/Particle Systems/Fire"
+#: A second committed Q4 category, used for the multi-category isolation test.
+COVEO_FIXTURE_CATEGORY_OTHER = "vfx/particles/fire-explosions"
 
 #: The taxonomy payload every discovery test validates against.
 TAXONOMY_PAYLOAD: dict[str, Any] = dict(TAXONOMY_FIXTURE)
@@ -439,6 +460,80 @@ def utterly_empty_page() -> dict[str, Any]:
 def wrap_page_json(page: Mapping[str, Any]) -> bytes:
     """Encode a page mapping as the response body bytes an opener would return."""
     return json.dumps(page).encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Live-form vocabulary (Chunk 14) — hand-derived, offline
+# ---------------------------------------------------------------------------
+# The live facet/record vocabulary: lowercase slugs joined by the exact
+# ``" > "`` sequence, with the child entries of a multi-valued ``ec_category``
+# carrying a leading space (plan §1 and §8). Everything below is an explicit
+# literal; nothing is derived from ``config/``, so the compatibility tests can
+# exercise the live shape without depending on the committed regeneration.
+
+#: The live separator. Only this exact sequence splits a path; ``"A>B"`` is one
+#: segment and normalizes unchanged.
+LIVE_FORM_SEPARATOR = " > "
+
+#: A live-form facet value and its canonical slash-form round-trip (plan §8).
+LIVE_FORM_FACET_VALUE = "2d > textures-materials > stone"
+LIVE_FORM_FACET_VALUE_CANONICAL = "2d/textures-materials/stone"
+
+#: Live-form parent and child record values, each with the leading space the
+#: endpoint writes on child entries of a multi-valued ``ec_category``.
+LIVE_FORM_PARENT_VALUE = " 3d > characters"
+LIVE_FORM_PARENT_VALUE_CANONICAL = "3d/characters"
+LIVE_FORM_CHILD_VALUE = " 3d > characters > humanoids"
+LIVE_FORM_CHILD_VALUE_CANONICAL = "3d/characters/humanoids"
+
+#: The live multi-valued ``ec_category`` shape of one record: a bare top-level
+#: value followed by leading-space child entries (plan §8 edge case).
+LIVE_FORM_MULTI_VALUED_CATEGORY: tuple[str, ...] = (
+    "3d",
+    LIVE_FORM_PARENT_VALUE,
+    LIVE_FORM_CHILD_VALUE,
+)
+
+#: A live-form facet value absent from the live inventory, so it can only be a
+#: mismatch. There is no ``2d/textures-materials/lava`` entry.
+LIVE_FORM_ABSENT_FACET_VALUE = "2d > textures-materials > lava"
+
+#: Explicit live-form inventory and the canonical paths it round-trips to.
+LIVE_FORM_INVENTORY: tuple[str, ...] = (
+    "2d > textures-materials > stone",
+    "3d > characters",
+    "3d > characters > humanoids",
+    "3d > vehicles > land",
+)
+LIVE_FORM_INVENTORY_CANONICAL: frozenset[str] = frozenset(
+    {
+        "2d/textures-materials/stone",
+        "3d/characters",
+        "3d/characters/humanoids",
+        "3d/vehicles/land",
+    }
+)
+
+
+def live_form_record(index: int = 0) -> dict[str, Any]:
+    """Return a record whose ``ec_category`` carries the live multi-valued shape."""
+    return record(index, category=list(LIVE_FORM_MULTI_VALUED_CATEGORY))
+
+
+def live_form_taxonomy_payload() -> dict[str, Any]:
+    """Return a valid taxonomy payload whose inventory is in live form.
+
+    Only the four required headers and the live-form inventory are carried: the
+    committed taxonomy has no ``categories`` records (plan §6) and the headers
+    are the Chunk 0 fixture's, so nothing here is read from ``config/``.
+    """
+    return {
+        "schema_version": TAXONOMY_FIXTURE["schema_version"],
+        "captured_at_utc": TAXONOMY_FIXTURE["captured_at_utc"],
+        "source_url": TAXONOMY_FIXTURE["source_url"],
+        "template_sha256": TAXONOMY_FIXTURE["template_sha256"],
+        "canonical_category_paths": list(LIVE_FORM_INVENTORY),
+    }
 
 
 # ---------------------------------------------------------------------------

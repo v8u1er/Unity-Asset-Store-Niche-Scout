@@ -211,8 +211,12 @@ TAXONOMY_WITH_MAPPING_PATH_ENTRY: dict[str, Any] = {
 #: Every default category is present in the fixture inventory.
 ALL_PRESENT_CATEGORIES: tuple[str, ...] = DEFAULT_CATEGORIES
 
-#: Exactly one requested category (the last) is absent from the inventory.
-ONE_ABSENT_CATEGORY: tuple[str, ...] = (*DEFAULT_CATEGORIES[:-1], "Audio/Music/Orchestral")
+#: Exactly one requested category (the last) is absent from the inventory and has
+#: no casefold match either. The previous sentinel ``Audio/Music/Orchestral``
+#: casefold-collides with the live ``audio/music/orchestral`` now that the
+#: committed Q4 set is the fixture inventory, so it is re-pointed to
+#: ``audio/music/dnb`` (absent from the live inventory under any casing).
+ONE_ABSENT_CATEGORY: tuple[str, ...] = (*DEFAULT_CATEGORIES[:-1], "audio/music/dnb")
 
 #: A requested category that is a real parent path of inventory entries.
 PARENT_PATH_OF_INVENTORY_PATH: str = "Tools/Utilities"

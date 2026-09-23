@@ -19,16 +19,25 @@ REQUIRED_TAXONOMY_FIELDS: tuple[str, ...] = (
     "template_sha256",
 )
 
-# The same eight canonical category paths as config/categories.json.
+# The eight live Q4 categories (chunk-14 plan appendix B) as canonical
+# '/'-form paths: the same eight strings `config/categories.json` and the
+# committed template facet must each carry.
+#
+# The order here is ascending lexical, a fixture-local choice: the two
+# committed files' own order is fixed by the impl-side regeneration (and the
+# `test_committed_categories_match_template_facet_byte_for_byte` node compares
+# those two files to each other, never to this fixture). Lexical order keeps
+# fixture-derived ordering assertions valid, e.g. `get_category_scores`
+# returning rows lexically by category for `DEFAULT_CATEGORIES[0]` then `[1]`.
 DEFAULT_CATEGORIES: tuple[str, ...] = (
-    "3D/Characters/Humanoids",
-    "3D/Environments/Forests",
-    "2D/Textures & Materials/Stone",
-    "Audio/Music/Ambient",
-    "Tools/Level Design/Tilemap",
-    "Tools/Utilities/Editor Extensions",
-    "VFX/Particle Systems/Fire",
-    "GUI/GUI Skins/Icons",
+    "2d/gui/icons",
+    "2d/textures-materials/stone",
+    "3d/characters/animals/mammals",
+    "3d/characters/humanoids",
+    "3d/vegetation/trees",
+    "3d/vehicles/land",
+    "audio/music/orchestral",
+    "vfx/particles/fire-explosions",
 )
 
 DEFAULT_TOML_BODY: str = """

@@ -787,6 +787,49 @@
   "tests/test_identity_preflight.py::test_successful_preflight_counts_toward_enrichment_once": [
     "LREQ-ID-040"
   ],
+  "tests/test_live_endpoint_compatibility.py::test_absent_category_value_still_maps_to_category_mismatch": [
+    "LREQ-EXT-090"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_committed_categories_match_template_facet_byte_for_byte": [
+    "LREQ-EXT-020",
+    "LREQ-EXT-010"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_committed_taxonomy_covers_requested_categories_and_parents": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_committed_taxonomy_excludes_single_segment_entries": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_committed_template_omits_sort_criteria": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_live_form_multi_valued_record_values_match_canonical_inventory": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_live_form_normalization_is_deterministic": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_live_form_record_category_match_is_verified_not_mismatch": [
+    "LREQ-EXT-090"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_live_form_record_identity_candidates_unchanged": [
+    "LREQ-EXT-060"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_live_form_taxonomy_inventory_entry_is_well_formed": [
+    "LREQ-EXT-020"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_normalize_category_path_accepts_live_double_gt_separator": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_normalize_category_path_leaves_slash_form_unchanged": [
+    "LREQ-EXT-080"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_request_body_guard_rejects_category_absent_from_template": [
+    "LREQ-EXT-010"
+  ],
+  "tests/test_live_endpoint_compatibility.py::test_request_body_guard_selects_exactly_one_committed_category": [
+    "LREQ-EXT-010"
+  ],
   "tests/test_metrics.py::test_breadth_falls_back_to_distinct_canonical_count": [
     "LREQ-MET-070"
   ],

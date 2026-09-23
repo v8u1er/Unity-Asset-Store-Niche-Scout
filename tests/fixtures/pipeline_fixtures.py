@@ -809,14 +809,18 @@ def graphql_seeded_transport(
     retained as a secondary key, but it is *not* the join key: every category's
     Coveo request body contains the same facet-value string set (only the
     ``selected`` state differs), so the fingerprint cannot distinguish
-    categories and must not be relied on to select a directory.
+    categories and must not be relied on to select a directory. When no
+    run-local ``template_path`` is supplied — the caller only needs the taxonomy
+    payload, not a transport — the fingerprint map is left empty; the identity
+    join is the one this transport actually uses.
     """
     by_fingerprint: dict[str, bytes] = {}
     by_identity: dict[str, bytes] = {}
     for category, directory in category_bodies.items():
-        body = request_body_for_category(category, template_path=template_path)
-        request = json.dumps(body).encode("utf-8")
-        by_fingerprint[request_body_fingerprint(request)] = directory
+        if template_path is not None:
+            body = request_body_for_category(category, template_path=template_path)
+            request = json.dumps(body).encode("utf-8")
+            by_fingerprint[request_body_fingerprint(request)] = directory
         for identity, per_identity in _decode_json(directory).items():
             by_identity.setdefault(str(identity), str(per_identity).encode("utf-8"))
     return RecordingGraphQLTransport(
@@ -933,6 +937,7 @@ class EndToEndScenario:
     clock: FixedClock
     coveo_transport: RecordingCoveoTransport
     graphql_transport: RecordingGraphQLTransport
+    template_path: Path | None
     summary_key_set: tuple[str, ...]
     preflight_attempted_unique_identities: int
     union_identity_count: int
@@ -1158,6 +1163,7 @@ def end_to_end_scenario(*, template_path: Path | None = None) -> EndToEndScenari
         clock=FixedClock(),
         coveo_transport=coveo,
         graphql_transport=graphql,
+        template_path=template_path,
         summary_key_set=SUMMARY_JSON_KEY_SET,
         preflight_attempted_unique_identities=EXPECTED_PREFLIGHT_ATTEMPTS,
         union_identity_count=EXPECTED_UNION_IDENTITY_COUNT,

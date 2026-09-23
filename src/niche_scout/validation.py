@@ -660,15 +660,20 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
 def _canonical_path_shape_preserved(raw: str, normalized: str) -> bool:
     """Return whether ``normalized`` preserves ``raw``'s segment structure.
 
-    :func:`normalize_category_path` trims whitespace and drops empty segments, so
-    it is deliberately tolerant for *lookup*. A taxonomy entry, however, is a
-    declaration about the canonical taxonomy itself, so an entry that only became
-    well-formed because normalization repaired it — ``"/Leading/Slash"`` loses its
-    leading empty segment, ``"Tools/"`` loses its trailing one — is reported as a
-    malformed path entry rather than silently accepted as a different path than
-    the one the file literally carries.
+    :func:`normalize_category_path` accepts both the canonical ``"/"`` separator
+    and the live Unity/Coveo ``" > "`` sequence (a new project convention: the SRS
+    defines no category-path separator), and it trims whitespace and drops empty
+    segments, so it is deliberately tolerant for *lookup*. A taxonomy entry,
+    however, is a declaration about the canonical taxonomy itself, so an entry
+    that only became well-formed because normalization repaired it —
+    ``"/Leading/Slash"`` loses its leading empty segment, ``"Tools/"`` loses its
+    trailing one — is reported as a malformed path entry rather than silently
+    accepted as a different path than the one the file literally carries. Both
+    separators are tokenized without dropping empty segments, so a well-formed
+    live-form entry is not misreported as repaired.
     """
-    return len(raw.split("/")) == len(normalized.split("/"))
+    raw_segments = raw.replace(" > ", "/").split("/")
+    return len(raw_segments) == len(normalized.split("/"))
 
 
 def _is_canonical_path_shape(path: str) -> bool:
@@ -1048,6 +1053,14 @@ def validate_taxonomy(
 def normalize_category_path(value: str) -> str:
     """Return the canonical form of a category path.
 
+    Two separators are accepted: the canonical ``"/"`` and the live Unity/Coveo
+    ``" > "`` sequence (space, greater-than, space). The exact ``" > "`` sequence
+    is replaced by ``"/"`` before tokenizing, so
+    ``"2d > textures-materials > stone"`` and ``"2d/textures-materials/stone"``
+    normalize alike. This is a new project convention: the SRS defines no
+    category-path separator. Only the exact three-character sequence splits;
+    ``"A>B"`` (no surrounding spaces) stays a single segment.
+
     Surrounding whitespace is trimmed and empty segments are dropped, so
     ``" Tools / Utilities /"`` and ``"Tools/Utilities"`` normalize alike. Segment
     text is otherwise preserved verbatim: this function does not lowercase, so
@@ -1059,7 +1072,8 @@ def normalize_category_path(value: str) -> str:
     """
     if not isinstance(value, str):
         raise TypeError("category path must be a string")
-    segments = (segment.strip() for segment in value.split("/"))
+    canonical = value.replace(" > ", "/")
+    segments = (segment.strip() for segment in canonical.split("/"))
     return "/".join(segment for segment in segments if segment != "")
 
 
