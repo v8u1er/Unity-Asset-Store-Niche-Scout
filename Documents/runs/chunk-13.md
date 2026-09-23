@@ -31,3 +31,37 @@ Chunk 13 is the final chunk (dependency-map §4). Its prerequisites are all runt
 | Verify — other checkers | PASS | `python -m niche_scout.tools.validate_traceability` → "Traceability valid: 89 required/defined LREQ IDs mapped, 581 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical nodes)"; `check_import_boundaries` → valid; `check_scope_prohibitions` → valid (6 tokens); `check_secrets` → valid; `ruff check` + `ruff format --check` on the 8 new/rewritten tool+test files → "All checks passed!" / "8 files already formatted". Pre-existing ruff debt remains in the four marker-bearing test files (63 errors there, mostly E501) and repo-wide (245 errors / 14 unformatted) — unchanged and out of scope (R10). |
 | Implement (WIP snapshot) | DONE | Committed all plan §6 files as a WIP snapshot so the large uncommitted delta is preserved (project-rules "Temporary scripts and scratch space" / WIP-snapshot rule). Gate not passed; no `main` merge. |
 | STOP — runtime defect (human ruling required) | BLOCKED | SRS §17 acceptance criterion 19 says "golden vectors and the end-to-end fixture pass". The end-to-end fixture does not pass, and the failure is a genuine defect in frozen Chunk 10 code, not a test or plan error. `AGENTS.md`: "If the acceptance suite exposes a runtime defect, STOP and report it as a finding; do not silently fix runtime code." Project-rules "Chunk pipeline auto-chaining": relay to the user and stop. Requested ruling: authorize a minimal Chunk-10-owned remediation (wrap the completion transition at `pipeline.py:3357–3361` in `with repository.transaction():`) or direct another disposition. Chunk 13 makes no runtime edit without that ruling. |
+
+## Chunk 10 remediation (labeled, out-of-chunk) — commit terminal COMPLETED transition
+
+Human ruling received: authorize a labeled, out-of-chunk Chunk-10 remediation, separate from
+Chunk 13's implementation. Scope authority is Chunk 10's frozen plan §5.1 step 18 (lines
+556–557) and §5.2 table line 592 ("compatible with 17; may share the transaction"); no plan
+text changes, no open question.
+
+| Stage | Status | Evidence / notes |
+|---|---|---|
+| Preflight | DONE | Branch `chunk-13`, tree clean, no push/merge. Verified: `database.py:866–876 close()` never commits; `pipeline.py:3353–3362` terminal write has no transaction wrapper while `pipeline.py:3350–3351` scores commit; `pipeline.py:1133–1146 run_identity_preflight` commits its own `failed`; preflight-failure write `pipeline.py:3211–3214` is flushed by the following limitation-rows transaction. |
+| RED confirmation (lead) | DONE | `python -m pytest tests/test_end_to_end.py -q -k durable` → `1 failed, 20 deselected`; `AssertionError: assert 'running' == 'completed'` at `tests/test_end_to_end.py:703`. |
+| Implement (`impl-deep`, session `ses_f33583c84ffeGg8OL4FbKbmC0q`) | DONE | Exactly one hunk at `pipeline.py:3354–3364`: terminal `COMPLETED` transition wrapped in `with repository.transaction():`; `FAILED` guard unchanged; no test/other file touched. Red→green on the durable node: `1 failed, 20 deselected` → `1 passed, 20 deselected`. Full suite 595 passed, 0 failed; all four validators valid; `ruff check src/niche_scout/pipeline.py` → "All checks passed!". |
+| Review (`spec-reviewer`, session `ses_f335572d4ffeScuW2KFMiPiy5M`) | VERDICT: PASS | Guard intact; both terminal return paths end in a committing `transaction()`; `update_run_status`/status transitions exist only at `pipeline.py:1146, 3214, 3358`, all flushed. One **Minor**: durable node docstring `tests/test_end_to_end.py:684–691` is now stale ("currently FAILS … status = running"), a docs-only inconsistency in a test-author-owned file the remediation was forbidden to edit — record only, no loop. |
+| Commit (lead) | DONE | `1f0f4fe` `chunk-10: remediation - commit terminal completed transition` — one file, `src/niche_scout/pipeline.py` only (6 insertions, 5 deletions). `d2cf558` not amended; nothing pushed. |
+
+### Post-remediation verification (lead, step 6 — real output)
+
+| Command | Real result |
+|---|---|
+| `python -m pytest tests/test_end_to_end.py -q -k durable` | `1 failed, 20 deselected` (pre-fix) → after fix `1 passed, 20 deselected` |
+| `python -m pytest -q` | `595 passed in 22.46s` |
+| `python -m niche_scout.tools.validate_traceability` | `Traceability valid: 89 required/defined LREQ IDs mapped, 581 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical nodes)` |
+| `python -m niche_scout.tools.check_import_boundaries` | `Import boundaries valid for metrics.py, scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | `Scope prohibitions valid: no retired token found … (6 tokens checked)` |
+| `python -m niche_scout.tools.check_secrets` | `Secret check valid: no literal credential found under src, tests, config, pyproject.toml; .gitignore ignores .env and no tracked .env exists` |
+| `python -m ruff check src/niche_scout/pipeline.py` | `All checks passed!` |
+| `python -m ruff format --check src/niche_scout/pipeline.py` | exit 1, "1 file would be reformatted"; every flagged hunk (2760, 2839, 2932, 3004, 3034, 3122, 3226) is outside the changed hunk `3354–3364` and is pre-existing at HEAD — not introduced; left unfixed per "do not fix repo-wide ruff debt" |
+
+**Provenance:** this defect was latent in frozen Chunk 10 code (plan §5.1 step 18 / §5.2 line 592
+permitted sharing the transaction, but the implementation did not), and was surfaced only by
+Chunk 13's durability acceptance node (`tests/test_end_to_end.py::test_acceptance_completed_run_is_durable_across_connections`),
+which opens a fresh connection like the `dashboard` command. The Chunk 13 acceptance test is the
+red→green evidence and remains a normal (non-xfail) node.
