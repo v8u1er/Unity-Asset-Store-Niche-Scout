@@ -95,12 +95,69 @@ Plan: `Documents/plans/chunk-17-graphql-live-contract-remediation.md` (planned).
 | Stage | Status | Session / evidence |
 |---|---|---|
 | Preflight (lead) | DONE | table above |
-| Plan — `chunk-planner` | DONE (**FROZEN**, Q1 = option (a)) | `ses_f2db4e2dfffe1XXyxU3JemYw0s` (resumed 3× after a step-cap recon-only run): DRAFT → BLOCKED on the four checkpoints → frozen with the human rulings → revised to option (a) after the human rejected the dead-config consequence of option (b). Plan `Documents/plans/chunk-17-graphql-live-contract-remediation.md`, `Status: FROZEN`, 767 lines. |
-| Tests — `test-author` | PENDING | next — writes the failing nodes + traceability before implementation |
-| Implement — `impl-deep` | PENDING | |
-| Lead verify | PENDING | |
-| Review — `spec-reviewer` | PENDING | |
-| Gate | PENDING | |
+| Plan — `chunk-planner` | DONE (**FROZEN**, Q1 = option (a)) | `ses_f2db4e2dfffe1XXyxU3JemYw0s` (resumed 3× after a step-cap recon-only run): DRAFT → BLOCKED on the four checkpoints → frozen with the human rulings → revised to option (a) after the human rejected the dead-config consequence of option (b). Plan `Documents/plans/chunk-17-graphql-live-contract-remediation.md`, `Status: FROZEN`, 767 lines. Commit `a938d7a`. |
+| Tests — `test-author` | DONE | `ses_f2d8090d0ffeDcOHW4a4RRSNeu` (provider-error ×2, then step-cap; edits landed). Fixtures: `graphql_fixtures.py` (updated `PRODUCT_DETAIL_SELECTION_SET`/`EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT`, container payload helpers/goldens, `http_400_csrf_mismatch`), `cli_fixtures.py` (`graphql_headers()` gains the cookie). 5 new collector nodes + the one approved rename; traceability key moved old→new and 5 keys added. Commit `5d9a2db`. |
+| Tests — red state (lead) | DONE | `python -m pytest -q` → **7 failed, 627 passed in 40.99s** (5 new nodes + 2 reconciled pins; no collection/syntax error). One test defect found: node 4 asserted a missing required member is *valid*; sent back once. |
+| Tests — node-4 correction | DONE | `test-author` resumed: `tests/test_collector.py::test_object_shaped_category_and_publisher_payload_validates` now asserts the SRS/required-member semantics (missing `category`/`publisher` → `WRONG_DATA_SHAPE`, `product_detail is None`, no fabricated `"{}"`). Full suite → **6 failed, 628 passed**. Commit `b8d1058`. |
+| Implement — `impl-deep` | DONE | `ses_f2d559d32ffe9aGGd6SwCPTdkb`. R1 `_csrf` cookie from the operator credential + `header_names`; R2 nested query; R3 400 `csrf token mismatch` → `CSRF_FAILURE`; `cli.py` docstrings only. Commit `4e1c8f1`. |
+| Lead verify | DONE | `python -m pytest -q` → **634 passed in 23.90s**; four validators valid (traceability `620 matrix nodes`); `git diff --name-only main...HEAD` = exactly the plan §6 files; working tree clean. |
+| Review — `spec-reviewer` | VERDICT: PASS | `ses_f2d4b61f9ffeqW6JpoIYqDxQKh`. No Blocker/Major; three Minors recorded below. Independently re-ran `634 passed`, the four validators, and ruff on the changed files. |
+| Gate | PASSED | see gate table below. |
+
+## Review (step 7) — Minors recorded, no fix round triggered
+
+1. **Plan citation imprecision (Minor).** Plan §5.1 (and `:10`, `:297`) attributes the
+   "No `Cookie` header is constructed" clause to `interfaces/chunk-05.md` §5.3; the
+   reviewer grepped `Documents/interfaces/` and the clause is **not** there. Its real
+   home is the pre-change module docstring `collector_graphql.py:22` (now updated) and,
+   for transport wording, `interfaces/chunk-12.md` §5/§6. No code impact; the interface
+   files are unedited. Recorded here; the frozen plan is not edited. (The dispatch
+   brief itself carried the same shorthand citation.)
+2. **Node-4 plan text vs SRS (Minor).** Plan §9 node 4 said "a missing pair stays `None`";
+   the delivered node asserts a missing required member is `WRONG_DATA_SHAPE` with
+   `product_detail is None`. The delivered behaviour is the SRS-consistent one
+   (`PRODUCT_DETAIL_REQUIRED_MEMBERS` includes `category`/`publisher`; this chunk changed
+   no validation code). The correction (commit `b8d1058`, made **before** the
+   implementation commit) is recorded here as required; the plan is not edited. Node 4 is
+   therefore a **regression pin**, not a missing-implementation red: the validation path
+   already accepted a container pre-change (plan §1.1 D3 / A3). The plan §9 "all new
+   nodes fail pre-change" claim holds for the other five, not node 4.
+3. **Run-log staleness (Minor).** This edit resolves it: the stage log, the real counts,
+   and the `b8d1058` record are now present.
+
+## Post-change verification (lead, real output)
+
+| Command | Real result |
+|---|---|
+| `python -m pytest -q` | `634 passed in 23.90s` (baseline 629 + 5 new collector nodes; the renamed CLI node is not new) |
+| `python -m pytest -q` (red state) | `7 failed, 627 passed in 40.99s`, then `6 failed, 628 passed in 21.61s` after the node-4 correction — all failures missing-implementation/behaviour, none collection/syntax |
+| `python -m niche_scout.tools.validate_traceability` | `Traceability valid: 89 required/defined LREQ IDs mapped, 620 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical nodes)` |
+| `python -m niche_scout.tools.check_import_boundaries` | `Import boundaries valid for metrics.py, scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | `Scope prohibitions valid: no retired token found ... (6 tokens checked)` |
+| `python -m niche_scout.tools.check_secrets` | `Secret check valid: no literal credential found under src, tests, config, pyproject.toml; .gitignore ignores .env and no tracked .env exists` |
+| `ruff check` on the two changed files | `All checks passed!` |
+| `ruff format --check` on the two changed files | `cli.py` clean; `collector_graphql.py` reports **pre-existing** deviations at lines 704, 830, 1546, 2065, all outside the changed hunks (reviewer method: `git diff main...HEAD` hunk ranges, since byte-exact `git show` extraction was shell-denied) → PARTIAL (pre-existing), same caveat as Chunks 14/15/16 |
+
+## Gate — Chunk 17
+
+Chunk 17 has no dependency-map §3 gate; the gate is plan §10 (the dispatch DoD).
+
+| DoD bullet (plan §10) | Result | Evidence |
+|---|---|---|
+| Full suite green with real countable counts | PASS | `634 passed in 23.90s` (lead) and `634 passed in 21.47s` (reviewer, independent) |
+| All four validators valid | PASS | outputs above; traceability `620 matrix nodes` |
+| `ruff` on changed files (Chunk 14 pre-existing-backlog caveat) | PARTIAL (pre-existing) | `ruff check` clean on both changed files; `ruff format` deviations at `collector_graphql.py:704/830/1546/2065` are outside the changed hunks; reviewer used `git diff main...HEAD` hunk ranges, not byte-exact HEAD (shell-denied) |
+| Config/template/taxonomy consistency unchanged | PASS | `git diff --name-only main...HEAD` contains no `config/**`, `pyproject.toml`, or `models.py`; only the plan §6 files |
+| No secret anywhere; no live network in tests | PASS | `check_secrets` valid; fixture tokens are synthetic (`fixture-graphql-csrf-token`, `fixture-cli-csrf-token`); every transport is a recording double |
+| Plan, run log, tests, traceability, conventions recorded | PASS | FROZEN plan; this log; tests `5d9a2db`/`b8d1058`; implementation `4e1c8f1`; 5 new traceability nodes + the renamed key |
+| Human live-run bullet reserved for the human | PENDING HUMAN | offline gate cannot prove the live identity-preflight pass; the probes showed the corrected request returns HTTP 200 with a harvested `_csrf` pair |
+| Every checkpoint resolved by the human and recorded | PASS | §12.1 Q1=option (a), Q2, Q3=yes, Q4=record; no `LREQ-SEC-010` tension remains |
+
+**GATE: PASSED** on every agent-verifiable bullet. Two caveats recorded, not silently
+resolved: the `ruff` bullet is met only as "no new lint" because of the pre-existing
+repo-wide backlog on lines this chunk did not touch, and the human live-run bullet is
+reserved for the human. Three reviewer Minors are recorded above; none is a Blocker or
+Major, so no fix round was triggered.
 
 ## Open obligations (recorded, not silently closed)
 
