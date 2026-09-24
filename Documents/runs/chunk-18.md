@@ -18,7 +18,7 @@ Plan: `Documents/plans/chunk-18-*.md` (to be written by `chunk-planner`).
 |---|---|
 | Working tree | clean at start (`git status` → "nothing to commit, working tree clean"; branch `main`; HEAD `dc69c55`) |
 | Branch | created `chunk-18-graphql-correlation-mode-selection` off `main` @ `dc69c55` (succeeded) |
-| Prerequisite | Chunk 17 `GATE: PASSED` (`runs/chunk-17.md:156`); interface `chunk-05.md`/`chunk-06A.md` `Status: VERIFIED` (per scope) |
+| Prerequisite | Chunk 17 `GATE: PASSED` (`runs/chunk-17.md:156`); interface `chunk-05.md`/`chunk-6A.md` `Status: VERIFIED` (per scope). **Citation correction (2026-09-24, after advisory review):** the Chunk 6A interface file is `Documents/interfaces/chunk-6A.md` (not `chunk-06A.md`); the fixture is `tests/fixtures/identity_preflight_vectors.py` (not `identity_preflight_fixtures.py`). The DRAFT plan propagated both wrong locants (`plans/chunk-18-...md:376, 460`) and must correct them at re-freeze. |
 | Routing | `chunk-planner` first (dispatch-specified). Implementer/routing TBD by the frozen plan; the change touches adapter protocol + preflight, so tests-first is expected. |
 
 ## Grounded recon (labels: read / counted / live / unverified)
@@ -110,3 +110,38 @@ used (C1).
   order, and the page-views item's exact shape.
 - **H4 (design guard).** If the chosen design needs an extra live request to compute the mode, that
   collides with one-request-per-unique-identity (LREQ-GQL-080/LREQ-ID-040).
+
+## Advisory review (spec-reviewer, 2026-09-24; session `ses_f2cf2c439ffeVs7Wi9vvWP3EZp`)
+
+Read-only advisory requested by the human ("recommend the best answers ... so I can decide easier";
+human prefers test/probe-first when unsure). The reviewer did **not** run a probe and did not edit
+any file. Its pytest/traceability/ruff counts are **reviewer-reported**, not lead-verified.
+
+### CRITICAL new finding — H5/G11: a third live-contract defect (ProductDetail `data.product` wrapper)
+
+| # | Finding | Evidence |
+|---|---|---|
+| H5 | The live 200 `ProductDetail` item is `{"data":{"product":{...fields...}}}` (root field `product(id: $id)`), so the adapter's `payload = item["data"]` is `{"product":{...}}`. `validate_product_detail_payload` requires `id`/`productId`/… at the payload's top level and there is **no code that unwraps a `product` container** — so once correlation is fixed, ProductDetail fails for every identity and the preflight success rate stays 0: **the DoD cannot pass with S1+S2 alone.** | read `.scratch/graphql_csrf_finding.md:88-89, 96`; read `collector_graphql.py:941-949, 2144-2167, 1081-1121`; grep `"product"`/`get("product")` in `collector_graphql.py` → no match (no unwrap); read `tests/fixtures/graphql_fixtures.py:320-345, 600-616` (fixtures model `data` as flat product fields). **Lead independently re-verified the read chain; the executed probe was denied (shell), so the live shape across identities stays UNVERIFIED (H3).** |
+| H5b | Consequence: H5 is a new blocking decision not in the planner's H1–H4 — unwrap `data.product` in the adapter (frozen `interfaces/chunk-05.md:294` "the operation's own `data` mapping/scalar, verbatim") or change the committed query/fixtures. |
+
+### Reviewer recommendations (for the human to decide)
+
+| Item | Recommendation | Confidence |
+|---|---|---|
+| H1 | **A.1b + A.2b**: add `correlation_mode` to the frozen `execute_graphql_batch` signature, pass it from `enrich_asset`, delete the relabel (`:2554-2563`); put the ordering/shape check in a **new public Chunk 5 primitive the preflight calls and persists** (`interfaces/chunk-05.md:407-416` vs `plans/chunk-6A-...md:90-92, :794-796`). Record the conflict note; **one node rename** (`test_collector.py::test_validated_position_mode_is_accepted_not_validated_here`); routing `test-author` first, then `impl-deep`. | med-high |
+| H2 | **Probe (B) first**, in the same human-run session as H3's capture: one request, uses the primary explicit-key association. If the endpoint echoes `operationName`, the `VALIDATED_POSITION` fallback may be unnecessary. It does **not** remove the H5 payload defects. | med-high on sequencing; low that B succeeds |
+| H3 | Run the capture as specified **plus** the ProductDetail outer key (`product`) and nesting; ≥2 identities spanning ≥2 products; record byte-exact query text. Never generalize if fewer are captured. | high that required; low on uniformity |
+| H4 | Keep as a **guard only** — the mode is computed from already-executed preflight rows (`pipeline.py:1103-1120, 1487-1514`), so no design needs an extra request. | high |
+| G7 | **Fix the request, not validation**: alias the page-views field to `pageViews` (the committed query selects `productPageViews`, while `validate_page_views_payload` requires `{"pageViews": ...}`). A bare `{"productPageViews":…}` payload yields **`NULL_REQUIRED_DATA`, not `WRONG_DATA_SHAPE`** — the DRAFT plan's `:91, :164` mis-state this and must be corrected (H5b-adjacent). | med (pending H3) |
+| Traceability | Follow the committed **node-ID → LREQ** mapping; do not restructure. The `tests/AGENTS.md` prose says otherwise — a separate human-approved docs cleanup, not this chunk. | — |
+
+### Plan defects to correct at re-freeze (DRAFT, not edited by the lead)
+
+- `plans/chunk-18-...md:91, 164` — page-views failure class is `NULL_REQUIRED_DATA` for the captured
+  envelope, not `WRONG_DATA_SHAPE`.
+- `plans/chunk-18-...md:97` — the "capture used a slightly different query text" claim is unsupported:
+  the reviewer's read-compare of `.scratch:88-89` vs `collector_graphql.py:314-342` shows identical
+  text (byte-exactness unverified).
+- `plans/chunk-18-...md:376, 460` — wrong locants: `interfaces/chunk-6A.md`, `tests/fixtures/identity_preflight_vectors.py`.
+- Add H5/G11 (above) and the null-vs-wrong-shape correction; re-freeze only after the human rules on
+  H1–H5.
