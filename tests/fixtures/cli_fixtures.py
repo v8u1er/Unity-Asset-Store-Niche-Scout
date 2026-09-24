@@ -386,8 +386,15 @@ def graphql_request() -> Any:
 
 
 def graphql_headers() -> Mapping[str, str]:
-    """Return the frozen ``X-CSRF-Token`` header map, with a non-secret value."""
-    return {"x-csrf-token": "fixture-cli-csrf-token"}
+    """Return the caller-supplied header map, with a non-secret value.
+
+    Chunk 17 R1 (option (a)): the adapter's ``build_graphql_headers`` emits both
+    the ``x-csrf-token`` header and the matching ``cookie: _csrf=<same value>``.
+    This fixture double carries both so ``build_graphql_transport`` can be
+    asserted to forward them verbatim. The value is a non-secret fixture literal.
+    """
+    token = "fixture-cli-csrf-token"
+    return {"x-csrf-token": token, "cookie": f"_csrf={token}"}
 
 
 @dataclass(frozen=True, slots=True)

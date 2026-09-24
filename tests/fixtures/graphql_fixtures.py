@@ -53,9 +53,11 @@ from niche_scout.models import (
 __all__ = [
     "ADD_TO_CART_BUTTON_OPERATION_NAME",
     "CANONICAL_ASSET_ID",
+    "CATEGORY_CONTAINER",
     "CORRELATION_MODE_MEMBERS",
     "CORRELATION_MODE_UNVALIDATED_RESULT",
     "CREDENTIAL_FREE_CREDENTIALS",
+    "CSRF_400_MISMATCH_BODY",
     "CSRF_FAILURE_MESSAGE",
     "CSRF_MISMATCH_BODY",
     "CSRF_MISMATCH_CLASS",
@@ -63,9 +65,11 @@ __all__ = [
     "DUPLICATE_SEQUENCE_CORPUS",
     "DUPLICATE_SEQUENCE_OPERATION_NAMES",
     "DUPLICATE_SEQUENCE_REQUIRED_REPEATS",
+    "EXPECTED_CATEGORY_CONTAINER_JSON",
     "EXPECTED_OPERATIONS_HEADER",
     "EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT",
     "EXPECTED_PRODUCT_PAGE_VIEWS_REQUEST_OBJECT",
+    "EXPECTED_PUBLISHER_CONTAINER_JSON",
     "FOREIGN_OPERATION_NAMES",
     "GQL_CREDENTIALS",
     "GQL_FIXTURE_ASSET_ID",
@@ -82,6 +86,7 @@ __all__ = [
     "PER_FAILURE_CLASS_RESPONSES",
     "PERMANENT_FAILURE_RESPONSE",
     "PRODUCT_DETAIL_SELECTION_SET",
+    "PUBLISHER_CONTAINER",
     "RecordingSleeper",
     "RecordingTransport",
     "RecordingTransportStatusOverride",
@@ -94,6 +99,7 @@ __all__ = [
     "TWO_OPERATION_REVERSED_BODY_JSON",
     "ambiguous_correlation_body",
     "body_json_for_items",
+    "container_category_and_publisher_payload",
     "correlation_body",
     "duplicated_correlation_body",
     "duplicated_page_views_correlation_body",
@@ -157,6 +163,13 @@ CREDENTIAL_FREE_CREDENTIALS: Credentials = Credentials(
 #: The exact ``ProductDetail`` selection-set member list the request must carry
 #: (plan lines 1419–1420): the two identity aliases plus the seven nested
 #: members of ``PRODUCT_DETAIL_REQUIRED_MEMBERS``, and nothing else.
+#:
+#: Chunk 17 R2 revision (ruling Q2): the live ``category``/``publisher`` are
+#: object types, so the emitted query selects them as ``{ id name }`` blocks
+#: (plan ``chunk-17-graphql-live-contract-remediation.md`` §7.2). Their two
+#: subfields are named here as dotted leaf paths, and the existing shape test
+#: reads each path's root (``member.split(".")[0]``), which stays the member
+#: name.
 PRODUCT_DETAIL_SELECTION_SET: tuple[str, ...] = (
     "id",
     "productId",
@@ -165,8 +178,10 @@ PRODUCT_DETAIL_SELECTION_SET: tuple[str, ...] = (
     "reviewCount",
     "firstPublishedDate",
     "state",
-    "category",
-    "publisher",
+    "category.id",
+    "category.name",
+    "publisher.id",
+    "publisher.name",
 )
 
 #: The two operation names, in the order the ``operations`` header joins them.
@@ -182,6 +197,9 @@ GQL_OPERATION_NAMES: tuple[str, str] = (
 #: ``ProductDetail`` selection set is byte-identical to
 #: ``PRODUCT_DETAIL_REQUIRED_MEMBERS`` in the plan's own order (requirement
 #: statement ordering, not the rendered query's grouped order).
+#:
+#: Chunk 17 R2 revision (ruling Q2): the ``category`` and ``publisher`` blocks
+#: are nested ``{ id name }`` selections, matching plan §7.2's exact text.
 EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT: Mapping[str, Any] = {
     "operationName": "ProductDetail",
     "query": (
@@ -196,8 +214,14 @@ EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT: Mapping[str, Any] = {
         "    reviewCount\n"
         "    firstPublishedDate\n"
         "    state\n"
-        "    category\n"
-        "    publisher\n"
+        "    category {\n"
+        "      id\n"
+        "      name\n"
+        "    }\n"
+        "    publisher {\n"
+        "      id\n"
+        "      name\n"
+        "    }\n"
         "  }\n"
         "}"
     ),
@@ -330,6 +354,48 @@ IDENTITY_AGREEMENT_PRODUCT_DETAIL_PAYLOAD: dict[str, Any] = product_detail_paylo
 IDENTITY_MISMATCH_PRODUCT_DETAIL_PAYLOAD: dict[str, Any] = product_detail_payload(
     GQL_FIXTURE_ASSET_ID_OTHER
 )
+
+#: The live container shape of ``category`` (plan ``chunk-17`` §9 node 4). The
+#: IDs and names are hand-derived from the plan's own example values; they are
+#: non-secret fixture literals.
+CATEGORY_CONTAINER: Mapping[str, str] = {"id": "38", "name": "Props"}
+
+#: The live container shape of ``publisher`` (plan ``chunk-17`` §9 node 4).
+PUBLISHER_CONTAINER: Mapping[str, str] = {"id": "12140", "name": "Lukas Bobor"}
+
+#: The compact, sorted-key JSON the adapter must persist for each container.
+#: Hand-derived: ``json.dumps`` of the 2-key mapping with ``sort_keys=True`` and
+#: ``separators=(",", ":")`` yields ``{"id":"38","name":"Props"}`` and
+#: ``{"id":"12140","name":"Lukas Bobor"}`` respectively (plan §9 node 4).
+EXPECTED_CATEGORY_CONTAINER_JSON: str = '{"id":"38","name":"Props"}'
+EXPECTED_PUBLISHER_CONTAINER_JSON: str = '{"id":"12140","name":"Lukas Bobor"}'
+
+
+def container_category_and_publisher_payload(
+    asset_identity_key: str = GQL_FIXTURE_ASSET_ID,
+    *,
+    include_category: bool = True,
+    include_publisher: bool = True,
+) -> dict[str, Any]:
+    """Return a valid ``ProductDetail`` payload whose ``category``/``publisher``
+    are live object shapes.
+
+    The two members are mappings (``{"id": ..., "name": ...}``), not strings, so
+    the validation path is exercised against the shape the corrected query
+    produces (plan ``chunk-17`` §9 node 4). An omitted member is absent from the
+    mapping entirely, so the adapter must leave its persisted JSON as ``None``
+    rather than defaulting to ``"{}"`` or ``0``.
+    """
+    payload = product_detail_payload(asset_identity_key)
+    if include_category:
+        payload["category"] = dict(CATEGORY_CONTAINER)
+    else:
+        del payload["category"]
+    if include_publisher:
+        payload["publisher"] = dict(PUBLISHER_CONTAINER)
+    else:
+        del payload["publisher"]
+    return payload
 
 
 def _duplicate_sequence_corpus(
@@ -829,6 +895,10 @@ CSRF_MISMATCH_BODY: str = correlation_body(
 #: The failure class a CSRF-mismatch body must be classified as.
 CSRF_MISMATCH_CLASS: str = "CSRF_FAILURE"
 
+#: The endpoint's plain-text HTTP 400 CSRF body, observed live (plan ``chunk-17``
+#: §1.1 D3 / §7.3). It is a non-secret protocol marker, not a credential.
+CSRF_400_MISMATCH_BODY: str = "csrf token mismatch"
+
 
 # ---------------------------------------------------------------------------
 # Per-failure-class responses (plan lines 1439–1442)
@@ -869,6 +939,11 @@ PER_FAILURE_CLASS_RESPONSES: Mapping[str, Mapping[str, Any]] = {
     "http_404_http_permanent": _transport_response(
         404, '{"errors":[{"message":"fixture not found"}]}'
     ),
+    # --- 400 with the observed CSRF mismatch body (Chunk 17 R3) ---------------
+    #: The live endpoint answers a cookie/header mismatch with HTTP 400 and this
+    #: exact plain-text body (plan ``chunk-17`` §7.3); R3 classifies it as
+    #: ``CSRF_FAILURE`` while every other 400 stays ``MALFORMED_REQUEST``.
+    "http_400_csrf_mismatch": _transport_response(400, CSRF_400_MISMATCH_BODY),
     # --- 200 with a CSRF mismatch -------------------------------------------
     #: The CSRF body is classified at 200, where the top-level ``errors`` member
     #: reaches ``_classify_top_level_errors``.

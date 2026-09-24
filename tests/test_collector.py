@@ -20,6 +20,7 @@ import json
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Iterator, Mapping, Sequence
 
 import fixtures.coveo_discovery as fx
@@ -29,7 +30,7 @@ import fixtures.graphql_fixtures as gqlfx
 
 from niche_scout import collector_coveo
 from niche_scout import collector_graphql
-from niche_scout.config import get_credentials
+from niche_scout.config import UNITY_CSRF_TOKEN_ENV, Credentials, get_credentials
 from niche_scout.database import (
     RepositoryError,
     SqliteRepository,
@@ -1548,9 +1549,12 @@ def test_batch_request_has_exactly_two_operations_with_one_identity() -> None:
     assert identities == {GQL_ASSET_ID}
     assert request.operations_header == gqlfx.EXPECTED_OPERATIONS_HEADER
     # Every request header *name* the adapter supplied, and nothing else.
+    # Chunk 17 R1 (option (a)) adds the ``cookie`` name to the frozen six plus
+    # ``x-csrf-token``, so the header-name set is eight names and never values.
     assert set(request.header_names) == {
         *collector_graphql.GRAPHQL_REQUEST_HEADERS,
         collector_graphql.GRAPHQL_CSRF_HEADER_NAME.lower(),
+        "cookie",
     }
 
 
@@ -1586,6 +1590,198 @@ def test_adapter_cannot_bulk_enrich_or_consult_preflight_state() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Chunk 17 / LREQ-GQL-010, LREQ-SEC-010 — operator CSRF credential as header+cookie
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-010")
+@pytest.mark.lreq("LREQ-SEC-010")
+def test_graphql_headers_include_matching_csrf_cookie_and_header() -> None:
+    """The header map carries one ``x-csrf-token`` and a matching ``_csrf`` cookie.
+
+    Chunk 17 R1 (option (a)): ``build_graphql_headers`` emits the six frozen
+    ``GRAPHQL_REQUEST_HEADERS`` members plus ``"x-csrf-token": <token>`` plus
+    ``"cookie": "_csrf=" + <token>``, and the header and cookie carry the same
+    ``credentials.unity_csrf_token`` value byte-for-byte. The map is a read-only
+    ``MappingProxyType``. A whitespace-only credential raises ``ValueError``
+    naming ``config.UNITY_CSRF_TOKEN_ENV`` and echoing no part of the value
+    (plan §7.1/§9 node 1; SRS §4.3).
+    """
+    headers = collector_graphql.build_graphql_headers(
+        credentials=gqlfx.GQL_CREDENTIALS
+    )
+    token = gqlfx.GQL_CREDENTIALS.unity_csrf_token
+
+    # A read-only mapping, never a mutable dict a caller could poison.
+    assert isinstance(headers, MappingProxyType)
+    with pytest.raises(TypeError):
+        headers["cookie"] = "fixture-mutated"  # type: ignore[index]
+
+    # Every frozen constant header survives unchanged.
+    for name, value in collector_graphql.GRAPHQL_REQUEST_HEADERS.items():
+        assert headers[name] == value
+
+    # Exactly one token header and exactly one cookie entry.
+    assert list(headers).count("x-csrf-token") == 1
+    assert list(headers).count("cookie") == 1
+    assert headers["x-csrf-token"] == token
+    # ``_csrf`` appears exactly once in the cookie, and equals the header value.
+    cookie = headers["cookie"]
+    assert cookie == "_csrf=" + token
+    assert cookie.count("_csrf") == 1
+    assert cookie.split("=", 1)[1] == headers["x-csrf-token"]
+
+    # A credential-free fixture is refused before any map exists, and the error
+    # names the environment variable without echoing the value.
+    with pytest.raises(ValueError) as excinfo:
+        collector_graphql.build_graphql_headers(
+            credentials=gqlfx.CREDENTIAL_FREE_CREDENTIALS
+        )
+    assert UNITY_CSRF_TOKEN_ENV in str(excinfo.value)
+    assert gqlfx.CREDENTIAL_FREE_CREDENTIALS.unity_csrf_token == ""
+    assert gqlfx.GQL_FIXTURE_CSRF_TOKEN not in str(excinfo.value)
+
+    # A whitespace-only token is as unusable as an empty one.
+    whitespace_only = Credentials(
+        coveo_token="fixture-coveo-token", unity_csrf_token="   "
+    )
+    with pytest.raises(ValueError) as whitespace_error:
+        collector_graphql.build_graphql_headers(credentials=whitespace_only)
+    assert UNITY_CSRF_TOKEN_ENV in str(whitespace_error.value)
+    assert "   " not in str(whitespace_error.value)
+
+
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_batch_request_header_names_include_cookie_name_only() -> None:
+    """``header_names`` names eight headers, adds ``cookie``, and carries no value.
+
+    Chunk 17 R1: ``header_names`` is
+    ``(*sorted(GRAPHQL_REQUEST_HEADERS), "x-csrf-token", "cookie")`` — names
+    only, never values (plan §7.1/§9 node 2). The credential-bearing map is never
+    placed in ``header_names`` or in the request object's other fields
+    (SRS §4.3 LREQ-SEC-020).
+    """
+    request = collector_graphql.build_graphql_batch_request(
+        GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+    )
+    token = gqlfx.GQL_FIXTURE_CSRF_TOKEN
+    cookie_value = "_csrf=" + token
+
+    assert set(request.header_names) == {
+        *collector_graphql.GRAPHQL_REQUEST_HEADERS,
+        "x-csrf-token",
+        "cookie",
+    }
+    assert len(request.header_names) == 8
+
+    # The token never appears as a header *name*, nor in any other request field.
+    for name in request.header_names:
+        assert token not in name
+        assert cookie_value not in name
+    for field in dataclasses.fields(request):
+        rendered = str(getattr(request, field.name))
+        assert token not in rendered
+        assert cookie_value not in rendered
+
+    # The credential-free fixture cannot build a request at all.
+    with pytest.raises(ValueError):
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.CREDENTIAL_FREE_CREDENTIALS
+        )
+
+
+# ---------------------------------------------------------------------------
+# Chunk 17 / LREQ-GQL-020 — the corrected ``category``/``publisher`` selection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-020")
+def test_product_detail_query_selects_category_and_publisher_id_name() -> None:
+    """The emitted query nests ``category { id name }`` and ``publisher { id name }``.
+
+    Chunk 17 R2 (ruling Q2): the live ``category``/``publisher`` are object
+    types, so the exact query text is the plan §7.2 golden with nested
+    ``{ id name }`` blocks; no forbidden field is added (plan §9 node 3).
+    """
+    operation = collector_graphql.build_product_detail_operation(GQL_ASSET_ID)
+    request = collector_graphql.build_graphql_batch_request(
+        GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+    )
+    query = operation.query
+
+    assert query == gqlfx.EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT["query"]
+    assert "category {\n      id\n      name\n    }" in query
+    assert "publisher {\n      id\n      name\n    }" in query
+    # Each block opens after its member name and closes before the next member.
+    category_at = query.index("category")
+    publisher_at = query.index("publisher")
+    assert query.index("category {") == category_at
+    assert query.index("publisher {") == publisher_at
+    assert publisher_at > category_at
+    # The two blocks each carry exactly one ``id`` and one ``name``.
+    assert query.count("category {") == 1
+    assert query.count("publisher {") == 1
+
+    for forbidden in (
+        "packageInListHotness",
+        "favoriteCount",
+        "favorites",
+        "ec_popularity",
+        "hotness",
+    ):
+        assert forbidden not in query
+    assert "query ProductPageViews" not in query
+
+    # The request body operation is the golden object, byte for byte.
+    body_objects = gql_request_objects(request.body_json)
+    assert body_objects[0] == gqlfx.EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT
+
+
+@pytest.mark.lreq("LREQ-GQL-020")
+def test_object_shaped_category_and_publisher_payload_validates() -> None:
+    """A container-shaped ``category``/``publisher`` payload validates to compact JSON.
+
+    With R2 the response carries objects. The payload with
+    ``"category": {"id": "38", "name": "Props"}`` and
+    ``"publisher": {"id": "12140", "name": "Lukas Bobor"}`` validates with
+    ``failure_class is NONE`` and yields sorted-key compact JSON; a missing pair
+    stays ``None``, never ``"{}"`` or ``0`` (plan §9 node 4).
+    """
+    payload = gqlfx.container_category_and_publisher_payload()
+    validation = collector_graphql.validate_product_detail_payload(payload)
+
+    assert validation.is_valid
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    # Hand-derived compact JSON: json.dumps of the two-key mapping with
+    # sort_keys=True and separators=(",", ":") renders ``{"id":"38","name":
+    # "Props"}`` and ``{"id":"12140","name":"Lukas Bobor"}``.
+    assert fields.category_json == '{"id":"38","name":"Props"}'
+    assert fields.publisher_json == '{"id":"12140","name":"Lukas Bobor"}'
+    assert fields.category_json == gqlfx.EXPECTED_CATEGORY_CONTAINER_JSON
+    assert fields.publisher_json == gqlfx.EXPECTED_PUBLISHER_CONTAINER_JSON
+    assert json.loads(fields.category_json) == {"id": "38", "name": "Props"}
+    assert json.loads(fields.publisher_json) == {
+        "id": "12140",
+        "name": "Lukas Bobor",
+    }
+
+    # A missing pair stays ``None``: no fabricated ``"{}"``, no zero-fill.
+    missing = gqlfx.container_category_and_publisher_payload(
+        include_category=False, include_publisher=False
+    )
+    missing_validation = collector_graphql.validate_product_detail_payload(missing)
+    assert missing_validation.is_valid
+    missing_fields = missing_validation.product_detail
+    assert missing_fields is not None
+    assert missing_fields.category_json is None
+    assert missing_fields.publisher_json is None
+    assert missing_fields.category_json != "{}"
+    assert missing_fields.publisher_json != "{}"
+
+
+# ---------------------------------------------------------------------------
 # Chunk 5 / LREQ-GQL-020 — the two selection sets
 # ---------------------------------------------------------------------------
 
@@ -1607,7 +1803,6 @@ def test_product_detail_query_requests_only_required_fields() -> None:
         assert member in query
     for nested in ("average", "count"):
         assert query.index(nested) > query.index("rating")
-
     assert query == gqlfx.EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT["query"]
     body_objects = gql_request_objects(request.body_json)
     assert body_objects[0] == gqlfx.EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT
@@ -1961,6 +2156,55 @@ def test_http_failure_is_an_operation_error() -> None:
     )
     assert len(sleeper.durations) == collector_graphql.DEFAULT_MAX_ATTEMPTS - 1
     assert draft_exhausted.product_page_views is None
+
+
+# ---------------------------------------------------------------------------
+# Chunk 17 / LREQ-EXT-100 + LREQ-GQL-040 — a 400 CSRF body is a CSRF failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+@pytest.mark.lreq("LREQ-GQL-040")
+def test_http_400_csrf_mismatch_body_is_classified_csrf_failure() -> None:
+    """A 400 whose body is ``csrf token mismatch`` is permanent, never retried.
+
+    Chunk 17 R3 (ruling Q3 = yes): the endpoint answered a header/cookie
+    mismatch with HTTP 400 and the plain-text body ``csrf token mismatch``, so
+    that body maps to ``CSRF_FAILURE``; every other 400 stays
+    ``MALFORMED_REQUEST`` (plan §7.3/§9 node 5). Both classes are permanent and
+    non-retrying, so the adapter attempts exactly once.
+    """
+    csrf_response = gqlfx.PER_FAILURE_CLASS_RESPONSES["http_400_csrf_mismatch"]
+    assert csrf_response["body_text"] == "csrf token mismatch"
+
+    transport, sleeper, (result, draft) = gql_exchange([csrf_response])
+    assert (
+        result.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.CSRF_FAILURE
+    )
+    assert (
+        result.page_views.failure_class
+        is collector_graphql.GraphQLFailureClass.CSRF_FAILURE
+    )
+    assert result.product_detail.status is OperationStatus.ERROR
+    assert result.page_views.status is OperationStatus.ERROR
+    # Permanent: one attempt, no backoff sleep, no retry.
+    assert result.attempts == 1
+    assert transport.call_count == 1
+    assert sleeper.durations == []
+    assert draft.product_page_views is None
+
+    # Every other 400 stays MALFORMED_REQUEST, also permanent.
+    other_transport, other_sleeper, (other_result, _draft) = gql_exchange(
+        [gqlfx.PER_FAILURE_CLASS_RESPONSES["http_400_malformed_request"]]
+    )
+    assert (
+        other_result.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.MALFORMED_REQUEST
+    )
+    assert other_result.attempts == 1
+    assert other_transport.call_count == 1
+    assert other_sleeper.durations == []
 
 
 @pytest.mark.lreq("LREQ-GQL-040")

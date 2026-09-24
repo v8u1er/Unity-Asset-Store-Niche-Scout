@@ -1,5 +1,5 @@
 {
-  "tests/test_cli.py::test_build_graphql_transport_sends_csrf_header_only_and_no_cookie": [
+  "tests/test_cli.py::test_build_graphql_transport_sends_matching_cookie_and_csrf_header": [
     "LREQ-CLI-010",
     "LREQ-SEC-010"
   ],
@@ -109,6 +109,9 @@
   "tests/test_collector.py::test_batch_request_has_exactly_two_operations_with_one_identity": [
     "LREQ-GQL-010"
   ],
+  "tests/test_collector.py::test_batch_request_header_names_include_cookie_name_only": [
+    "LREQ-SEC-020"
+  ],
   "tests/test_collector.py::test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count": [
     "LREQ-EXT-070"
   ],
@@ -154,6 +157,14 @@
   "tests/test_collector.py::test_flat_record_without_raw_is_normalized_unchanged": [
     "LREQ-EXT-040"
   ],
+  "tests/test_collector.py::test_graphql_headers_include_matching_csrf_cookie_and_header": [
+    "LREQ-GQL-010",
+    "LREQ-SEC-010"
+  ],
+  "tests/test_collector.py::test_http_400_csrf_mismatch_body_is_classified_csrf_failure": [
+    "LREQ-EXT-100",
+    "LREQ-GQL-040"
+  ],
   "tests/test_collector.py::test_http_failure_is_an_operation_error": [
     "LREQ-GQL-040"
   ],
@@ -194,6 +205,9 @@
   "tests/test_collector.py::test_null_required_data_and_wrong_data_shape_are_operation_errors": [
     "LREQ-GQL-040"
   ],
+  "tests/test_collector.py::test_object_shaped_category_and_publisher_payload_validates": [
+    "LREQ-GQL-020"
+  ],
   "tests/test_collector.py::test_observations_are_streamed_into_active_category_transaction": [
     "LREQ-NFR-010"
   ],
@@ -231,6 +245,9 @@
     "LREQ-SEC-020"
   ],
   "tests/test_collector.py::test_product_detail_query_requests_only_required_fields": [
+    "LREQ-GQL-020"
+  ],
+  "tests/test_collector.py::test_product_detail_query_selects_category_and_publisher_id_name": [
     "LREQ-GQL-020"
   ],
   "tests/test_collector.py::test_raw_nested_discovery_fields_are_read_from_the_live_record_shape": [

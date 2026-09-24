@@ -854,29 +854,42 @@ def test_run_command_never_emits_credentials_or_response_bodies(
 
 @pytest.mark.lreq("LREQ-CLI-010")
 @pytest.mark.lreq("LREQ-SEC-010")
-def test_build_graphql_transport_sends_csrf_header_only_and_no_cookie(
+def test_build_graphql_transport_sends_matching_cookie_and_csrf_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The production callable sends ``X-CSRF-Token`` only, never a ``Cookie``.
+    """The production callable forwards the matching ``X-CSRF-Token`` and ``_csrf``.
 
-    A recording ``urllib`` seam replaces ``urllib.request`` so no live request
-    is made. The recorded request carries the frozen header map exactly once and
-    no ``Cookie`` header, and the returned value is the frozen
-    ``GraphQLBatchResponse`` (Ruling 1).
+    Chunk 17 R1 (option (a)): the caller-supplied header map now carries both
+    the CSRF header and its matching cookie, and the transport forwards the map
+    verbatim. A recording ``urllib`` seam replaces ``urllib.request`` so no live
+    request is made. The recorded request carries exactly one ``x-csrf-token``
+    name and exactly one ``cookie`` name, the ``_csrf`` cookie value equals the
+    header value byte-for-byte, no other header is added, and the returned value
+    is the frozen ``GraphQLBatchResponse`` (Ruling 1).
     """
     recorder = cf.RecordingUrllib(cf.TRANSPORT_SENTINELS[2].encode("utf-8"))
     monkeypatch.setattr(cli.urllib, "request", recorder)
 
     transport = cli.build_graphql_transport()
-    response = transport(cf.graphql_request(), cf.graphql_headers())
+    headers = cf.graphql_headers()
+    response = transport(cf.graphql_request(), headers)
 
     assert len(recorder.requests) == 1
     recorded = recorder.requests[0]
     assert recorded.full_url == cf.GRAPHQL_ENDPOINT
     assert recorded.data == cf.graphql_request().body_json.encode("utf-8")
-    lowered = {str(name).lower() for name in recorded.headers}
-    assert sum(1 for name in lowered if name == "x-csrf-token") == 1
-    assert "cookie" not in lowered
+    names = [str(name).casefold() for name in recorded.headers]
+    assert names.count("x-csrf-token") == 1
+    assert names.count("cookie") == 1
+    # No other header is added by the transport: exactly the caller's names.
+    assert sorted(names) == sorted(str(name).casefold() for name in headers)
+    by_name = {
+        str(name).casefold(): str(value)
+        for name, value in recorded.headers.items()
+    }
+    assert by_name["x-csrf-token"] == headers["x-csrf-token"]
+    assert by_name["cookie"] == "_csrf=" + by_name["x-csrf-token"]
+    assert by_name["cookie"].count("_csrf=") == 1
     assert response.http_status == 200
     assert response.body_text == cf.TRANSPORT_SENTINELS[2]
 
