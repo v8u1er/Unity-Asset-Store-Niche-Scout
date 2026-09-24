@@ -906,7 +906,11 @@ def keyless_product_detail_non_mapping_body() -> str:
     null case above.
     """
     return body_json_for_items(
-        list(keyless_success_items(product_detail={"product": [product_detail_payload()]}))
+        list(
+            keyless_success_items(
+                product_detail={"product": [product_detail_payload()]}
+            )
+        )
     )
 
 

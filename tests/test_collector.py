@@ -2119,6 +2119,13 @@ def test_validated_position_mode_correlates_by_position_when_requested() -> None
                 is collector_graphql.GraphQLFailureClass.OPERATION_CORRELATION_AMBIGUOUS
             )
 
+    # The two persisted modes are exactly the enum's members (fixture
+    # ``CORRELATION_MODE_MEMBERS``): the adapter-local ``EXCLUDED`` and
+    # ``CANDIDATE`` states are not correlation modes (plan §5.2).
+    assert set(gqlfx.CORRELATION_MODE_MEMBERS) == set(GraphQLOperationCorrelationMode)
+    assert "excluded" not in {m.value for m in GraphQLOperationCorrelationMode}
+    assert "candidate" not in {m.value for m in GraphQLOperationCorrelationMode}
+
 
 # ---------------------------------------------------------------------------
 # Chunk 5 / LREQ-GQL-040 — operation failure classes and the retry loop
