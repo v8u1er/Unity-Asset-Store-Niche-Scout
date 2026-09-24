@@ -1,594 +1,586 @@
 # Chunk 18 — GraphQL correlation-mode selection (labeled post-Chunk-17 remediation)
 
-Status: DRAFT
+Status: FROZEN
 
-This plan is **DRAFT** and **BLOCKED** on the human checkpoints in §12. A correct fix cannot
-be frozen before they are answered: they are either a deliberate human checkpoint per
-`.kilo/project-rules.md` ("Chunk pipeline auto-chaining"; "Plan review and audit") or a
-frozen-interface conflict, and are not the planner's to choose.
+This plan was revised and frozen after the human ruled on all checkpoints and the live capture
+closed H2/H3 (run log `Documents/runs/chunk-18.md`, "Human rulings (approved)" and "Full capture
+— all ten identities + H2 probe"). The rulings encoded here are final; the plan does not
+re-open them.
 
-Depends on (frozen interfaces required before this plan can be trusted):
-  - `Documents/interfaces/chunk-05.md` §5.2 (`GraphQLFailureClass`, incl.
-    `CORRELATION_MODE_UNVALIDATED`), §5.5 (correlation contract; the "Chunk 5 MUST NOT"
-    boundary lines 398–416), §5.11 (`execute_graphql_batch`, `enrich_asset` signatures,
-    lines 770–786) — **consumed, but this chunk's fix would change behavior those
-    boundaries freeze; see §5.1 and checkpoint H1.**
-  - `Documents/interfaces/chunk-6A.md` §5.1/§5.2 (`PreflightObservation`,
-    `IdentityPreflightSummary`, `run_identity_preflight`) — consumed; the fix would add
-    validation inside the preflight, which the Chunk 6A plan forbids Chunk 6A from owning
-    (`plans/chunk-6A-identity-preflight-planner-and-gate.md:90-92`, `:794-796`). **Checkpoint
-    H1.**
-  - `Documents/interfaces/chunk-10.md` §4/§5 (`PipelineResult`, `limitations`), §5.x
-    (`run_pipeline` `correlation_mode`), and `Documents/interfaces/chunk-12.md` §5/§6
-    (`run_command`) — consumed unchanged.
-  - `Documents/runs/chunk-18.md` "Grounded recon" and "Confirmed defect" — the lead recon
-    this plan is built on (citations re-read this session; see §1.1).
-  - Binding human rulings (2026-09-24) from Chunk 17 on cookie/CSRF/query shape — consumed
-    unchanged; this chunk is a **distinct** defect (a 200 with no correlation key), not a
-    regression of Chunk 17.
+- **H1 = A.1b + A.2b.** Add `correlation_mode` to `execute_graphql_batch`'s frozen signature,
+  pass it from `enrich_asset`, delete the post-hoc relabel; put the `LREQ-GQL-030`
+  ordering/shape validation in a new public Chunk 5 primitive that the preflight calls.
+  `pipeline.py` supplies evidence and persists, and MUST NOT re-implement correlation. One
+  node rename approved (Chunk 17 precedent).
+- **H2 = option (B) is dead.** Live: `operations: ProductDetail,ProductPageViews` +
+  `apollo-require-preflight: true` returns HTTP 200, byte-unchanged body, **no `operationName`**.
+  This plan does not rely on the `operations` header.
+- **H3 = closed.** All ten selected preflight identities returned HTTP 200; **10/10 sha256
+  match** the recorded values; ordering item0=`ProductDetail`, item1=`ProductPageViews` for all
+  ten; shapes uniform; no explicit key anywhere.
+- **H4 = guard only.** No extra request; the mode is computed from already-executed preflight
+  responses.
+- **H5 = confirmed on all ten.** ProductDetail is wrapped `{"data":{"product":{...}}}`; the
+  adapter must unwrap `data.product` before `validate_product_detail_payload`.
+- **G7 = confirmed on all ten.** The page-views item is `{"data":{"productPageViews": <int>=0>}}`;
+  the request field is aliased to `pageViews` so the frozen `{"pageViews": ...}` validation
+  holds. `productPageViews = 0` occurs (identity `59028`) and is a **valid** value.
+- **Traceability = follow the committed node-ID → LREQ mapping**; do not restructure
+  `tests/traceability.json`. The `tests/AGENTS.md` prose mismatch is a separate docs item.
+- **Human preference: probe/test-first when unsure.**
 
-Blocks (chunks whose plan/implementation needs this chunk's interface):
-  - None. This is a labeled post-completion remediation (same pattern as Chunks 14/15/16/17):
-    it has **no `Documents/requirements-dependency-map.md` §3/§4 gate row**, creates no new
-    interface file, and no downstream chunk starts on it. The gate is this plan's own §10,
-    plus the dispatch DoD (a human `python -m niche_scout run` reaching and **passing** the
-    identity preflight).
+Depends on (frozen interfaces consumed; the required conflict note is §12.1):
+
+- `Documents/interfaces/chunk-05.md` §5.2 (`GraphQLFailureClass`), §5.5 (correlation contract,
+  the "Chunk 5 MUST NOT" boundary at `:398-416`), §5.6 (`payload` is "the operation's own
+  `data` mapping/scalar, verbatim", `:294`), §5.11 (`execute_graphql_batch`, `enrich_asset`
+  signatures, `:770-786`) — **consumed, with two recorded contract changes: the new
+  `correlation_mode` keyword (A.1b) and the ProductDetail `data.product` unwrap (H5).**
+- `Documents/interfaces/chunk-6A.md` §5.1/§5.2 (`PreflightObservation`,
+  `IdentityPreflightSummary`, `run_identity_preflight`, `:185-294`) — consumed; the selected
+  mode becomes evidence-derived and persisted (H1/A.2b), which is a recorded semantics change.
+- `Documents/interfaces/chunk-10.md:47` (`run_pipeline` `correlation_mode` default
+  `EXPLICIT_KEY`) — consumed; the selected mode is carried from the preflight summary into
+  `enrich_unique_identities` (§5.7). The default is **not** changed.
+- `Documents/runs/chunk-18.md` "Confirmed defect", "Human rulings", and "Full capture" — the
+  evidence this plan is built on.
+- Binding Chunk 17 rulings on cookie/CSRF/query shape — consumed unchanged; this is a distinct
+  defect (a 200 with no correlation key), not a Chunk 17 regression.
+
+Blocks: none. This is a labeled post-completion remediation (Chunks 14/15/16/17 pattern): no
+`requirements-dependency-map.md` §3/§4 gate row, no new interface file, no downstream chunk.
+The gate is §9 plus the dispatch DoD (a human `python -m niche_scout run` reaching and passing
+the identity preflight).
 
 ## 1. Goal
 
-Make a human `python -m niche_scout run` reach and **pass** the identity preflight against
-the live Unity storefront GraphQL endpoint, by making the correlation mode that production
-executes actually reach the correlation algorithm, and by implementing the `LREQ-GQL-030`
-fallback (`VALIDATED_POSITION`) selection that no chunk currently implements.
+Make a human `python -m niche_scout run` reach and **pass** the identity preflight against the
+live Unity storefront GraphQL endpoint by (i) making the correlation mode that production
+executes actually reach the correlation algorithm, and (ii) implementing the `LREQ-GQL-030`
+fallback (`VALIDATED_POSITION`) selection that no chunk implements today.
 
-Scope of the defect, stated as the lead diagnosed it and as re-read here: on the live
-endpoint the batch returns HTTP 200 and a body that carries **no explicit correlation key**
-(`operationName`/`operation``/`correlationKey` absent at every level shown), while production
-always executes in `EXPLICIT_KEY`, so `_correlate_by_explicit_key` marks both operations
-`OPERATION_CORRELATION_MISSING` and the preflight fails. The minimal fix has two halves:
-(i) the caller's `correlation_mode` must actually reach the execute/correlate path (today it
-is only relabelled after the fact), and (ii) `LREQ-GQL-030`'s "position MAY be used only
-after the identity preflight validates the fixed two-operation ordering and expected
-operation-specific response shapes across the selected preflight identities" must be
-implemented, because no code path selects or validates `VALIDATED_POSITION` today.
-
-### 1.1 Grounded findings (labels: **read** = opened this session; **counted** = queried; **unverified** = not checked; **live** = human-run probe recorded in `.scratch`, not reproduced here)
+### 1.1 Grounded findings (labels: **read** = opened this session; **counted** = queried;
+**live** = human-run capture recorded in `Documents/runs/chunk-18.md`)
 
 - **G1 (read).** `collector_graphql.py:2477-2486` `_correlation_mode_for_request` hardcodes
-  `GraphQLOperationCorrelationMode.EXPLICIT_KEY`; `:2453-2458`
-  `execute_graphql_batch` passes that value into `_interrogate_response`, which calls
-  `correlate_operations(items, mode=correlation_mode)` (`:2381`). `execute_graphql_batch`'s
-  frozen signature has **no** `correlation_mode` parameter (`:2402-2409`;
-  `interfaces/chunk-05.md:770-776`).
-- **G2 (read).** `collector_graphql.py:2531-2563` `enrich_asset` accepts a caller
-  `correlation_mode`, calls `execute_graphql_batch` **without** it (`:2554-2556`), and then
-  post-hoc `replace`s `correlation.mode` and both operation `correlation_mode`s (`:2557-2563`)
-  if they differ. The caller's mode therefore never influences correlation; it only relabels
-  an explicit-key failure. `interfaces/chunk-05.md:781` does give `enrich_asset` a
-  `correlation_mode` parameter.
+  `EXPLICIT_KEY`; `execute_graphql_batch` (`:2402-2409`) passes it to `_interrogate_response`
+  (`:2353-2359`), which calls `correlate_operations(items, mode=...)` (`:2381`).
+  `execute_graphql_batch`'s frozen signature has no `correlation_mode` parameter.
+- **G2 (read).** `enrich_asset` (`:2531-2541`) accepts `correlation_mode`, calls
+  `execute_graphql_batch` **without** it (`:2554-2556`), and post-hoc `replace`s
+  `correlation.mode` and both operation modes (`:2557-2563`). The caller's mode never
+  influences correlation.
 - **G3 (read).** `_correlate_by_validated_position` (`:815-863`) exists and is reachable only
-  through `correlate_operations` when `mode` is `VALIDATED_POSITION` (`:898-903`); it **does
-  not** validate ordering itself and says so in its docstring ("position validation is the
-  identity preflight's job (Chunk 6A, LREQ-ID-020)"). `_build_pre_exchange_result`
-  (`:2298-2350`) and the `TRANSPORT_FAILURE` branch (`:2440-2448`) hardcode `EXPLICIT_KEY`
-  as the mode for a no-items result.
-- **G4 (read).** The only "mode validation" implemented is an enum-membership check:
-  `pipeline.py:599-608` `_correlation_mode_is_valid` ("never fires for a live adapter result");
-  `:662-669` `_build_observation` appends `operation_correlation_mode_invalid` when it fires.
-  `run_pipeline`'s `correlation_mode` defaults to `EXPLICIT_KEY` (`:3149-3151`); `cli.py:429-443`
-  builds `run_kwargs` with no `correlation_mode`, so production is always `EXPLICIT_KEY`.
-  `run_identity_preflight` (`:1065-1154`) loops `_run_adapter(..., correlation_mode=...)` and
-  writes that value into the summary; `enrich_unique_identities` (`:1443-1530`) likewise.
+  when `correlate_operations` receives `VALIDATED_POSITION` (`:898-903`). It does not validate
+  ordering itself; it marks `OPERATION_CORRELATION_AMBIGUOUS` when item count ≠ 2 or any item
+  carries an explicit key.
+- **G4 (read).** The only "mode validation" implemented is an enum-membership check
+  (`pipeline.py:599-608` `_correlation_mode_is_valid`); `run_pipeline`'s `correlation_mode`
+  defaults to `EXPLICIT_KEY` (`:3149-3151`); `cli.py:429-443` sets none. No code path
+  selects/validates `VALIDATED_POSITION`.
 - **G5 (read).** `extract_operation_correlation_key` (`:620-636`) reads `operationName`,
-  `operation_name`, `operation`, `correlationKey` (`CORRELATION_KEY_MEMBERS`, `:607-617`); a
-  non-mapping item, or one with no usable string member, returns `None` and is never repaired.
-- **G6 (live, from `.scratch/graphql_csrf_finding.md:93-97`, re-read this session).** The
-  captured live 200 body for one identity is
-  `[{"data":{"product":{...}}},{"data":{"productPageViews":66}}]` — two bare envelopes, no
-  explicit key anywhere, and `66` is a bare scalar (not `{"pageViews":66}`). This is **one**
-  identity. The shape across the selected preflight identities is **UNVERIFIED**.
-- **G7 (read + counted).** `validate_page_views_payload` (`:1374-1412`) requires
-  `{"pageViews": <value>}`; a bare `/` scalar payload is `WRONG_DATA_SHAPE`
-  (`_is_operation_envelope` is false for a bare scalar, so `payload = item`). **Consequence:
-  a keyless live body is not merely a correlation problem — its page-views item is also a
-  wrong shape.** `_PRODUCT_PAGE_VIEWS_QUERY` (`:338-342`) selects the bare scalar
-  `productPageViews(packageId: $packageId)`. Whether the endpoint's 200 returns
-  `{"data":{"productPageViews":66}}` or `{"data":{"pageViews":66}}` under the **tool's exact
-  committed query text** (the `.scratch:96` capture used a slightly different query text) is
-  **UNVERIFIED**.
-  - counted: `grep -n "operationName" tests/fixtures/graphql_fixtures.py` → **46 matches**,
-    all in response bodies / expected request objects (line numbers in the file); no fixture
-    body is keyless. Count method: `grep` with `path` = that file, `limit` 60, pattern
-    `operationName`; the tool returned "Found 46 matches" and the matched lines. Unit =
-    matching lines, not distinct bodies.
-- **G8 (read).** Pins that will conflict (list only; no rename decided here):
-  - `tests/test_collector.py:2057-2117` `test_validated_position_mode_is_accepted_not_validated_here`
-    asserts execution "still defaults to the explicit-key mode" and that a keyed one-item body
-    under `VALIDATED_POSITION` is `OPERATION_CORRELATION_AMBIGUOUS` (via
-    `gqlfx.validated_position_ordering_body()` → `single_item_body()`).
-  - `tests/test_identity_preflight.py:65, 623, 810, 1044` pin `correlation_mode=pf.EXPLICIT_KEY`
-    and `observation.correlation_mode == EXPLICIT_KEY.value` /
-    `summary["graphql_operation_correlation_mode"] == "explicit_key"`.
-  - `tests/fixtures/graphql_fixtures.py:614-616, 719-721` — `in_order_success_body()` returns
-    `target_asset_body()`, which carries `operationName` on both items (`:600-611`); the whole
-    fixture family is keyed. No keyless-success fixture exists.
-- **G9 (read).** Frozen-interface conflict, re-read in the interface and plan files:
-  `interfaces/chunk-05.md:407-416` ("Chunk 5 MUST NOT ... must not *validate* position under
-  `VALIDATED_POSITION`. Position validation is the identity preflight's job (Chunk 6A,
-  LREQ-ID-020) ... Under `VALIDATED_POSITION`, Chunk 5 accepts the caller's mode as
-  already-validated"); `plans/chunk-6A-identity-preflight-planner-and-gate.md:90-92` ("New
-  GraphQL protocol behavior, correlation algorithms, or retry policy — Chunk 5 owns all of
-  it. 6A ... must not re-implement request construction or correlation.") and `:794-796`
-  ("`pipeline.py` MUST NOT re-implement GraphQL request construction, correlation, response
-  validation, or retry classification"). The SRS requirement is a single sentence whose two
-  actors (validate in preflight, use validated ordering in adapter) are split across two
-  frozen chunks, and neither implemented the selection.
-- **G10 (read).** Ownership/support facts: SRS-lean.md:300-312 (`LREQ-GQL-030`),
-  `:336-338` (`LREQ-GQL-080`), `:348-352` (`LREQ-SEC-010/020`), `:368-372` (`LREQ-ID-020`),
-  `:386-414` (`LREQ-ID-040`), `:283-285` (`LREQ-EXT-100`). Re-read this session.
+  `operation_name`, `operation`, `correlationKey`; a non-mapping or keyless item returns `None`
+  and is never repaired.
+- **G6 (live, H3).** The 200 batch body is a JSON array of exactly two bare envelopes with
+  **no explicit key**; item0 = `{"data":{"product":{...}}}`, item1 =
+  `{"data":{"productPageViews": <int>=0>}}`; ordering and shapes uniform across all ten
+  selected identities; 10/10 sha256 match the recorded `response_sha256`.
+- **G7 (live + read).** `validate_page_views_payload` (`:1374-1412`) requires
+  `{"pageViews": <value>}`. A payload that is a mapping without `pageViews` (e.g.
+  `{"productPageViews": 20}`) is **`NULL_REQUIRED_DATA`** (`:1399-1412`), not
+  `WRONG_DATA_SHAPE`. Zero is valid (`:1416-1423`, `:495-498`).
+- **G8 (live + read).** H5: `_build_result_from_items` (`:2144-2167`) sets
+  `payload = item["data"]` = `{"product": {...}}`; `validate_product_detail_payload`
+  (`:1081-1121`) requires `id`/`productId`/… at the payload top level, and there is no unwrap.
+  The live `product` object carries `id`, `productId`, `rating{average,count}`, `reviewCount`,
+  `firstPublishedDate`, `state`, `category{id,name}`, `publisher{id,name}`.
+- **G9 (counted).** `grep` pattern `operationName`, `path = tests/fixtures/graphql_fixtures.py`,
+  limit 200 → **46 matches**, every one a request/response object or prose/comment; no fixture
+  body is keyless. Unit = matching lines, not distinct bodies. This supersedes the run log
+  P2's "40 matches". `GraphQLOperationCorrelationMode` has exactly **2** members (read
+  `models.py:132-134`). `tests/traceability.json` is keyed by **pytest node ID** → array of
+  LREQ IDs (read `tests/traceability.json:1-30`).
+- **G10 (read).** Ownership: `SRS-lean.md:300-312` (`LREQ-GQL-030`), `:289-298`
+  (`LREQ-GQL-010/020`), `:318-323` (`LREQ-GQL-040`), `:336-338` (`LREQ-GQL-080`), `:348-352`
+  (`LREQ-SEC-010/020`), `:368-372` (`LREQ-ID-020`), `:386-414` (`LREQ-ID-040`).
 
 ## 2. Scope
 
-### In scope (the fix's two halves — both currently absent)
+### In scope
 
-- **S1 — the caller's correlation mode must reach correlation (defect half 1).**
-  `enrich_asset`'s `correlation_mode` must be passed into the execute path and used by
-  `correlate_operations`, instead of the post-hoc relabel at `collector_graphql.py:2557-2563`.
-  The exact plumbing (private parameter on `execute_graphql_batch` vs. a private
-  `_correlation_mode_for_request`-replacement vs. a public frozen-signature change) is
-  **checkpoint H1** — this plan presents the options in §5 and does not choose.
-- **S2 — `LREQ-GQL-030` fallback selection and preflight validation (defect half 2).** The
-  identity preflight must **validate** the fixed two-operation ordering and the expected
-  operation-specific response shapes across the selected preflight identities, and only then
-  select `VALIDATED_POSITION`; if validation fails, persist `EXPLICIT_KEY` and let both
-  operations be marked malformed with their fields unavailable (the SRS's "if neither mode is
-  validated" branch). Where that validation lives is **checkpoint H1**. The validation must
-  make the preflight's rows reusable for `enrich_unique_identities` with **one request per
-  identity** (`LREQ-GQL-080` / `LREQ-ID-040` / `LREQ-GQL-030`'s "across the selected preflight
-  identities").
-- **S3 — tests and traceability first.** `test-author` writes the failing nodes and their
-  `tests/traceability.json` entries before the implementer edits source. No live network in
-  tests. (§9.)
-- **S4 — record, never close.** New obligations are recorded in §12, not resolved: the
-  keyless live body shape across identities (requires a human live capture), OI-6,
-  `taxonomy_sha256` empty-hash rejection (Chunk 10), and URI trailing-identifier extraction
-  `1.0.1`.
+- **S1 — the caller's correlation mode reaches correlation (A.1b).** `execute_graphql_batch`
+  gains a `correlation_mode` keyword; `enrich_asset` passes its mode; the relabel
+  (`:2557-2563`) and `_correlation_mode_for_request` (`:2477-2486`) are deleted.
+- **S2 — `LREQ-GQL-030` selection + validation (A.2b).** A new public Chunk 5 primitive
+  validates the fixed two-operation ordering and the operation-specific response shapes across
+  the selected preflight identities; the preflight selects and persists one run-level mode.
+- **S3 — H5 unwrap.** Unwrap `data.product` before `validate_product_detail_payload`, with
+  defined null/edge classes.
+- **S4 — G7 alias.** Alias the page-views request field to `pageViews`.
+- **S5 — tests and traceability first** (`test-author` before the implementer). No live network
+  in tests.
+- **S6 — record, never close** (§12.2).
 
-### Explicitly out of scope (and who owns it instead)
+### Explicitly out of scope (and owner)
 
-- **Option (B), the `operations` request header.** `GraphQLBatchRequest.operations_header`
-  is built (`collector_graphql.py:309, 464-466`) but `build_graphql_headers` (`:395-411`)
-  never emits it. Sending it to make the endpoint echo `operationName` is presented as an
-  option in §5 (B) and is **not** part of S1/S2.
-- **A page-views payload-shape change.** If the live keyless body's page-views item is a bare
-  scalar that `validate_page_views_payload` rejects as `WRONG_DATA_SHAPE` (G7), a further
-  change may be needed; that is **checkpoint H3** and is not silently bundled into S1/S2.
-- **Any new persisted field, enum member, config knob, or CLI flag.** No third correlation
-  mode, no new `GraphQLFailureClass`, no new SRS vocabulary.
-- **`metrics.py` / `scoring.py` / `models.py` / `database.py` / `report.py` behavior.** No
-  change. (`models.GraphQLOperationCorrelationMode` already has exactly the two SRS members,
-  `models.py:132-134`; no edit.)
-- **`favorite_count`, extra GraphQL operations/fields, scheduling, resume/checkpoint,
-  historical trends/run comparison, bulk enrichment before the gate, multi-user/cloud.** SRS
-  §15 / AGENTS.md "Out of scope".
-- **A new interface file.** None is created (Chunks 14/15/16/17 created none).
-- **Live network in development or tests.** No test calls the real endpoint; `niche-scout run`
-  is never run by an agent.
+- **Option (B), the `operations` header.** Dead (H2); not implemented.
+- **A third correlation mode, a new `GraphQLFailureClass`, a new config knob, or a CLI flag.**
+  None.
+- **Changing `run_pipeline`'s `correlation_mode` default** (frozen `interfaces/chunk-10.md:47`)
+  or `cli.py`. The selected mode is carried from the preflight summary instead (§5.7).
+- **`models.py`, `database.py`, `report.py`, `cli.py`, `metrics.py`, `scoring.py`,
+  `sampling.py`, `validation.py`, `collector.py`, `collector_coveo.py`, `config.py`, tools,
+  `pyproject.toml`, `config/**`.** No change.
+- **A new interface file.** None.
+- **Live network in development or tests.** No test calls the endpoint; agents never run
+  `niche-scout run`.
+- **`tests/AGENTS.md` prose.** Separate docs item.
 
-## 3. Requirements this chunk must satisfy
+## 3. Requirements
 
-Chunk 18 has **no `Documents/requirements-dependency-map.md` §3 section**. The LREQs below are
-taken from `SRS-lean.md`, re-read this session at the cited lines.
+Chunk 18 has no `requirements-dependency-map.md` §3 section; the LREQs are taken from
+`SRS-lean.md` at the cited lines.
 
-| LREQ ID | Ownership role here | Normative text (SRS-lean.md, quoted/derived) | SRS section |
+| LREQ ID | Role here | Normative text (quoted/derived) | SRS |
 |---|---|---|---|
-| LREQ-GQL-030 | **Primary (this remediation)** | "GraphQL response items SHALL be associated by explicit operation name or another validated correlation key. Response position alone SHALL NOT be trusted unless separately validated as an endpoint guarantee. ... If the live response provides no explicit operation name or correlation key, the implementation MAY use response position only after the identity preflight validates the fixed two-operation ordering and expected operation-specific response shapes across the selected preflight identities. The persisted correlation mode SHALL be either `explicit_key` or `validated_position`. If neither mode is validated, both operations SHALL be marked malformed and their fields SHALL remain unavailable." | §4.2, lines 300-312 |
-| LREQ-ID-020 | **Primary (this remediation's validation half)** | "The preflight SHALL perform the normal GraphQL request and verify: ... the operation-correlation mode is valid; and no unexplained response-shape or operation-association error occurred." | §4.4, lines 368-372 |
-| LREQ-ID-040 | Integration completion (Chunk 6A remains primary) | "Successful preflight responses SHALL be reused as the corresponding enrichment observations and SHALL count toward the one-enrichment-per-unique-identity limit." and "The persisted `identity_preflight_summary_json` SHALL include ... the selected `graphql_operation_correlation_mode`." The selected mode (S2) must be the one persisted and the one reused for enrichment. | §4.4, lines 386-414 |
-| LREQ-GQL-080 | Integration completion (Chunk 6B remains primary) | "A unique sampled identity SHALL be enriched at most once per run ... The result SHALL be joined to every referencing category." The mode selected in the preflight must be applied to the enrichment path without a second request per reused identity. | §4.2, lines 336-338 |
-| LREQ-GQL-040 | Supporting (Chunk 5 remains primary; classification unchanged) | "Each operation SHALL have an independent status. ... null required data, wrong data shape, wrong scalar type ... SHALL be recorded as an operation error." S2 must not turn a wrong-shape or missing association into a success, and must use the existing failure vocabulary. | §4.2, lines 318-323 |
-| LREQ-GQL-010 | Supporting (Chunk 5 remains primary) | The two-required-operations / same `asset_identity_key` batch contract is unchanged; S1/S2 change only which association mode the same batch runs under. | §4.2, lines 289-292 |
-| LREQ-SEC-010 / LREQ-SEC-020 | Constraint | Secrets stay out of source, logs, SQLite, error messages, and every artifact; no cookie/header value is added to any new persisted field or diagnostic. | §4.3, lines 348-352 |
-| LREQ-ARCH-030 | Supporting | "The same normalized input data, policy versions, and configuration SHALL produce the same metric, score, evidence, and sensitivity outputs." The mode selection is a deterministic function of the preflight observations; no clock, RNG, or set/dict-ordering dependence. | §3 |
+| LREQ-GQL-030 | **Primary** | "… the implementation MAY use response position only after the identity preflight validates the fixed two-operation ordering and expected operation-specific response shapes across the selected preflight identities. The persisted correlation mode SHALL be either `explicit_key` or `validated_position`. If neither mode is validated, both operations SHALL be marked malformed and their fields SHALL remain unavailable." | §4.2, 300-312 |
+| LREQ-ID-020 | **Primary** | "The preflight SHALL perform the normal GraphQL request and verify: … the operation-correlation mode is valid; and no unexplained response-shape or operation-association error occurred." | §4.4, 368-372 |
+| LREQ-ID-040 | Integration completion (6A primary) | "Successful preflight responses SHALL be reused as the corresponding enrichment observations and SHALL count toward the one-enrichment-per-unique-identity limit"; the summary includes the selected `graphql_operation_correlation_mode`. | §4.4, 386-414 |
+| LREQ-GQL-080 | Integration completion (6B primary) | "A unique sampled identity SHALL be enriched at most once per run." Selection and the second-pass interpretation add no request. | §4.2, 336-338 |
+| LREQ-GQL-040 | Supporting (Chunk 5 primary) | "… null required data, wrong data shape, wrong scalar type … SHALL be recorded as an operation error." H5/G7 keep the existing vocabulary; zero page views stays valid. | §4.2, 318-323 |
+| LREQ-GQL-020 | Supporting | The `ProductDetail` field set and the `ProductPageViews` scalar; G7 aliases the scalar field. | §4.2, 294-298 |
+| LREQ-GQL-010 | Supporting | Two operations, same `asset_identity_key`; unchanged. | §4.2, 289-292 |
+| LREQ-SEC-010/020 | Constraint | No secret in any artifact; no response body persisted; no cookie/header value in diagnostics. | §4.3, 348-352 |
+| LREQ-ARCH-030 | Supporting | Same inputs + policy + config → same outputs; selection is a pure function of ordered evidence. | §3 |
 
-**Not satisfied here and not claimed:** the SRS's "design annotation only, not a
-statistically representative validation" caveat (`LREQ-ID-020`, line 374) is unchanged;
-nothing in this chunk claims the live body shape is representative.
+Not claimed: the `LREQ-ID-020` caveat that the preflight is "not a statistically representative
+validation of all marketplace identity forms" (line 374) is unchanged.
 
-## 4. Interface contracts consumed
+## 4. Frozen-interface changes and conflict note
 
-Copied from the frozen interface files (not re-derived from source):
+The rulings authorize these changes to frozen surfaces. The interface files are **not** edited;
+the conflict is recorded here and in `Documents/runs/chunk-18.md` (§12.1).
 
-- `interfaces/chunk-05.md` §5.11 (`:770-786`): `execute_graphql_batch(request, *, transport,
-  headers, policy=..., sleep=...) -> EnrichmentResult` — **no `correlation_mode` parameter**;
-  `enrich_asset(asset_identity_key, *, credentials, transport, correlation_mode,
-  retrieved_at_utc, policy=..., endpoint=..., sleep=...) ->
-  tuple[EnrichmentResult, EnrichmentObservationDraft]` — **has one**.
-- `interfaces/chunk-05.md` §5.5 (`:398-416`): the "Chunk 5 MUST NOT" boundary quoted in G9;
-  failure classification is exact and total (zero items or no key under `EXPLICIT_KEY` →
-  `OPERATION_CORRELATION_MISSING`; duplicate key → `..._DUPLICATED`; unknown key →
-  `..._UNKNOWN`; keyed body that cannot present the fixed order under `VALIDATED_POSITION` →
-  `..._AMBIGUOUS`).
-- `interfaces/chunk-05.md` §5.2: `GraphQLFailureClass` incl.
-  `CORRELATION_MODE_UNVALIDATED = "correlation_mode_unvalidated"` (defined at
-  `collector_graphql.py:209`) and the no-retry invariant for permanent classes.
-- `interfaces/chunk-6A.md` §5.1/§5.2: `PreflightObservation.correlation_mode: str` is "a
-  `GraphQLOperationCorrelationMode` value"; `IdentityPreflightSummary.graphql_operation_correlation_mode: str`
-  is the SRS-mandated key (SRS-lean:414); `run_identity_preflight(repository, run, *,
-  credentials, transport, correlation_mode, retrieved_at_utc, policy, endpoint=...,
-  retry_policy=..., sleep=...) -> IdentityPreflightOutcome`.
-- `interfaces/chunk-6A.md:222-228`: `endpoint_signature`, `mapping_rule_version`,
-  `correlation_mode`, `is_both_operations_success`, `diagnostic_summary_json` are
-  preflight-only and live in the run-level summary; the draft carries
-  `request_metadata_json` per Chunk 5 §5.10.
-- `interfaces/chunk-10.md` §4/§5 (`PipelineResult`, `limitations`), `interfaces/chunk-12.md`
-  §5/§6 (`run_command` constructs the transport; the returned callable adds nothing beyond
-  the caller-supplied headers) — consumed unchanged.
+1. **`interfaces/chunk-05.md:770-776`** — `execute_graphql_batch` gains
+   `correlation_mode: GraphQLOperationCorrelationMode = GraphQLOperationCorrelationMode.EXPLICIT_KEY`.
+   A.1b (H1).
+2. **`interfaces/chunk-05.md:398-416`** — Chunk 5 "MUST NOT … validate position under
+   `VALIDATED_POSITION`; position validation is the identity preflight's job". The new
+   primitive *validates the endpoint guarantee* (fixed ordering + shapes) and hands the
+   preflight a decision; it does not re-implement the preflight's identity checks. Recorded as
+   a boundary clarification (A.2b).
+3. **`interfaces/chunk-05.md:294`** — `payload` is "the operation's own `data` mapping/scalar,
+   verbatim". H5 makes the ProductDetail payload the **unwrapped `data.product`** object (H5).
+4. **`plans/chunk-6A-...md:90-92, :794-796`** — "`pipeline.py` MUST NOT re-implement GraphQL
+   request construction, correlation, response validation, or retry classification." This plan
+   keeps that: `pipeline.py` calls Chunk 5 `enrich_asset`, the new Chunk 5 primitive, and the
+   new Chunk 5 interpreter; it re-implements none of them.
+5. **`interfaces/chunk-6A.md:185-294`** — `PreflightObservation.correlation_mode` and
+   `IdentityPreflightSummary.graphql_operation_correlation_mode` now carry the **selected**
+   (evidence-derived) mode; `run_identity_preflight`'s `correlation_mode` argument is the
+   candidate for the first execution pass. Same types, changed value provenance.
 
-**Signature-freeze facts (read this session).** `execute_graphql_batch` is keyword-only after
-`request` and has no mode parameter (`collector_graphql.py:2402-2409`). `enrich_asset` has one
-(`:2531-2541`) and ignores it for correlation (`:2554-2563`). `run_pipeline`'s
-`correlation_mode` is a keyword parameter defaulting to `EXPLICIT_KEY` (`:3149-3151`);
-`cli.run_command` never sets it (`cli.py:429-443`).
+## 5. Design
 
-## 5. Options and tradeoffs (presented — NOT chosen)
+### 5.1 S1 (A.1b) — the caller's mode reaches correlation
 
-The SRS names exactly two persisted modes and gives a single sentence that splits
-responsibility across two frozen chunks; neither chunk implemented the selection. The
-following options are the only ones this plan sees. **Relabelling a hard-coded explicit-key
-failure as `validated_position`, guessing position without preflight validation, fabricating a
-correlation key, and inventing a third correlation mode are NOT acceptable and are not options
-below.**
+- Add `correlation_mode` to `execute_graphql_batch` (keyword-only, default `EXPLICIT_KEY`).
+  The value is validated by `_require_correlation_mode` and threaded to
+  `_interrogate_response` → `correlate_operations`, and to the `TRANSPORT_FAILURE` branch
+  (today `:2446` hardcodes `EXPLICIT_KEY`).
+- `enrich_asset` passes `mode` into `execute_graphql_batch` and the relabel block
+  (`:2557-2563`) is deleted. Delete `_correlation_mode_for_request` (`:2477-2486`).
+- `_build_pre_exchange_result` and `_with_both_operations_failed` already accept the mode;
+  no hardcoded `EXPLICIT_KEY` remains on the result path.
 
-### 5.1 Option (A) — minimal correct: thread the mode + implement the `LREQ-GQL-030` validation
+### 5.2 New public Chunk 5 primitive — `select_operation_correlation_mode`
 
-**A.1 The caller's mode must reach correlation.** Three sub-options, all of which fix
-`enrich_asset:2557-2563`'s relabel:
+In the interface-doc style:
 
-- **A.1a — private plumbing.** Add a module-private parameter (for example
-  `_correlation_mode: GraphQLOperationCorrelationMode | None = None`) to
-  `execute_graphql_batch`, have `enrich_asset` pass `mode`, and delete the relabel. The
-  public frozen signature of `execute_graphql_batch` (`interfaces/chunk-05.md:770-776`) stays
-  byte-identical; only a private path changes. **Tradeoff:** a private parameter on a public
-  function is a behavior change to a frozen surface without a recorded contract change — a
-  reviewer may call it a silent divergence; it is the smallest diff.
-- **A.1b — public signature change.** Add `correlation_mode` to `execute_graphql_batch`'s
-  frozen signature (`interfaces/chunk-05.md:770-776`) and have `enrich_asset` pass it.
-  **Tradeoff:** explicit and reviewable, but it is a **frozen-interface change** requiring a
-  human checkpoint (H1); the file is not edited by this plan either way.
-- **A.1c — replace `_correlation_mode_for_request`.** Keep the public signature and give the
-  request object the mode through a private side channel. **Tradeoff:** `GraphQLBatchRequest`
-  is a frozen dataclass (`interfaces/chunk-05.md`; `collector_graphql.py:293-311`) and carries
-  no mode; adding one is a frozen-structure change to a request object that must stay safe to
-  log and fixture. Listed for completeness; strongly disfavored.
+```python
+def select_operation_correlation_mode(
+    responses: Sequence[GraphQLBatchResponse],
+) -> GraphQLOperationCorrelationMode:
+    """Select the run-level persisted correlation mode from already-received responses.
 
-**A.2 Where the `LREQ-GQL-030` validation lives.** The SRS's sentence has two actors: the
-preflight **validates**; the adapter **uses** the validated ordering. Two placements:
+    ``responses`` is the ordered per-identity batch response for the selected preflight
+    identities, one per unique identity, in selection order. It is evidence only: this
+    function issues no request and reads no clock. Pure and deterministic; the result is a
+    function of the ordered evidence alone.
 
-- **A.2a — validation in the preflight (Chunk 6A `pipeline.py`).** `run_identity_preflight`
-  collects the per-identity responses (the preflight rows already exist and are already
-  reused), then runs a new validation over the **selected preflight identities** that checks
-  (i) every response decodes to exactly two bare envelopes, (ii) no item carries any explicit
-  key, (iii) item 0 has the `ProductDetail` operation-specific shape and item 1 has the
-  `PageViews` operation-specific shape. If all hold across every preflight identity, the
-  selected mode is `VALIDATED_POSITION` and that value is passed to the adapter for both the
-  reused preflight rows and `enrich_unique_identities`; otherwise `EXPLICIT_KEY` and the
-  existing malformed path stands. **Tradeoff:** this is the placement `interfaces/chunk-05.md:410-412`
-  names ("Position validation is the identity preflight's job (Chunk 6A, LREQ-ID-020)"), but it
-  adds "correlation" logic to `pipeline.py`, which `plans/chunk-6A-...md:90-92, :794-796`
-  forbids. **This is the central frozen-interface conflict — checkpoint H1.**
-- **A.2b — validation in the adapter, driven by the preflight's evidence.** A Chunk 5
-  validation primitive (for example a public `validate_correlation_mode_for_identities(...)`
-  in `collector_graphql.py`) implements the ordering/shape check; `pipeline.py` only supplies
-  the evidence (the preflight responses/observations) and records the resulting mode. The
-  adapter still does not "validate position" per its own §5.5 clause — it validates an
-  endpoint guarantee (the fixed ordering and shapes) and hands the preflight a decision it
-  persists. **Tradeoff:** honours Chunk 5's correlation-algorithm ownership and Chunk 6A's
-  no-re-implementation rule, but requires the preflight rows to expose enough raw association
-  evidence (item order and shape) for a second pass, and creates a new public Chunk 5 symbol
-  (a contract addition, not a change). **Checkpoint H1.**
+    Raises ``ValueError`` for an empty sequence: a zero-identity preflight is
+    ``insufficient`` (LREQ-ID-040) and selection is not reached; the caller must not
+    substitute a default.
 
-**A.3 Reuse without a second request per identity.** Both A.2 placements must keep
-`LREQ-GQL-080`/`LREQ-ID-040`: the selected mode is computed from the preflight's own responses
-and then applied when the preflight rows are reused by `enrich_unique_identities`. The
-preflight already issues exactly one `enrich_asset` per unique identity
-(`pipeline.py:1103-1120`, `:1501-1514`); the fix must not add a probe request or a second call
-per reused identity. **Checkpoint H4** if a design appears to require an extra request.
+    Returns ``VALIDATED_POSITION`` iff every response decodes to exactly two items, no item
+    carries an explicit correlation key (``extract_operation_correlation_key(item) is None``
+    for both), item 0 presents the ``ProductDetail`` operation-specific shape, and item 1
+    presents the ``ProductPageViews`` operation-specific shape (LREQ-GQL-030). Otherwise
+    returns ``EXPLICIT_KEY`` — including when any response carries an explicit key (the
+    primary association is available) and when any identity fails shape, count, or decode.
+    Selection is all-or-nothing across the selected identities ("across the selected
+    preflight identities").
+    """
+```
 
-### 5.2 Option (B) — send the `operations` header and rely on `EXPLICIT_KEY`
+Semantics, exhaustively:
 
-`GraphQLBatchRequest.operations_header` is built (`collector_graphql.py:309, 464-466`,
-`",".join(operation_name ...)`) and `build_graphql_headers` never emits it (`:395-411`). A
-probe already tried `operations: ProductDetail,ProductPageViews` +
-`apollo-require-preflight: true` and "changed nothing", but that probe was **pre-cookie**
-(HTTP 400) — whether a successful 200 with the header would echo `operationName` is
-**UNVERIFIED** (`.scratch/graphql_csrf_finding.md:20-21`; run log B2).
+- **Decode.** Each response is decoded with the adapter's existing decoder. A response that
+  is empty, non-JSON, or not a JSON array → not validated → `EXPLICIT_KEY`.
+- **Explicit key present on any item of any response** → `EXPLICIT_KEY`. The primary
+  `LREQ-GQL-030` association is the explicit key; position is only the no-key fallback. A
+  mixed run (some keyed, some keyless) is `EXPLICIT_KEY`.
+- **All keyless.** For every response, require:
+  - exactly two items;
+  - item 0 = the `ProductDetail` shape: its envelope `data` is a mapping whose root field
+    `product` is a mapping that `validate_product_detail_payload` accepts (the H5 unwrap,
+    §5.5);
+  - item 1 = the `ProductPageViews` shape: its envelope `data` is a mapping
+    `{"pageViews": <int >= 0>}` that `validate_page_views_payload` accepts (§5.6).
+  All hold → `VALIDATED_POSITION`; any failure → `EXPLICIT_KEY`.
+- **Determinism.** No RNG, no clock, no set/dict-ordering dependence.
+- **"Neither mode validated".** Returning `EXPLICIT_KEY` for a keyless run means the
+  `EXPLICIT_KEY` path marks both operations `OPERATION_CORRELATION_MISSING` (malformed, fields
+  unavailable), per `LREQ-GQL-030`. The preflight then fails on the existing gate.
 
-- **Tradeoff (for):** if the endpoint echoes `operationName` on a 200, this is cheaper and
-  avoids `VALIDATED_POSITION` entirely; it uses the primary `LREQ-GQL-030` association
-  ("explicit operation name") rather than the fallback.
-- **Tradeoff (against):** it is unverified and needs a **live probe**; the captured live 200
-  body already shows no explicit key with the tool's header set, and `.scratch:21` shows the
-  header made no difference pre-cookie (possibly because the request never executed a GraphQL
-  operation at all). It is a request-shape change to a frozen surface (Chunk 5 headers),
-  requiring the same checkpoint discipline.
-- **Decision:** present only. **Checkpoint H2** — "do we probe (B) first, before committing to
-  (A)?" is a human call, because it changes what the fix must contain.
+A module-private `_product_detail_root_payload(item)` implements the H5 unwrap and is shared by
+this primitive and `_build_result_from_items` (§5.5).
 
-### 5.3 Option (C) — a key member the extractor does not yet read
+### 5.3 New public Chunk 5 interpreter — `interpret_graphql_response`
 
-`extract_operation_correlation_key` already reads `operationName`, `operation_name`,
-`operation`, `correlationKey` (`collector_graphql.py:607-636`). The captured live body
-(`.scratch:96`) carries **none** of them at any level shown. A further explicit-key member can
-only help if the endpoint emits one that the adapter does not read; that would require a live
-capture first, and the SRS names no additional member. **Decision:** present only; no member
-is invented. **Checkpoint H3** (capture) if a candidate member appears.
+The selection is computed after the requests are received; a keyless run received under the
+`EXPLICIT_KEY` candidate is a failure and must be re-associated under the selected
+`VALIDATED_POSITION` **without a second request**. Chunk 6A forbids a second `enrich_asset`
+call per identity (`plans/chunk-6A-...md:801-802`), so the re-interpretation is a pure Chunk 5
+function over the already-received response.
 
-### 5.4 Non-options (explicitly rejected)
+```python
+def interpret_graphql_response(
+    request: GraphQLBatchRequest,
+    response: GraphQLBatchResponse,
+    *,
+    correlation_mode: GraphQLOperationCorrelationMode,
+    retrieved_at_utc: datetime,
+    attempts: int = 1,
+) -> tuple[EnrichmentResult, EnrichmentObservationDraft]:
+    """Interpret one already-received response under ``correlation_mode``.
 
-Relabelling a hard-coded explicit-key failure as `validated_position`; associating by response
-position without the preflight's ordering/shape validation; fabricating or synthesizing a
-correlation key not present in the response; inventing a third persisted correlation mode or a
-new `GraphQLFailureClass`; treating a wrong-shape page-views item as success to make the
-preflight pass. None of these is SRS-authorized and none is an option in this plan.
+    The public face of the adapter's response interpretation: it correlates and validates
+    the given response under ``correlation_mode``, applies the non-200 classification, and
+    returns the same ``(result, draft)`` pair ``enrich_asset`` returns. It performs no
+    network exchange and reads no clock; ``attempts`` and ``retrieved_at_utc`` are supplied
+    by the caller. ``retrieved_at_utc`` must be timezone-aware UTC (``models.ensure_utc``).
+    """
+```
 
-## 6. Human checkpoints (presented; not chosen; none resolved here)
+`enrich_asset`'s tail (field extraction + `build_enrichment_observation_draft`) is factored
+into a private helper used by both, so the two paths cannot drift.
 
-- **H1 — the frozen-interface conflict (blocking; see G9).** `interfaces/chunk-05.md:407-416`
-  freezes "Chunk 5 ... must not validate position ... position validation is the identity
-  preflight's job (Chunk 6A)", while `plans/chunk-6A-...md:90-92, :794-796` freezes
-  "`pipeline.py` MUST NOT re-implement ... correlation". A correct `LREQ-GQL-030` fix must
-  place the validation somewhere; every placement touches a frozen surface. **Options:**
-  A.1a/A.1b/A.1c (plumbing) × A.2a/A.2b (placement). **This checkpoint must be answered before
-  the plan can freeze** — the file(s) touched and the resulting signatures depend on it.
-- **H2 — whether to probe option (B) first.** A live probe (human-run, `.scratch/`) with the
-  committed request shape plus an `operations` header on a 200 would convert `.scratch:20-21`'s
-  pre-cookie probe into evidence. If the endpoint echoes `operationName`, option (B) is the
-  cheaper fix and `VALIDATED_POSITION` may be unnecessary for a passing run. **Answer decides
-  S1/S2's required content.**
-- **H3 — the live capture required to confirm the 200 body shape across the selected
-  preflight identities.** `LREQ-GQL-030` requires the ordering/shapes to hold **"across the
-  selected preflight identities"**; only one identity's body is captured, and response bodies
-  are never persisted (`collector_graphql.py:_decode_operation_items`; SEC), so this cannot be
-  confirmed offline. The planner cannot run live network (AGENTS.md). **Capture needed:** at
-  least two selected preflight identities spanning at least two products, with the tool's
-  exact committed request text, recording for each: HTTP status, the full body, whether any
-  explicit key appears, the item order, and the page-views item's exact shape (`productPageViews`
-  bare scalar vs. `{"pageViews": ...}`). **This also determines whether a page-views
-  payload-shape change (G7) is in scope.**
-- **H4 — reuse path if a design needs an extra request.** If the chosen design cannot compute
-  the mode from the preflight's existing rows, the minimal correct fix may need an extra live
-  request, which would conflict with one-request-per-unique-identity (`LREQ-GQL-080`). No such
-  design is proposed here; flagged so a later implementer does not add one silently.
+### 5.4 Preflight selection, reuse, and persistence (A.2b)
 
-**Because H1 and H3 block a correct plan, this plan stays `DRAFT`.**
+`run_identity_preflight` becomes:
 
-## 7. Files this chunk would touch (contingent on H1)
+1. `selection = select_preflight_identities(run, policy=policy)`.
+2. For each unique identity in selection order, call `enrich_asset` **exactly once** under the
+   caller's candidate `correlation_mode`, capturing the request and the received response (the
+   existing transport wrapper already receives both; it stashes them). Collect
+   `(identity, result, draft, request, response)` and the ordered `responses`.
+3. `selected = select_operation_correlation_mode(tuple(responses))` — only when
+   `selection.identities` is non-empty; zero identities stays `insufficient` and persists the
+   candidate mode (rates `null` carry the distinction; no value is fabricated).
+4. For each identity, if `selected is not correlation_mode` (the candidate), rebuild the
+   result/draft via `interpret_graphql_response(request, response,
+   correlation_mode=selected, retrieved_at_utc=retrieved_at_utc, attempts=result.attempts)`.
+   Otherwise reuse the first-pass result/draft. Re-interpretation makes **no** request.
+5. `_build_observation(result, draft, correlation_mode=selected)` for each identity.
+6. `_build_summary(..., correlation_mode=selected, ...)`; `persist_preflight` writes the
+   summary (and `update_run_preflight` writes the selected mode onto the run row).
 
-**Expected paths — this chunk must touch no others. The exact set depends on H1; the rows
-below are the plausible superset, with the contingency named.**
+**Run-level vs per-identity.** `LREQ-GQL-030` requires validation "across the selected
+preflight identities" and a single persisted mode, so selection is all-or-nothing at run
+level: one identity's failure to present the guarantee selects `EXPLICIT_KEY` for the whole
+run. No per-identity mode is invented.
 
-| File | New/modified | Purpose | Contingent on |
-|---|---|---|---|
-| `src/niche_scout/collector_graphql.py` | modified | S1: make `enrich_asset`'s `correlation_mode` reach correlation and remove the relabel (`:2557-2563`); A.1a/A.1b/A.1c. S2: under A.2b, the ordering/shape validation primitive. | H1 (A.1a/A.1b/A.2b) |
-| `src/niche_scout/pipeline.py` | modified | S2 under A.2a: validation + mode selection in `run_identity_preflight` and propagation to `enrich_unique_identities` / `run_pipeline` / the summary. | H1 (A.2a) |
-| `tests/fixtures/graphql_fixtures.py` | modified | A **keyless** two-envelope success body matching `.scratch:96`'s shape, plus a keyless page-views item in the shape the endpoint actually returns (pending H3); keyless variants for ambiguous/duplicated cases if the validation path needs them. | H3 |
-| `tests/fixtures/identity_preflight_fixtures.py` (`pf` in `test_identity_preflight.py`) | modified | Extend only if the selected mode or a keyless transport is needed by the new preflight validation nodes. | H1 |
-| `tests/test_collector.py` | modified | Update the `test_validated_position_mode_is_accepted_not_validated_here` pin under the chosen design; add the S1 nodes. | H1 |
-| `tests/test_identity_preflight.py` | modified | Add S2 nodes; update the `explicit_key` pins only where the plan's chosen behavior changes them. | H1 |
-| `tests/traceability.json` | modified | Add entries for every new/renamed node; rename keys old→new only if H1 forces a node rename (one-rename precedent, §9.4). | H1 |
-| `Documents/runs/chunk-18.md` | **not** touched by this planner | Lead/run log; the gate records the live run there. | — |
+**No second request.** One `enrich_asset` per unique identity (`LREQ-GQL-080`,
+`LREQ-ID-040`); the second pass is in-memory. Reused identities are not re-requested.
 
-**Not touched (explicit):** `metrics.py`, `scoring.py`, `models.py`, `database.py`,
-`report.py`, `cli.py`, `config.py`, `.env.example`, `sampling.py`, `validation.py`,
-`collector.py`, `collector_coveo.py`, `src/niche_scout/tools/**`, `pyproject.toml`,
-`config/**`, `Documents/SRS-lean.md`, `Documents/requirements-dependency-map.md`,
-`AGENTS.md`, `kilo.json(c)`, `.kilo/`, any `Documents/interfaces/*`, and any frozen
-`Documents/plans/*` or `Documents/runs/*` file.
+### 5.5 H5 — unwrap `data.product` (before/after)
 
-## 8. Typed signatures and null/edge-case behavior (target, contingent on H1)
+`_build_result_from_items` (`:2144-2167`) currently:
 
-A `test-author` must be able to write tests without seeing the implementation. The exact public
-surface is **not frozen** until H1 is answered; the following states the required behavior in
-the option-independent terms, and marks the parts H1 fixes.
+```python
+if _is_operation_envelope(item):
+    operation_data, _ = _operation_data(item)
+    ...
+    payload = operation_data          # == {"product": {...}}
+...
+validation = validate_product_detail_payload(payload)   # fails: no id/productId at top level
+```
 
-### 8.1 Correlation mode reaches correlation (S1)
+After (shared helper `_product_detail_root_payload(item)`):
 
-Required behavior regardless of A.1a/A.1b/A.1c: `enrich_asset(..., correlation_mode=X, ...)`
-must ensure that **each operation's `correlation_mode` and `correlation.mode` are the mode the
-correlation actually ran under**, and is `X`. No post-hoc stamping that changes a failure's
-mode without changing the association decision.
+```python
+payload = _product_detail_root_payload(item)
+# root field present -> unwrap data.product; absent -> legacy flat data (unchanged)
+```
 
-- `correlation_mode` must be a `models.GraphQLOperationCorrelationMode`; a non-member raises
-  `TypeError` (unchanged `_require_correlation_mode`, `:718-722`).
-- Under `EXPLICIT_KEY` with a keyless body → both operations
-  `OPERATION_CORRELATION_MISSING`, `correlation.mode is EXPLICIT_KEY` (the current live
-  failure; must remain correct and reproducible in a fixture).
-- Under `VALIDATED_POSITION` with a two-envelope keyless body → item 0 associated with
-  `ProductDetail`, item 1 with `ProductPageViews`, both `NONE`,
-  `correlation.is_fully_correlated is True`, `correlation.mode is VALIDATED_POSITION`.
-- Under `VALIDATED_POSITION` with a body whose item count ≠ 2, or any item carrying an
-  explicit key → both operations `OPERATION_CORRELATION_AMBIGUOUS` (existing
-  `_correlate_by_validated_position` behavior, `:839-856`), `correlation.mode is
-  VALIDATED_POSITION`.
-- The no-items/decode-failure paths (`_build_pre_exchange_result`, the
-  `TRANSPORT_FAILURE` branch) must report the same mode the call ran under, not a hardcoded
-  `EXPLICIT_KEY` (today `:2446`, `:2310-2313`).
+Rules, with `LREQ-GQL-040` classes and missing-not-zero:
 
-### 8.2 Correlation-mode selection and validation (S2)
-
-Option-independent behavior for the function that decides the persisted/selected mode (name
-and home module fixed by H1; under A.2b it would be a new public `collector_graphql.py`
-symbol):
-
-- **Input:** the per-identity evidence for the **selected preflight identities**, in
-  selection order (the already-executed preflight responses/observations; no new request).
-- **Returns:** `GraphQLOperationCorrelationMode` — `VALIDATED_POSITION` iff, for **every**
-  selected identity, (i) the decoded body is a list of exactly two items, (ii) no item carries
-  any explicit key (`extract_operation_correlation_key(item) is None` for both), (iii) item 0
-  matches the expected `ProductDetail` operation-specific shape and item 1 matches the
-  expected `ProductPageViews` operation-specific shape; otherwise `EXPLICIT_KEY`.
-- **Explicit key present anywhere** → `EXPLICIT_KEY` (the primary mode is already satisfied;
-  position is not needed).
-- **Any selected identity's shape wrong, item count ≠ 2, unknown item kind, or decode
-  failure** → `EXPLICIT_KEY` (selection is all-or-nothing across the selected identities; the
-  SRS says "across the selected preflight identities").
-- **Zero selected identities** → the preflight is `insufficient` (`LREQ-ID-040`); selection is
-  not reached; the value must not be fabricated. (Null/insufficient stays distinct from
-  `EXPLICIT_KEY`; no default.)
-- **Determinism:** the result is a pure function of the ordered evidence; no clock, RNG, or
-  set/dict-ordering dependence.
-- **Wrong page-views shape** (bare `productPageViews` scalar vs. `{"pageViews": …}`): if the
-  endpoint's 200 item is not `{"pageViews": …}`, shape validation cannot pass and a separate
-  payload-shape decision is required (H3). The selection function must not paper over it.
-
-### 8.3 Reuse and persistence (S2 / LREQ-ID-040 / LREQ-GQL-080)
-
-- `PreflightObservation.correlation_mode` and
-  `IdentityPreflightSummary.graphql_operation_correlation_mode` carry the **selected** mode
-  (`"explicit_key"` or `"validated_position"` only).
-- The mode applied to `enrich_unique_identities` for reused identities must equal the
-  preflight's selected mode; reused identities are **not** re-requested.
-- If selection is `EXPLICIT_KEY` and the keyless body persists, both operations stay marked
-  malformed and their fields unavailable — the preflight gate's existing `failed` path is
-  unchanged.
-
-## 9. Test plan
-
-- **Files:** new/updated nodes in `tests/test_collector.py` and `tests/test_identity_preflight.py`;
-  fixture additions in `tests/fixtures/graphql_fixtures.py` (and
-  `identity_preflight_fixtures` only if needed). No live network; every transport is a
-  recording double.
-- **Fixture needed (blocked on H3 for exact shape):** a **keyless** success body
-  `[{"data":{"product":{…}}},{"data":{"productPageViews":66}}]` (exact page-views key/value
-  per the capture) and a keyless page-views shape that the chosen design accepts. Hand-derived
-  expected values below assume the capture's `66`.
-- **Node candidates (names provisional until H1; markers and traceability values are not).**
-
-| pytest node ID (provisional) | Marker args | `tests/traceability.json` value |
+| Input (`item`) | Behavior | `failure_class` |
 |---|---|---|
-| `tests/test_collector.py::test_validated_position_selects_keyless_two_envelope_body` | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
-| `tests/test_collector.py::test_validated_position_rejects_explicit_key_body_as_ambiguous` | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
+| `{"data":{"product": {<fields>}}}` | unwrap; validate the product object | `NONE` (success) |
+| `{"data":{"product": null}}` | no product data returned | `NULL_REQUIRED_DATA` |
+| `{"data":{"product": [..]}}` (non-mapping) | wrong container kind | `WRONG_DATA_SHAPE` |
+| `{"data": null}` | existing envelope-null branch | `NULL_REQUIRED_DATA` |
+| `{"data": {<flat fields>}}` (no `product` key) | legacy payload, validated as today | unchanged |
+| `{"data": {}}` (no `product`, no fields) | legacy path → missing required members | `NULL_REQUIRED_DATA` / `WRONG_DATA_SHAPE` per the existing validator |
+
+No field is defaulted or coerced; a failed operation's fields stay `None`. The conditional
+unwrap is required to keep the frozen keyed fixtures (flat `data`) green and the frozen
+`:294` "verbatim" contract usable; the live endpoint always supplies `product` (10/10).
+
+### 5.6 G7 — alias the page-views request field
+
+`_PRODUCT_PAGE_VIEWS_QUERY` (`:338-342`) becomes:
+
+```graphql
+query ProductPageViews($packageId: String!) {
+  pageViews: productPageViews(packageId: $packageId)
+}
+```
+
+Then the live response is `{"data":{"pageViews": N}}`, which the frozen
+`validate_page_views_payload` accepts unchanged. `0` is valid and is never absent
+(`LREQ-GQL-040`, `:495-498`). The corresponding golden request objects change (only the query
+string); keyed response fixtures already use `{"pageViews": ...}` and are unaffected.
+
+### 5.7 Carrying the selected mode into enrichment and `run_pipeline`
+
+After `preflight_outcome`, `run_pipeline` derives
+`selected = GraphQLOperationCorrelationMode(preflight_outcome.summary.graphql_operation_correlation_mode)`
+and passes `correlation_mode=selected` to `enrich_unique_identities` (replacing the
+caller-supplied candidate). The run row already receives the selected mode from
+`persist_preflight` → `update_run_preflight`. `run_pipeline`'s signature and default are
+unchanged (frozen `interfaces/chunk-10.md:47`). The candidate reaches the preflight as today
+via `correlation_mode=correlation_mode`.
+
+## 6. Files touched
+
+No file outside this table is touched.
+
+| File | New/modified | Purpose |
+|---|---|---|
+| `src/niche_scout/collector_graphql.py` | modified | A.1b (`execute_graphql_batch` keyword, `enrich_asset` pass-through, delete relabel + `_correlation_mode_for_request`); new public `select_operation_correlation_mode`; new public `interpret_graphql_response`; H5 `_product_detail_root_payload` unwrap; G7 query alias; `__all__` additions. |
+| `src/niche_scout/pipeline.py` | modified | Capture request/response in the preflight adapter path; call the primitive; second-pass re-interpretation; persist selected mode; carry selected mode into `enrich_unique_identities`. |
+| `tests/fixtures/graphql_fixtures.py` | modified | Keyless two-envelope fixtures (success, zero, malformed variants); update `EXPECTED_PRODUCT_PAGE_VIEWS_REQUEST_OBJECT` / `TWO_OPERATION_BODY_JSON` for the G7 alias. |
+| `tests/fixtures/identity_preflight_vectors.py` | modified | Keyless preflight transport/body helpers for the new preflight nodes. |
+| `tests/test_collector.py` | modified | One approved rename; new adapter-level nodes (§8). |
+| `tests/test_identity_preflight.py` | modified | New selection/reuse/persistence nodes (§8). |
+| `tests/traceability.json` | modified | Migrated rename key + new node entries. |
+
+**Not touched:** `models.py`, `database.py`, `report.py`, `cli.py`, `config.py`, `sampling.py`,
+`validation.py`, `collector.py`, `collector_coveo.py`, `metrics.py`, `scoring.py`,
+`src/niche_scout/tools/**`, `pyproject.toml`, `config/**`, `Documents/**` (this plan excepted),
+`AGENTS.md`, `kilo.json(c)`, `.kilo/`.
+
+## 7. Typed signatures and null/edge behavior
+
+### 7.1 `execute_graphql_batch` (changed)
+
+```python
+def execute_graphql_batch(
+    request: GraphQLBatchRequest, *,
+    transport: GraphQLTransport,
+    headers: Mapping[str, str],
+    correlation_mode: GraphQLOperationCorrelationMode = GraphQLOperationCorrelationMode.EXPLICIT_KEY,
+    policy: GraphQLRetryPolicy = GraphQLRetryPolicy(),
+    sleep: Callable[[float], None] = time.sleep,
+) -> EnrichmentResult
+```
+
+- A non-member `correlation_mode` raises `TypeError` (`_require_correlation_mode`).
+- The passed mode is the mode each operation and `correlation.mode` report; there is no
+  post-hoc stamping.
+- Omitting the keyword reproduces the previous explicit-key behavior exactly.
+
+### 7.2 `select_operation_correlation_mode` (new)
+
+Signature in §5.2. Null/edge: empty sequence → `ValueError`; decode failure / wrong count /
+explicit key / wrong shape → `EXPLICIT_KEY`; the valid keyless fixed-order shape →
+`VALIDATED_POSITION`.
+
+### 7.3 `interpret_graphql_response` (new)
+
+Signature in §5.3. Null/edge: a naive `retrieved_at_utc` raises `ValueError`
+(`models.ensure_utc`); `attempts < 1` raises `ValueError`; a non-member `correlation_mode`
+raises `TypeError`; a non-200 response takes the existing HTTP classification.
+
+### 7.4 ProductDetail unwrap (§5.5 table) and page-views (§5.6)
+
+No default-0, no coercion; failed fields `None`; `pageViews == 0` valid.
+
+## 8. Test plan
+
+No live network; every transport is a recording double. Fixtures and golden vectors first
+(`test-author`), then the implementation.
+
+### 8.1 Node IDs, markers, traceability
+
+`tests/traceability.json` is node-ID → `[LREQ...]` (G9); markers must equal the values.
+
+| pytest node ID | `@pytest.mark.lreq` | `tests/traceability.json` value |
+|---|---|---|
+| `tests/test_collector.py::test_execute_graphql_batch_honours_caller_correlation_mode` | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
+| `tests/test_collector.py::test_validated_position_mode_correlates_by_position_when_requested` (renamed, §8.3) | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
 | `tests/test_collector.py::test_explicit_key_mode_marks_keyless_body_correlation_missing` | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
+| `tests/test_collector.py::test_product_detail_data_product_wrapper_is_unwrapped` | `LREQ-GQL-040` | `["LREQ-GQL-040"]` |
+| `tests/test_collector.py::test_product_page_views_request_alias_is_page_views` | `LREQ-GQL-020` | `["LREQ-GQL-020"]` |
+| `tests/test_collector.py::test_keyless_page_views_zero_is_a_valid_value` | `LREQ-GQL-040` | `["LREQ-GQL-040"]` |
+| `tests/test_collector.py::test_keyless_page_views_wrong_key_is_null_required_data` | `LREQ-GQL-040` | `["LREQ-GQL-040"]` |
+| `tests/test_collector.py::test_select_operation_correlation_mode_rejects_empty_evidence` | `LREQ-GQL-030` | `["LREQ-GQL-030"]` |
 | `tests/test_identity_preflight.py::test_preflight_selects_validated_position_for_keyless_bodies` | `LREQ-GQL-030`, `LREQ-ID-020` | `["LREQ-GQL-030", "LREQ-ID-020"]` |
 | `tests/test_identity_preflight.py::test_preflight_selects_explicit_key_when_any_identity_is_keyed` | `LREQ-GQL-030`, `LREQ-ID-020` | `["LREQ-GQL-030", "LREQ-ID-020"]` |
+| `tests/test_identity_preflight.py::test_preflight_rejects_position_when_ordering_is_wrong` | `LREQ-GQL-030`, `LREQ-ID-020` | `["LREQ-GQL-030", "LREQ-ID-020"]` |
 | `tests/test_identity_preflight.py::test_preflight_selected_mode_is_persisted_and_reused_without_a_second_request` | `LREQ-ID-040`, `LREQ-GQL-080` | `["LREQ-ID-040", "LREQ-GQL-080"]` |
 
-  Markers must equal the traceability values and vice versa. `tests/traceability.json` is
-  **keyed by node ID → array** (confirmed by reading `tests/traceability.json:1-25`);
-  `tests/AGENTS.md`'s prose describes ID→node orientation but cannot be true on the same keys
-  (a node-ID key cannot be a valid `LREQ-*` ID) — recorded as an open item in §12 rather than
-  resolved silently.
-- The exact node set depends on H1 (A.1 vs A.2 placement and whether an existing node is
-  updated rather than replaced). No node is renamed by this plan's default; if H1 forces a
-  rename, follow the one-rename precedent: change the key old→new with the same LREQ values,
-  keep the pytest node name consistent with its assertions, and record the rename in
-  `Documents/runs/chunk-18.md`.
-- **Pins that will be reconciled (list, not renaming):**
-  `tests/test_collector.py:2057-2117`, `tests/test_identity_preflight.py:65, 623, 810, 1044`.
-  Under S2 with a keyless fixture the pins `observation.correlation_mode == "explicit_key"` /
-  `summary[...] == "explicit_key"` change **only for the nodes that now exercise the keyless
-  path**; keyed-body nodes keep `explicit_key`.
-- **Golden vectors:** the keyless body is the golden (`66` hand-copied from the capture);
-  expected association is item 0 → `ProductDetail`, item 1 → `ProductPageViews`, both `NONE`
-  under `VALIDATED_POSITION`, both `OPERATION_CORRELATION_MISSING` under `EXPLICIT_KEY`.
-- **Contradiction handling:** if any existing test contradicts the SRS after the change, leave
-  it and report `DISPUTE: <test id> — SRS §x says ...`.
+Assertions (test-author writes these without the implementation):
 
-## 10. Definition of done (gate)
+- **honours caller mode:** `execute_graphql_batch(..., correlation_mode=VALIDATED_POSITION)`
+  over a keyless two-envelope body → both operations `SUCCESS`,
+  `correlation.mode is VALIDATED_POSITION`; with the keyword omitted →
+  `correlation.mode is EXPLICIT_KEY`.
+- **validated position correlates:** item0 → `ProductDetail`, item1 → `ProductPageViews`;
+  `is_fully_correlated is True`; a keyed or one-item body → both
+  `OPERATION_CORRELATION_AMBIGUOUS`.
+- **explicit-key keyless:** `EXPLICIT_KEY` over a keyless body → both
+  `OPERATION_CORRELATION_MISSING`, `correlation.mode is EXPLICIT_KEY`.
+- **H5 unwrap:** `data.product` mapping → success with `product_id`/`graphql_id` populated;
+  `product: null` → `NULL_REQUIRED_DATA`; `product: [..]` → `WRONG_DATA_SHAPE`; `data: null` →
+  `NULL_REQUIRED_DATA`; flat `data` → unchanged success.
+- **G7 alias:** the built request's `ProductPageViews` query is exactly
+  `query ProductPageViews($packageId: String!) {\n  pageViews: productPageViews(packageId: $packageId)\n}`
+  and `body_json` equals the updated golden.
+- **zero:** `{"data":{"pageViews":0}}` under `VALIDATED_POSITION` → success,
+  `product_page_views == 0` (not `None`).
+- **wrong key:** `{"data":{"productPageViews":20}}` → `NULL_REQUIRED_DATA` (corrects the DRAFT).
+- **empty evidence:** `select_operation_correlation_mode(())` raises `ValueError`.
+- **preflight keyless:** keyless transport → summary
+  `graphql_operation_correlation_mode == "validated_position"`, every observation
+  `correlation_mode == "validated_position"`, both operation statuses `success`, preflight
+  `passed`.
+- **preflight keyed/mixed:** keyed or mixed transport → `"explicit_key"`.
+- **preflight wrong ordering:** keyless bodies with reversed shapes → selected
+  `"explicit_key"`, preflight `failed`, both operations malformed.
+- **persisted/reused:** `transport.call_count == number of unique selected identities` (no
+  extra call for the second pass); the persisted run row and summary carry the selected mode.
 
-Chunk 18 has no dependency-map §3 gate; the dispatch's DoD is the gate (same shape as
-Chunk 14's). Copied from the dispatch:
+### 8.2 Fixtures and golden vectors
 
-- **DoD-1 (human live run, the chunk's purpose).** A human `python -m niche_scout run` reaches
-  and **passes** the identity preflight against the live endpoint, with the minimum
-  consequential changes; the run's persisted summary shows a selected correlation mode of
-  `explicit_key` or `validated_position` (SRS §4.2/§4.4). This bullet cannot be proven by the
-  offline suite and is the human's check; the lead's live probes and the capture (H3) are the
-  supporting evidence.
-- **DoD-2 (offline suite).** `python -m pytest -q` reports `passed, 0 failed` with real,
-  countable counts written into the run log; the count is the pre-change baseline plus the
-  new nodes; the exact command and verbatim output are recorded. An unrelated pre-existing
-  failure is reported verbatim, never claimed green.
+- Keyless two-envelope success (hand-computed):
+  `[{"data":{"product":{"id":"117382","productId":"117382","rating":{"average":4.5,"count":12},"reviewCount":7,"firstPublishedDate":"2019-03-04T12:30:00Z","state":"published","category":{"id":"c1","name":"Tools"},"publisher":{"id":"p1","name":"Pub"}}}},{"data":{"pageViews":20}}]`
+  → ProductDetail success; `product_page_views == 20`; `rating_average == 4.5`,
+  `rating_count == 12`, `review_count == 7` (assert floats within `1e-9`).
+- Keyless page-views zero: `[{"data":{"product":{…}}},{"data":{"pageViews":0}}]` →
+  `product_page_views == 0`.
+- Captured pre-G7 page-views shape (documents H3): `{"data":{"productPageViews":20}}` →
+  `NULL_REQUIRED_DATA` (asserts the DRAFT correction).
+- Keyless malformed variants: reversed shapes, one-item, three-item, `product: null`,
+  `product: [..]`, `pageViews: -1`, `pageViews: true`, `pageViews: 1.5`, missing `pageViews`.
+- G7 request goldens updated in `graphql_fixtures.py`.
+- Keyless preflight transport helper in `identity_preflight_vectors.py`.
+
+### 8.3 The one approved rename
+
+- Old: `tests/test_collector.py::test_validated_position_mode_is_accepted_not_validated_here`
+- New: `tests/test_collector.py::test_validated_position_mode_correlates_by_position_when_requested`
+- Traceability: remove the old key, add the new key with the same value `["LREQ-GQL-030"]`.
+- The old name and its assertions ("execution still defaults to the explicit-key mode", "the
+  caller's mode is stamped") contradict the frozen design and are replaced.
+
+### 8.4 Conflicting pins from the run log, and reconciliation
+
+| Pin | Reconciliation |
+|---|---|
+| **P1** `tests/test_collector.py:2057-2117` `test_validated_position_mode_is_accepted_not_validated_here` asserts execution defaults to explicit-key and the caller's mode is merely stamped, and `result.correlation.mode is EXPLICIT_KEY` | Renamed and rewritten (§8.3). New assertions: the caller's `VALIDATED_POSITION` actually drives correlation; omission still defaults to `EXPLICIT_KEY`. |
+| **P2** `tests/fixtures/graphql_fixtures.py` — all fixture bodies carry `operationName`; no keyless-success fixture (G9: 46 matches) | Add the keyless fixtures (§8.2); existing keyed fixtures stay (they exercise `explicit_key`). |
+| **P3** `tests/test_identity_preflight.py:65, 623, 810, 1044` pin `correlation_mode=pf.EXPLICIT_KEY` and `explicit_key` | Unchanged: those nodes use keyed fixture bodies and the explicit-key candidate, so selection returns `explicit_key`. New keyless nodes assert `validated_position`. |
+| DRAFT `:91, :164` page-views failure class `WRONG_DATA_SHAPE` | Corrected to `NULL_REQUIRED_DATA` (G7). |
+| DRAFT `:97` "slightly different query text" | Removed; the capture used the committed query text. |
+| DRAFT `:376, :460` locants | Corrected to `interfaces/chunk-6A.md` and `tests/fixtures/identity_preflight_vectors.py`. |
+
+## 9. Definition of done (gate)
+
+- **DoD-1 (dispatch; human live run).** A human `python -m niche_scout run` reaches and
+  **passes** the identity preflight against the live endpoint; the persisted summary and run
+  row show `validated_position`; the minimum consequential changes. Not provable offline.
+- **DoD-2 (offline suite).** `python -m pytest -q` reports `passed, 0 failed`; the exact
+  command and verbatim output are recorded in the run log with real counts.
 - **DoD-3 (validators).** `python -m niche_scout.tools.validate_traceability`,
-  `check_import_boundaries`, `check_scope_prohibitions`, and `check_secrets` all valid.
-- **DoD-4 (lint).** `ruff` on the changed files using `pyproject.toml`
-  (`[tool.ruff] line-length = 88`, `select = ["E","F","I"]`); no new lint introduced; any
-  pre-existing deviation reported PARTIAL with the unchanged lines named and a byte-exact
-  `git show HEAD:<path>` comparison as the baseline.
-- **DoD-5 (secrets and no live network in tests).** No credential, cookie, or header value in
-  source, tests, fixtures, config, plan, run log, SQLite, or artifacts; no test calls the real
-  endpoint.
-- **DoD-6 (records).** The plan, run log, tests, traceability, and every new convention are
-  recorded; every resolved checkpoint is recorded in the run log with its ruling; every
-  remaining obligation stays open.
+  `python -m niche_scout.tools.check_import_boundaries`,
+  `python -m niche_scout.tools.check_scope_prohibitions`, and
+  `python -m niche_scout.tools.check_secrets` all valid.
+- **DoD-4 (lint).** `ruff` on the changed files with `pyproject.toml` (`line-length = 88`,
+  `select = ["E","F","I"]`); no new lint; a pre-existing deviation is reported PARTIAL with the
+  unchanged lines named and a byte-exact baseline.
+- **DoD-5 (secrets / no live network in tests).** No credential, cookie, or header value in any
+  artifact; no test calls the real endpoint; no response body persisted.
+- **DoD-6 (records).** Plan, run log, tests, and traceability recorded; every resolved
+  checkpoint recorded in the run log with its ruling; remaining obligations stay open.
 
-## 11. Explicit prohibitions
+## 10. Prohibitions
 
-- No relabelling of a hard-coded explicit-key failure as `validated_position`; no
-  association by response position without the preflight's ordering/shape validation; no
-  fabricated correlation key; no third correlation mode; no new `GraphQLFailureClass`.
-- No marking malformed `LREQ-GQL-030` branches as success to make the preflight pass; a wrong
-  shape, wrong item count, or unknown item kind stays an operation error (`LREQ-GQL-040`).
-- No extra request per unique identity; the preflight issues exactly one `enrich_asset` per
-  unique identity and enrichment reuses it (`LREQ-GQL-080`, `LREQ-ID-040`).
-- No live network in development or tests; do not run `niche-scout run`.
-- No new config knob, CLI flag, environment variable, persisted field, or dependency; no
-  configurable weights.
-- No edits to `metrics.py`, `scoring.py`, `models.py`, `database.py`, `report.py`,
-  `config.py`, `.env.example`, `sampling.py`, `validation.py`, `collector.py`,
-  `collector_coveo.py`, `src/niche_scout/tools/**`, `pyproject.toml`, `config/**`, or any
-  frozen interface/plan/run document.
-- No secret in any artifact; no response body persisted.
-- No `favorite_count`, no extra GraphQL operation or field, no scheduling, resume/checkpoint,
-  historical trends/run comparison, or bulk enrichment before the gate.
-- Do not resolve H1–H4 here; do not pick an option from §5.
+- No relabel of a hard-coded explicit-key failure as `validated_position`; no positional
+  association without the preflight's ordering/shape validation; no fabricated key; no third
+  mode; no new `GraphQLFailureClass`.
+- No marking an `LREQ-GQL-030` malformed branch as success; wrong shape/count/kind stays an
+  operation error.
+- No extra request per unique identity; one `enrich_asset` per identity; the second pass is
+  in-memory only.
+- No live network in development or tests.
+- No new config knob, CLI flag, env var, persisted field, or dependency.
+- No edits outside §6, including any frozen interface, plan, or run document.
 
-## 12. Open questions and remaining obligations
+## 11. Routing
 
-### 12.1 Checkpoints (must be answered before this plan can freeze)
+1. **`test-author`** — fixtures and failing nodes + `tests/traceability.json` entries first.
+2. **`impl-deep`** — adapter (A.1b, H5, G7, new primitives) then preflight selection
+   (`pipeline.py`); run pytest and the four validators. `impl-fast` is not suitable: the change
+   spans a frozen protocol boundary and the preflight gate.
+3. **Human live run** — DoD-1.
+4. **`spec-reviewer`** — review the plan, tests, implementation, and the live-run evidence in
+   `Documents/runs/chunk-18.md`.
 
-- **H1 (blocking).** Where does the `LREQ-GQL-030` ordering/shape validation live, and how
-  does the caller's mode reach correlation? Options: A.1a / A.1b / A.1c × A.2a / A.2b (§5.1).
-  Conflict: `interfaces/chunk-05.md:407-416` vs.
-  `plans/chunk-6A-...md:90-92, :794-796`. Every option touches a frozen surface.
-- **H2 (blocking for S1/S2's content).** Probe option (B) first? Requires a human live probe
-  with the `operations` header on a 200 (`.scratch/graphql_csrf_finding.md:20-21` is
-  pre-cookie, UNVERIFIED).
-- **H3 (blocking for S2's exact shape and for any page-views payload change).** Live capture
-  across ≥2 selected preflight identities spanning ≥2 products, with the tool's exact
-  committed query text: HTTP status, full body, presence/absence of any explicit key, item
-  order, and the page-views item's exact shape. Only one identity's body is captured (`.scratch:96`).
-- **H4 (design guard).** If the chosen design needs an extra live request to compute the mode,
-  stop: it conflicts with one-request-per-unique-identity (`LREQ-GQL-080`). No such design is
-  proposed.
+## 12. Conflict notes and open obligations
+
+### 12.1 Frozen-interface conflict notes (recorded; interfaces NOT edited)
+
+- `interfaces/chunk-05.md:398-416` — "Chunk 5 MUST NOT … validate position … position
+  validation is the identity preflight's job". Resolved by A.2b: the new primitive validates
+  the endpoint guarantee and returns a decision; the preflight's identity checks stay in
+  `pipeline.py`.
+- `plans/chunk-6A-...md:90-92, :794-796` — "`pipeline.py` MUST NOT re-implement GraphQL
+  request construction, correlation, response validation, or retry classification". Honored:
+  `pipeline.py` calls Chunk 5 `enrich_asset`, the new primitive, and the new interpreter.
+- `interfaces/chunk-05.md:770-776` — `execute_graphql_batch` signature change (A.1b).
+- `interfaces/chunk-05.md:294` — ProductDetail payload becomes the unwrapped `data.product`
+  (H5).
+- `interfaces/chunk-6A.md:185-294` — the persisted correlation mode is evidence-derived; the
+  `correlation_mode` argument is the first-pass candidate (H1/A.2b).
+- `interfaces/chunk-10.md:47` — default unchanged; the selected mode is carried from the
+  preflight summary into `enrich_unique_identities`.
 
 ### 12.2 Open obligations (recorded, never closed here)
 
 - **URI trailing-identifier extraction (`identity_mapping_rule 1.0.1`)** — inferred, not
-  verified against a real Coveo response; no captured response exists. Owner: identity-mapping
-  owner (`interfaces/chunk-01.md` §4.1; dependency-map §6.4). Not touched; no claim.
-- **OI-6 — CSRF/session sufficiency** — has no owning chunk. Chunk 17 recorded the live
-  cookie/header answers; this chunk neither reopens nor closes it.
-- **`runs.taxonomy_sha256` empty-hash rejection** — owner is **Chunk 10** (dependency-map §7).
-  Not touched.
-- **G7 page-views payload shape under the tool's exact query text** — UNVERIFIED; depends on
-  H3. May require a page-views payload change that is not in S1/S2 until H3 answers it.
-- **`tests/AGENTS.md` traceability orientation** — the file's prose says "object keyed by
-  individual `LREQ-*` IDs" with arrays of node IDs; the committed `tests/traceability.json`
-  keys are node IDs. The validator's orientation is not re-derived here; the mismatch is
-  recorded, and the plan follows the committed file (node-ID keys). Not resolved here.
+  verified against a real Coveo response; no captured response exists.
+- **OI-6 — CSRF/session sufficiency** — has no owning chunk; neither reopened nor closed.
+- **`runs.taxonomy_sha256` empty-hash rejection** — owner Chunk 10; not touched.
+- **`tests/AGENTS.md` traceability orientation** — prose says LREQ-keyed; the committed file
+  is node-ID-keyed (G9). Out of scope; follow the committed file.
 
-## 13. Routing
+### 12.3 Residual UNVERIFIED (not a blocker)
 
-- **`chunk-planner`** (this task) — write this plan; stop at DRAFT with H1–H4 unresolved.
-- **Human checkpoint** — answer H1–H4 (H1/H3 block a correct plan; H2 decides S1/S2's content).
-- **`test-author`** — after the rulings, write the new/updated nodes and traceability entries
-  **first**, before any source edit (tests-first is required: the change touches the adapter
-  protocol and the preflight).
-- **`impl-deep`** — implement S1/S2 in the file(s) H1 names, then run the offline suite and
-  the validators. `impl-fast` is not suitable: the change spans a frozen protocol boundary and
-  the preflight gate.
-- **Human live run** — DoD-1, after implementation.
-- **`spec-reviewer`** — review the frozen plan, tests, implementation, and the live-run
-  evidence recorded in `Documents/runs/chunk-18.md`.
+- Identity agreement (`id`/`productId` vs the requested canonical identity) was not
+  independently confirmed in the H3 capture; the DoD-1 live run verifies it.
+- Whether the endpoint emits keys for non-selected identities is not observed; the selection
+  is defined for both branches (keyed → `EXPLICIT_KEY`).
