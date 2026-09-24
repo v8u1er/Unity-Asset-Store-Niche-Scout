@@ -233,3 +233,11 @@ Decisive conclusions (VERIFIED):
   an error — any new validation must keep zero valid and not treat it as absent.
 
 Capture file: `.scratch/chunk18-capture.json`.
+
+## Stage log update
+
+| Stage | Status | Session / evidence |
+|---|---|---|
+| Plan — `chunk-planner` | **FROZEN** | `ses_f2cc2507bffe2cy4qJ9kft7l46`. Plan `Documents/plans/chunk-18-graphql-correlation-mode-selection.md`, `Status: FROZEN`, 586 lines. Encodes H1=A.1b+A.2b (new public `select_operation_correlation_mode` + pure `interpret_graphql_response`), H2 dead, H3 closed, H4 guard, H5 `data.product` unwrap, G7 `pageViews` alias, mode selected run-level from already-received preflight responses (no second request), carried into `enrich_unique_identities`. Corrected the four DRAFT defects. Commit `2f59463`. |
+| Conflict note (plan §4/§12) | recorded | Frozen-interface conflict: `interfaces/chunk-05.md:398-416` vs `plans/chunk-6A-...md:90-92, :794-796`; resolved by A.2b per the human ruling; interfaces are not edited (Chunk 17 precedent). |
+| Tests — `test-author` | NEXT | routing per plan §11 (tests first). |
