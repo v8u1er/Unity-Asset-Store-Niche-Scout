@@ -19,7 +19,10 @@ Contracts this module honours:
   *value*, or full response body reaches an issue, an error summary, a warning,
   ``header_names``, an exception message, or ``request_metadata_json``
   (SRS-lean LREQ-SEC-010, LREQ-SEC-020).
-* No ``Cookie`` header is constructed, emitted, or modified.
+* The operator-supplied Unity CSRF credential is emitted as both the
+  ``X-CSRF-Token`` header and the ``_csrf`` cookie, from the same credential,
+  byte-for-byte (Chunk 17 R1, option (a)). No separate ``Cookie`` bootstrap,
+  cookie jar, or second credential source exists.
 * The transport and the sleeper are injected. The only clock read in the module
   is the default value of the injected ``sleep`` callable, so every
   calculation is a pure function of its arguments.
@@ -41,7 +44,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
-from .config import Credentials
+from .config import UNITY_CSRF_TOKEN_ENV, Credentials
 from .models import (
     ENDPOINT_CONTRACT_VERSION,
     IDENTITY_MAPPING_RULE_VERSION,
@@ -320,8 +323,14 @@ _PRODUCT_DETAIL_QUERY: str = (
     "    reviewCount\n"
     "    firstPublishedDate\n"
     "    state\n"
-    "    category\n"
-    "    publisher\n"
+    "    category {\n"
+    "      id\n"
+    "      name\n"
+    "    }\n"
+    "    publisher {\n"
+    "      id\n"
+    "      name\n"
+    "    }\n"
     "  }\n"
     "}"
 )
@@ -377,8 +386,8 @@ def _require_unity_csrf_token(credentials: Credentials) -> str:
     token = credentials.unity_csrf_token
     if not isinstance(token, str) or token.strip() == "":
         raise ValueError(
-            "Unity CSRF credential is empty or whitespace-only; set the environment "
-            "variable named by config.UNITY_CSRF_TOKEN_ENV before collection"
+            f"Unity CSRF credential is empty or whitespace-only; set the environment "
+            f"variable {UNITY_CSRF_TOKEN_ENV} before collection"
         )
     return token
 
@@ -388,13 +397,17 @@ def build_graphql_headers(*, credentials: Credentials) -> Mapping[str, str]:
 
     The returned mapping carries the caller-supplied CSRF credential under
     ``GRAPHQL_CSRF_HEADER_NAME`` (emitted lowercase, as observed on the wire) and
-    is wrapped in ``MappingProxyType`` so a caller cannot mutate a map shared with
-    another request. No ``Cookie`` header is constructed, emitted, or modified,
-    and no credential value is returned by any other function in this module.
+    as the ``_csrf`` cookie (``"cookie": "_csrf=" + <token>``), both from the same
+    operator-supplied credential and equal byte-for-byte. The map is wrapped in
+    ``MappingProxyType`` so a caller cannot mutate a map shared with another
+    request. A missing, empty, or whitespace-only credential raises ``ValueError``
+    before any map exists; no credential value is returned by any other function
+    in this module.
     """
     token = _require_unity_csrf_token(credentials)
     headers = dict(GRAPHQL_REQUEST_HEADERS)
     headers[GRAPHQL_CSRF_HEADER_NAME.lower()] = token
+    headers["cookie"] = "_csrf=" + token
     return MappingProxyType(headers)
 
 
@@ -454,6 +467,7 @@ def build_graphql_batch_request(
         header_names=(
             *sorted(GRAPHQL_REQUEST_HEADERS),
             GRAPHQL_CSRF_HEADER_NAME.lower(),
+            "cookie",
         ),
         body_json=body_json,
     )
@@ -1934,9 +1948,26 @@ def retry_delay_seconds(policy: GraphQLRetryPolicy, attempt: int) -> float:
     return float(min(delay, policy.backoff_max_seconds))
 
 
-def _classify_http_status(http_status: int) -> GraphQLFailureClass:
-    """Classify a non-200 HTTP status into the operation failure it implies."""
+_CSRF_MISMATCH_BODY_MARKER: str = "csrf token mismatch"
+
+
+def _classify_http_status(
+    http_status: int, *, body_text: str = ""
+) -> GraphQLFailureClass:
+    """Classify a non-200 HTTP status into the operation failure it implies.
+
+    An HTTP ``400`` whose already-read ``body_text`` carries the endpoint's
+    ``csrf token mismatch`` marker is a ``CSRF_FAILURE``; **every other** ``400``
+    stays ``MALFORMED_REQUEST``. The body is inspected only for a ``400`` and is
+    never read for any other status. Both classes are permanent and non-retrying,
+    so this changes no retry path.
+    """
     if http_status == 400:
+        if (
+            isinstance(body_text, str)
+            and _CSRF_MISMATCH_BODY_MARKER in body_text.casefold()
+        ):
+            return GraphQLFailureClass.CSRF_FAILURE
         return GraphQLFailureClass.MALFORMED_REQUEST
     if http_status == 401:
         return GraphQLFailureClass.AUTHENTICATION_FAILURE
@@ -2426,7 +2457,9 @@ def execute_graphql_batch(
             attempts=attempts,
         )
         if result.http_status != 200:
-            status_class = _classify_http_status(int(result.http_status))
+            status_class = _classify_http_status(
+                int(result.http_status), body_text=response.body_text
+            )
             result = _with_both_operations_failed(
                 result, status_class, response.http_status
             )

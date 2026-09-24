@@ -15,10 +15,13 @@ or enrichment (``LREQ-CLI-020``).
 
 The production GraphQL transport callable is composed here from the frozen
 ``collector_graphql.build_graphql_batch_request``, ``build_graphql_headers`` and
-``GraphQLBatchResponse`` using the standard library. It sends the frozen
-``X-CSRF-Token`` header only: it adds **no** ``Cookie`` header, reads no
-environment variable, and makes no CSRF/session sufficiency claim (open item
-OI-6 stays open and unassigned).
+``GraphQLBatchResponse`` using the standard library. It forwards the
+caller-supplied header map **verbatim**, so the map the adapter builds may carry
+the ``_csrf`` cookie alongside the ``X-CSRF-Token`` header (Chunk 17 R1, option
+(a), operator-supplied token); the transport adds no header of its own and reads
+no environment variable. OI-6's four sub-questions were answered by the live
+probes and the human ruling (option (a), operator-supplied token), recorded in
+``Documents/plans/chunk-17-graphql-live-contract-remediation.md`` §12.1.
 
 ``report.py`` SHALL NOT import this module, so the ``cli -> report`` edge stays
 one-directional and no report/CLI cycle exists.
@@ -323,12 +326,14 @@ def build_graphql_transport(
     """Compose the production GraphQL transport callable from ``urllib.request``.
 
     For each call it sends ``request.body_json`` (UTF-8) to ``request.endpoint``
-    with exactly the caller-supplied headers — the frozen ``X-CSRF-Token``
-    header only — reads the response body to text, and returns
-    ``collector_graphql.GraphQLBatchResponse(http_status, body_text,
-    header_names)``. It adds no ``Cookie`` header, reads no environment
-    variable, and makes no CSRF/session sufficiency claim (Ruling 1; OI-6 stays
-    open and unassigned).
+    with exactly the caller-supplied headers, forwarded verbatim: the frozen
+    ``X-CSRF-Token`` header and, when the adapter built them, the matching
+    ``_csrf`` cookie. It adds no header of its own, reads the response body to
+    text, and returns ``collector_graphql.GraphQLBatchResponse(http_status,
+    body_text, header_names)``. It reads no environment variable and initiates
+    no bootstrap; OI-6's sub-questions were answered by the live probes and the
+    human ruling (option (a), operator-supplied token), recorded in
+    ``Documents/plans/chunk-17-graphql-live-contract-remediation.md`` §12.1.
     """
     from . import collector_graphql
 
