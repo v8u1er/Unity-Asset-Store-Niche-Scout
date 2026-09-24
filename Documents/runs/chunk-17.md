@@ -62,29 +62,51 @@ Plan: `Documents/plans/chunk-17-graphql-live-contract-remediation.md` (planned).
 - **D4** (client-side send failure) is a run-environment item; report the DNS/connect
   finding, propose no code fix.
 
+## New live evidence (lead, 2026-09-24) — `.scratch/` only
+
+| # | Finding | Evidence |
+|---|---|---|
+| F1 | Browser-free bootstrap works: `GET https://assetstore.unity.com/packages/tools/utilities-69717` → HTTP 200, jar holds `_csrf` (32 chars) + `DS`/`AC_CURR`/`NEXT_LOCALE`; POST **header-only** (no cookie) → **HTTP 400 `csrf token mismatch`**; POST harvested `cookie: _csrf=<v>` + matching `x-csrf-token` + corrected `category { id name }` / `publisher { id name }` query → **HTTP 200** (296-byte JSON); same-token header-only control → 400. | ran `.scratch/chunk17-graphql-csrf-probe.py` (`python .scratch/...`, 2026-09-24). |
+| F2 | A sentinel zero token with the required headers did **not** reproduce the mismatch branch: `POST` returned HTTP 200 with `data` present. So the *envelope* form of a mismatch (200 + CSRF error code) stays UNVERIFIED; only the plain-text 400 body `csrf token mismatch` was observed directly. | ran `.scratch/chunk17-graphql-envelope-probe.py`. |
+| F3 | The pre-existing finding `graphql_csrf_finding.md` §2 already shows the option-(a) shape works: `x-csrf-token` + `cookie: _csrf=<same>`, **no other cookie**, → 200. So option (a) needs only the `_csrf` value. | read `.scratch/graphql_csrf_finding.md:23-36`. |
+
+## Human rulings (2026-09-24) — the four checkpoints
+
+1. **Q1 = option (a).** Operator-supplied `NICHESCOUT_UNITY_CSRF_TOKEN` sent as **both**
+   `cookie: _csrf=<token>` and `X-CSRF-Token: <token>`, byte-equal. Chosen over
+   auto-bootstrap because auto-bootstrap is "automated credential acquisition", listed
+   **Out of scope** in SRS-lean §1.3 line 102, and would strand the §14 / LREQ-SEC-010
+   credential (the human's "no config variable that does not work" constraint). No new
+   config knob, no new param, no `cli.py` logic change.
+2. **Q2 = `category { id name }` / `publisher { id name }`** (live 200).
+3. **Q3 = yes:** HTTP 400 body `csrf token mismatch` → `CSRF_FAILURE` (permanent,
+   non-retrying); other 400s stay `MALFORMED_REQUEST`; 200 `extensions.code == "csrf"`
+   path unchanged.
+4. **Q4 = record, never close:** the cookie must not be persisted; the discovery-path
+   404 is a discovery-owner item; D4 stays an environment finding with no code fix.
+5. **One truthful rename** approved under the human's "no misleading artifacts"
+   principle: `tests/test_cli.py::test_build_graphql_transport_sends_csrf_header_only_and_no_cookie`
+   → `tests/test_cli.py::test_build_graphql_transport_sends_matching_cookie_and_csrf_header`,
+   with its `tests/traceability.json` key updated old→new (same LREQ values). No other
+   node ID is renamed. Frozen historical plans/logs keep the old name.
+
 ## Stage log
 
 | Stage | Status | Session / evidence |
 |---|---|---|
 | Preflight (lead) | DONE | table above |
-| Plan — `chunk-planner` | DONE (DRAFT) / **BLOCKED on human** | `ses_f2db4e2dfffe1XXyxU3JemYw0s` (resumed once after a step-cap recon-only run). Wrote `Documents/plans/chunk-17-graphql-live-contract-remediation.md` (614 lines, `Status: DRAFT`). Reconnaissance only in the first pass; resumed to author the plan. Returned `STATUS: BLOCKED` with the four human checkpoints in §12. **Chain stopped here per auto-chaining rules** (unresolved open question ⇒ plan not frozen). |
-| Tests — `test-author` | BLOCKED | not started — waits on plan freeze |
-| Implement — `impl-deep` | BLOCKED | not started |
-| Lead verify | BLOCKED | not started |
-| Review — `spec-reviewer` | BLOCKED | not started |
-| Gate | BLOCKED | plan §10 gate cannot be walked until the plan is frozen |
-
-**Stop point.** Per the project's auto-chaining rules the chain stops when `chunk-planner`
-leaves a plan at DRAFT with unresolved open questions. The four checkpoints in plan §12
-(Q1 cookie supply, Q2 `LREQ-GQL-020` field list, Q3 400-body classification, Q4 recorded
-obligations) are relayed to the human verbatim. On the human's answers the lead
-re-dispatches `chunk-planner` with the answers to freeze the plan, then continues
-`test-author` → `impl-deep` → lead verify → `spec-reviewer` → gate.
+| Plan — `chunk-planner` | DONE (**FROZEN**, Q1 = option (a)) | `ses_f2db4e2dfffe1XXyxU3JemYw0s` (resumed 3× after a step-cap recon-only run): DRAFT → BLOCKED on the four checkpoints → frozen with the human rulings → revised to option (a) after the human rejected the dead-config consequence of option (b). Plan `Documents/plans/chunk-17-graphql-live-contract-remediation.md`, `Status: FROZEN`, 767 lines. |
+| Tests — `test-author` | PENDING | next — writes the failing nodes + traceability before implementation |
+| Implement — `impl-deep` | PENDING | |
+| Lead verify | PENDING | |
+| Review — `spec-reviewer` | PENDING | |
+| Gate | PENDING | |
 
 ## Open obligations (recorded, not silently closed)
 
-- **OI-6** (CSRF/session sufficiency, dependency-map §7) — this chunk's live diagnosis
-  answers its four sub-questions, but the supply-method decision is a human checkpoint
-  (Decision 1); the item stays recorded until the human rules.
+- **OI-6** (CSRF/session sufficiency, dependency-map §7) — the live probes answer its four
+  sub-questions and the human ruled the supply mechanism (option (a)); the item is
+  recorded as answered-for-Chunk-17, not retired. Owner stays unassigned in the map.
 - **URI trailing-identifier extraction** (`1.0.1`) remains UNVERIFIED; untouched.
 - **D4** environment DNS/connect failure is reported, not fixed here.
+- **Mismatch envelope** (200 + CSRF error code) UNVERIFIED (F2).
