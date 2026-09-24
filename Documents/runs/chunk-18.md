@@ -180,3 +180,28 @@ mapping**, and "test/probe first when unsure". The plan will be revised and re-f
     script imports only the stdlib).
   - Capture file: `.scratch/chunk18-capture.json`.
 - Equivalent raw curl and the exact fields the human must return are given in the lead's reply.
+
+## Live capture — identity 117382 (human-run, 2026-09-24 11:40:25Z) — VERIFIED
+
+The human pasted one full HTTP 200 response. The lead verified it byte-exactly:
+
+| Check | Result |
+|---|---|
+| `Content-Length` header | `299` |
+| Bytes hashed (`sha256` of the pasted body, computed offline with `python`) | `299` bytes |
+| Computed sha256 | `319d7a1dc45e84ad7aff6c80848fe68628d0dab0de78b5e0bfd022bc69dd2a2c` |
+| Recorded `response_sha256` for `117382` (from the failed-run DB) | `319d7a1dc45e84ad7aff6c80848fe68628d0dab0de78b5e0bfd022bc69dd2a2c` — **exact match** |
+
+So the pasted body **is** the response the tool received (not an approximation).
+
+Confirmed from the captured body (read, VERIFIED for this identity):
+- Item 0 = `{"data":{"product":{...}}}` — the `product` wrapper, `id`/`productId`/`rating`/
+  `reviewCount`/`firstPublishedDate`/`state`/`category {id,name}`/`publisher {id,name}`. **H5 confirmed.**
+- Item 1 = `{"data":{"productPageViews":20}}` — key is **`productPageViews`**, not `pageViews`. **G7 confirmed.**
+- Fixed order for this identity: item 0 = ProductDetail, item 1 = ProductPageViews.
+- **No** `operationName`/`operation`/`correlationKey` anywhere → explicit-key correlation cannot work.
+- The committed query text (`.scratch:88-89`) produced this body unchanged.
+
+Still UNVERIFIED after this capture: the shape/ordering for the **other nine** selected identities
+(uniformity), and whether an `operations` request header makes the endpoint echo `operationName`
+(H2 / option B). Both are one `python .scratch/chunk18-live-capture.py` run.
