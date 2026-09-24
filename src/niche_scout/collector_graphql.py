@@ -116,6 +116,8 @@ __all__ = (
     "retry_delay_seconds",
     "execute_graphql_batch",
     "enrich_asset",
+    "select_operation_correlation_mode",
+    "interpret_graphql_response",
 )
 
 # --------------------------------------------------------------------------
@@ -337,7 +339,7 @@ _PRODUCT_DETAIL_QUERY: str = (
 
 _PRODUCT_PAGE_VIEWS_QUERY: str = (
     "query ProductPageViews($packageId: String!) {\n"
-    "  productPageViews(packageId: $packageId)\n"
+    "  pageViews: productPageViews(packageId: $packageId)\n"
     "}"
 )
 
@@ -955,6 +957,53 @@ PRODUCT_DETAIL_NUMERIC_MEMBER_TYPES: Mapping[str, type | tuple[type, ...]] = (
 _TOP_LEVEL_RESULT_KEYS: tuple[str, ...] = ("errors", "data", "extensions")
 
 
+def _product_detail_root_payload(
+    item: object,
+) -> tuple[object | None, str | None]:
+    """Return the ProductDetail payload from one response item, or why it fails.
+
+    The live endpoint answers ``ProductDetail`` with the ``data.product`` wrapper
+    (Chunk 18 H5, plan §5.5): the root field ``product`` holds the product object,
+    so the adapter must unwrap ``data.product`` before
+    :func:`validate_product_detail_payload`, which reads its members at the
+    payload's own top level. The rules, with ``LREQ-GQL-040`` classes:
+
+    * ``{"data": {"product": <mapping>}}`` -> the unwrapped product object,
+      status ``None`` (validate it);
+    * ``{"data": {"product": null}}`` -> ``(None, "product_null")``: no product
+      data returned, classified ``NULL_REQUIRED_DATA``, never a zero-valued
+      success;
+    * ``{"data": {"product": <non-mapping>}}`` -> ``(None, "wrong_container")``:
+      a wrong container kind, classified ``WRONG_DATA_SHAPE``;
+    * ``{"data": null}`` -> ``(None, "data_null")``: the existing envelope-null
+      branch (``NULL_REQUIRED_DATA``, issue member ``data``);
+    * any other item (a flat legacy ``data`` with no ``product`` key, a bare
+      payload item, a non-envelope item) -> ``(<payload>, None)``: validated as
+      today, with the payload the existing code would have chosen.
+
+    Pure: reads no clock, performs no I/O, and never defaults or coerces a field.
+    """
+    if not isinstance(item, Mapping):
+        return item, None
+    if _is_operation_envelope(item):
+        if "data" not in item:
+            # An envelope with no ``data`` member at all: the existing code
+            # validates the item itself; keep that unchanged.
+            return item, None
+        data = item["data"]
+        if data is None:
+            return None, "data_null"
+        if isinstance(data, Mapping) and "product" in data:
+            product = data["product"]
+            if isinstance(product, Mapping):
+                return product, None
+            if product is None:
+                return None, "product_null"
+            return None, "wrong_container"
+        return data, None
+    return item, None
+
+
 @dataclass(frozen=True, slots=True)
 class ProductDetailFields:
     """A validated ``ProductDetail`` payload, field by field.
@@ -1097,6 +1146,10 @@ def validate_product_detail_payload(
     ``state`` value is *not* an operation error: a present non-``"published"``
     value is an exclusion annotation, recorded and retained
     (``LREQ-GQL-060``).
+
+    The caller unwraps the live ``data.product`` root before calling this
+    function (Chunk 18 H5), so the payload here is always the product object or
+    the legacy flat mapping.
     """
     if not isinstance(payload, Mapping):
         issue = _issue(
@@ -1410,7 +1463,6 @@ def validate_page_views_payload(payload: object) -> GraphQLOperationValidation:
             page_views=None,
             issues=(issue,),
         )
-
     raw_scalar = payload["pageViews"]
     page_view_value = validate_page_view_scalar(raw_scalar)
     if page_view_value.is_valid:
@@ -1463,6 +1515,85 @@ def validate_page_views_payload(payload: object) -> GraphQLOperationValidation:
         issues=(issue,),
     )
 
+
+# --------------------------------------------------------------------------
+# Correlation-mode selection (Chunk 18, LREQ-GQL-030)
+# --------------------------------------------------------------------------
+
+
+def _response_page_views_payload(item: object) -> object:
+    """Return an item's page-views payload, as the adapter's own extraction does.
+
+    An envelope item's payload is its ``data`` member; a bare item is its own
+    payload. A ``data`` that is absent or ``None`` yields ``None``, which
+    :func:`validate_page_views_payload` reports as a wrong container kind rather
+    than a zero.
+    """
+    if isinstance(item, Mapping) and "data" in item:
+        return item.get("data")
+    return item
+
+
+def select_operation_correlation_mode(
+    responses: Sequence[GraphQLBatchResponse],
+) -> GraphQLOperationCorrelationMode:
+    """Select the run-level persisted correlation mode from already-received responses.
+
+    ``responses`` is the ordered per-identity batch response for the selected
+    preflight identities, one per unique identity, in selection order. It is
+    evidence only: this function issues no request and reads no clock. Pure and
+    deterministic; the result is a function of the ordered evidence alone.
+
+    Raises ``ValueError`` for an empty sequence: a zero-identity preflight is
+    ``insufficient`` (LREQ-ID-040) and selection is not reached; the caller must
+    not substitute a default.
+
+    Returns ``VALIDATED_POSITION`` iff every response decodes to exactly two
+    items, no item carries an explicit correlation key
+    (``extract_operation_correlation_key(item) is None`` for both), item 0
+    presents the ``ProductDetail`` operation-specific shape (the H5 unwrap of
+    ``data.product``, or the legacy flat payload) and item 1 presents the
+    ``ProductPageViews`` operation-specific shape (``{"pageViews": <int >= 0>}``,
+    ``LREQ-GQL-030``). Otherwise returns ``EXPLICIT_KEY`` -- including when any
+    response carries an explicit key (the primary association is available) and
+    when any identity fails shape, count, or decode. Selection is
+    all-or-nothing across the selected identities.
+
+    Determinism: no RNG, no clock, no set/dict-ordering dependence.
+    """
+    responses = tuple(responses)
+    if not responses:
+        raise ValueError(
+            "select_operation_correlation_mode requires at least one response; "
+            "an empty evidence sequence has no selected mode"
+        )
+
+    for response in responses:
+        if not isinstance(response, GraphQLBatchResponse):
+            raise TypeError("responses must contain GraphQLBatchResponse values")
+        items, decode_failure = _decode_operation_items(response)
+        if items is None or decode_failure is not None:
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        if any(
+            extract_operation_correlation_key(item) is not None for item in items
+        ):
+            # An explicit key is the primary association; position is only the
+            # no-key fallback, so any keyed item selects the explicit-key mode.
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        if len(items) != 2:
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+
+        detail_payload, detail_failure = _product_detail_root_payload(items[0])
+        if detail_failure is not None:
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        if not validate_product_detail_payload(detail_payload).is_valid:
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        if not validate_page_views_payload(
+            _response_page_views_payload(items[1])
+        ).is_valid:
+            return GraphQLOperationCorrelationMode.EXPLICIT_KEY
+
+    return GraphQLOperationCorrelationMode.VALIDATED_POSITION
 
 # --------------------------------------------------------------------------
 # State and identity annotation (plan section 5.8)
@@ -2167,6 +2298,50 @@ def _build_result_from_items(
             payload = item
 
         if operation_name == PRODUCT_DETAIL_OPERATION_NAME:
+            # The shared helper applies the H5 ``data.product`` unwrap (plan
+            # §5.5): a mapping root is unwrapped, ``product: null`` and
+            # ``data: null`` are ``NULL_REQUIRED_DATA``, a non-mapping
+            # ``product`` is ``WRONG_DATA_SHAPE``, and a flat legacy payload is
+            # validated as today. Its ``data_null`` status carries no payload, so
+            # the frozen envelope-null branch below supplies the issue spelling.
+            payload, root_failure = _product_detail_root_payload(item)
+            if root_failure == "product_null":
+                operation_results.append(
+                    _failed_operation_result(
+                        operation_name,
+                        GraphQLFailureClass.NULL_REQUIRED_DATA,
+                        correlation_key=correlation_key,
+                        mode=correlation.mode,
+                        issues=(
+                            _issue(
+                                "response_null_required_member",
+                                "the operation returned null data; a null value is "
+                                "unavailable and is not substituted with a default",
+                                member="product",
+                                field="product",
+                            ),
+                        ),
+                    )
+                )
+                continue
+            if root_failure == "wrong_container":
+                operation_results.append(
+                    _failed_operation_result(
+                        operation_name,
+                        GraphQLFailureClass.WRONG_DATA_SHAPE,
+                        correlation_key=correlation_key,
+                        mode=correlation.mode,
+                        issues=(
+                            _issue(
+                                "response_wrong_container_kind",
+                                "the ProductDetail payload is not an object",
+                                expected_shape="mapping",
+                                actual_shape=_shape_name(item["data"]["product"]),
+                            ),
+                        ),
+                    )
+                )
+                continue
             # A ProductDetail item carries bare data (its own top level is the
             # payload) or the batch envelope, not the envelope keys
             # ``_operation_level_errors`` reads. An absent ``data`` member under
@@ -2174,7 +2349,7 @@ def _build_result_from_items(
             # payload was returned, so both are ``NULL_REQUIRED_DATA``
             # (LREQ-GQL-040: "null required data ... SHALL be recorded as an
             # operation error") rather than a wrong container kind.
-            if _is_operation_envelope(item) and _operation_data(item)[0] is None:
+            if root_failure == "data_null":
                 operation_results.append(
                     _failed_operation_result(
                         operation_name,
@@ -2389,6 +2564,84 @@ def _interrogate_response(
     )
 
 
+def _interpret_response(
+    request: GraphQLBatchRequest,
+    response: GraphQLBatchResponse,
+    *,
+    correlation_mode: GraphQLOperationCorrelationMode,
+    attempts: int,
+) -> EnrichmentResult:
+    """Interpret one received response, applying the non-200 classification.
+
+    This is the single interpretation path shared by :func:`execute_graphql_batch`
+    and :func:`interpret_graphql_response`, so the two callers cannot drift: a
+    non-200 status is replaced by the failure class its status (and, for ``400``,
+    its body marker) implies.
+    """
+    result = _interrogate_response(
+        request, response, correlation_mode=correlation_mode, attempts=attempts
+    )
+    if result.http_status != 200:
+        status_class = _classify_http_status(
+            int(result.http_status), body_text=response.body_text
+        )
+        result = _with_both_operations_failed(
+            result, status_class, response.http_status
+        )
+    return result
+
+
+def _draft_from_result(
+    result: EnrichmentResult, *, retrieved_at_utc: datetime
+) -> EnrichmentObservationDraft:
+    """Build the pre-record value for an interpreted result.
+
+    The validated ``ProductDetailFields`` the adapter annotated onto a successful
+    payload are reused when present; otherwise the draft re-validates the retained
+    payload. ``retrieved_at_utc`` is the caller-supplied timestamp and is never
+    read from the clock.
+    """
+    fields: ProductDetailFields | None = None
+    if result.product_detail.is_success and result.product_detail.payload is not None:
+        annotated = result.product_detail.payload.get("_annotated_fields")
+        if isinstance(annotated, ProductDetailFields):
+            fields = annotated
+    return build_enrichment_observation_draft(
+        result, fields=fields, retrieved_at_utc=retrieved_at_utc
+    )
+
+
+def interpret_graphql_response(
+    request: GraphQLBatchRequest,
+    response: GraphQLBatchResponse,
+    *,
+    correlation_mode: GraphQLOperationCorrelationMode,
+    retrieved_at_utc: datetime,
+    attempts: int = 1,
+) -> tuple[EnrichmentResult, EnrichmentObservationDraft]:
+    """Interpret one already-received response under ``correlation_mode``.
+
+    The public face of the adapter's response interpretation: it correlates and
+    validates the given response under ``correlation_mode``, applies the non-200
+    classification, and returns the same ``(result, draft)`` pair
+    ``enrich_asset`` returns. It performs no network exchange and reads no clock;
+    ``attempts`` and ``retrieved_at_utc`` are supplied by the caller.
+    ``retrieved_at_utc`` must be timezone-aware UTC (``models.ensure_utc``).
+
+    Null/edge: a naive ``retrieved_at_utc`` raises ``ValueError``; ``attempts``
+    below ``1`` or a non-integer raises ``ValueError``; a non-member
+    ``correlation_mode`` raises ``TypeError``; a non-200 response takes the
+    existing HTTP classification and both operation fields stay ``None``.
+    """
+    mode = _require_correlation_mode(correlation_mode)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        raise ValueError("attempts must be an integer >= 1")
+    result = _interpret_response(
+        request, response, correlation_mode=mode, attempts=attempts
+    )
+    return result, _draft_from_result(result, retrieved_at_utc=retrieved_at_utc)
+
+
 def _failures_are_retryable(result: EnrichmentResult) -> bool:
     """Return whether a failed result's classes are all retryable."""
     classes = [
@@ -2404,6 +2657,9 @@ def execute_graphql_batch(
     *,
     transport: GraphQLTransport,
     headers: Mapping[str, str],
+    correlation_mode: GraphQLOperationCorrelationMode = (
+        GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    ),
     policy: GraphQLRetryPolicy = GraphQLRetryPolicy(),
     sleep: Callable[[float], None] = time.sleep,
 ) -> EnrichmentResult:
@@ -2417,7 +2673,14 @@ def execute_graphql_batch(
     ``execute_graphql_batch`` never sleeps between separate ``enrich_asset`` calls;
     the caller looping over identities enforces the minimum interval by passing
     the same ``sleep``.
+
+    ``correlation_mode`` is the mode every attempt correlates under; it is
+    validated by :func:`_require_correlation_mode` (a non-member raises
+    ``TypeError``) and is the mode each operation and ``correlation.mode`` report.
+    Omitting the keyword reproduces the previous explicit-key behavior exactly
+    (Chunk 18 A.1b; no post-hoc stamping exists on the result path).
     """
+    active_mode = _require_correlation_mode(correlation_mode)
     if not callable(transport):
         raise TypeError("transport must be callable")
     if not callable(sleep):
@@ -2443,26 +2706,19 @@ def execute_graphql_batch(
                     attempts=attempts,
                     http_status=None,
                     response_sha256=None,
-                    correlation_mode=GraphQLOperationCorrelationMode.EXPLICIT_KEY,
+                    correlation_mode=active_mode,
                     issues=(_summarize_transport_failure(exc),),
                 )
             retry_after_attempt += 1
             sleep(retry_delay_seconds(policy, retry_after_attempt))
             continue
 
-        result = _interrogate_response(
+        result = _interpret_response(
             request,
             response,
-            correlation_mode=_correlation_mode_for_request(request),
+            correlation_mode=active_mode,
             attempts=attempts,
         )
-        if result.http_status != 200:
-            status_class = _classify_http_status(
-                int(result.http_status), body_text=response.body_text
-            )
-            result = _with_both_operations_failed(
-                result, status_class, response.http_status
-            )
 
         if result.is_success or not _failures_are_retryable(result):
             return result
@@ -2472,18 +2728,6 @@ def execute_graphql_batch(
         sleep(retry_delay_seconds(policy, retry_after_attempt))
 
     raise AssertionError("unreachable: the attempt loop is bounded")
-
-
-def _correlation_mode_for_request(
-    request: GraphQLBatchRequest,
-) -> GraphQLOperationCorrelationMode:
-    """Return the correlation mode a request is executed under.
-
-    The mode is a parameter of the caller's policy and never module state; a bare
-    request carries no mode, so execution defaults to the explicit-key mode, which
-    is the mode the request's own operation names support.
-    """
-    return GraphQLOperationCorrelationMode.EXPLICIT_KEY
 
 
 def _with_both_operations_failed(
@@ -2552,21 +2796,12 @@ def enrich_asset(
     )
     headers = build_graphql_headers(credentials=credentials)
     result = execute_graphql_batch(
-        request, transport=transport, headers=headers, policy=policy, sleep=sleep
+        request,
+        transport=transport,
+        headers=headers,
+        correlation_mode=mode,
+        policy=policy,
+        sleep=sleep,
     )
-    if result.correlation.mode is not mode:
-        result = replace(
-            result,
-            correlation=replace(result.correlation, mode=mode),
-            product_detail=replace(result.product_detail, correlation_mode=mode),
-            page_views=replace(result.page_views, correlation_mode=mode),
-        )
-    fields: ProductDetailFields | None = None
-    if result.product_detail.is_success and result.product_detail.payload is not None:
-        annotated = result.product_detail.payload.get("_annotated_fields")
-        if isinstance(annotated, ProductDetailFields):
-            fields = annotated
-    draft = build_enrichment_observation_draft(
-        result, fields=fields, retrieved_at_utc=retrieved_at_utc
-    )
+    draft = _draft_from_result(result, retrieved_at_utc=retrieved_at_utc)
     return result, draft

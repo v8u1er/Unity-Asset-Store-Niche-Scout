@@ -44,6 +44,8 @@ from niche_scout.collector_graphql import (
     GraphQLRetryPolicy,
     GraphQLTransport,
     enrich_asset,
+    interpret_graphql_response,
+    select_operation_correlation_mode,
 )
 from niche_scout.collector_graphql import (
     EnrichmentObservationDraft as EnrichmentObservationDraft,
@@ -1020,37 +1022,48 @@ def _run_adapter(
     policy: GraphQLRetryPolicy,
     endpoint: str,
     sleep: Callable[[float], None],
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any, Any, GraphQLBatchResponse | None]:
     """Run the Chunk 5 adapter once for one identity, tolerating a bytes body.
 
     The adapter's request construction, correlation, response validation, and
     retry classification are all borrowed from Chunk 5; nothing here re-implements
     them. The only adaptation is the transport envelope: the frozen transport
     type is ``GraphQLBatchResponse`` with ``body_text: str``, while a
-    caller-injected transport may hand over the raw bytes an HTTP client reads.
-    This wrapper decodes such a response to the declared type and otherwise calls
-    the adapter unchanged. The injected ``sleep`` is passed through unchanged to
+    caller-injected transport may hand over a duck-typed double or the raw bytes
+    an HTTP client reads. This wrapper normalizes **every** received response to
+    the declared type -- ``http_status``, the decoded ``body_text``, and
+    ``header_names`` -- so the value handed to ``select_operation_correlation_mode``
+    and ``interpret_graphql_response`` always satisfies their
+    ``Sequence[GraphQLBatchResponse]`` contract, and otherwise calls the adapter
+    unchanged. The injected ``sleep`` is passed through unchanged to
     ``enrich_asset`` per the Chunk 5 contract (``execute_graphql_batch`` sleeps the
     return of ``retry_delay_seconds`` through that seam), so a caller that wants a
     short retry path supplies its own bounded sleeper rather than having this
     module override the seam.
+
+    Returns ``(result, draft, request, response)``: the fourth element is the last
+    ``GraphQLBatchResponse`` the transport actually returned, or ``None`` when
+    every attempt raised. The preflight captures these to select the run-level
+    correlation mode from already-received evidence and to re-interpret in memory
+    without a second request (Chunk 18 A.2b); no request is issued here beyond the
+    one ``enrich_asset`` exchange.
     """
+    captured: dict[str, Any] = {"request": None, "response": None}
 
     def _transport(request: Any, headers: Mapping[str, str]) -> GraphQLBatchResponse:
+        captured["request"] = request
         response = transport(request, headers)
-        body_text = _decode_body_text(getattr(response, "body_text", ""))
-        if getattr(response, "body_text", None) is body_text:
-            return response
-        header_names = tuple(
-            str(name) for name in getattr(response, "header_names", ())
-        )
-        return GraphQLBatchResponse(
+        decoded = GraphQLBatchResponse(
             http_status=_safe_int(getattr(response, "http_status", None)),
-            body_text=body_text,
-            header_names=header_names,
+            body_text=_decode_body_text(getattr(response, "body_text", "")),
+            header_names=tuple(
+                str(name) for name in getattr(response, "header_names", ())
+            ),
         )
+        captured["response"] = decoded
+        return decoded
 
-    return enrich_asset(
+    result, draft = enrich_asset(
         asset_identity_key,
         credentials=credentials,
         transport=_transport,
@@ -1060,6 +1073,7 @@ def _run_adapter(
         endpoint=endpoint,
         sleep=sleep,
     )
+    return result, draft, captured["request"], captured["response"]
 
 
 def run_identity_preflight(
@@ -1093,15 +1107,26 @@ def run_identity_preflight(
     ``enrich_asset`` call per unique preflight identity. ``retrieved_at_utc`` is
     caller-supplied; this module reads no clock. ``transport`` is caller-injected.
 
+    Chunk 18 A.2b: the requests are executed once under the caller's candidate
+    ``correlation_mode`` while their already-received responses are captured. The
+    run-level mode is then selected from that ordered evidence by Chunk 5's
+    ``select_operation_correlation_mode`` (skipped, staying on the candidate, when
+    the selection is empty and the preflight is ``insufficient``). Where the
+    selected mode differs from the candidate, the captured response is
+    re-interpreted in memory by Chunk 5's ``interpret_graphql_response``; no second
+    request is issued and no request construction, correlation, or validation is
+    re-implemented here.
+
     The run row, the summary, every observation, the selection flags, and the
     ``failed`` transition commit as one transaction, so a crash can never leave a
     run marked before its evidence is readable.
     """
     selection = select_preflight_identities(run, policy=policy)
 
-    observations: list[PreflightObservation] = []
+    captured: list[tuple[Any, Any, Any, GraphQLBatchResponse | None]] = []
+    responses: list[GraphQLBatchResponse | None] = []
     for identity in selection.identities:
-        result, draft = _run_adapter(
+        result, draft, request, response = _run_adapter(
             identity.asset_identity_key,
             credentials=credentials,
             transport=transport,
@@ -1111,11 +1136,32 @@ def run_identity_preflight(
             endpoint=endpoint,
             sleep=sleep,
         )
+        captured.append((result, draft, request, response))
+        responses.append(response)
+
+    selected = correlation_mode
+    if selection.identities and all(
+        response is not None for response in responses
+    ):
+        selected = select_operation_correlation_mode(
+            tuple(response for response in responses if response is not None)
+        )
+
+    observations: list[PreflightObservation] = []
+    for result, draft, request, response in captured:
+        if selected is not correlation_mode and response is not None:
+            result, draft = interpret_graphql_response(
+                request,
+                response,
+                correlation_mode=selected,
+                retrieved_at_utc=retrieved_at_utc,
+                attempts=result.attempts,
+            )
         observations.append(
             _build_observation(
                 result,
                 draft,
-                correlation_mode=correlation_mode,
+                correlation_mode=selected,
             )
         )
 
@@ -1125,7 +1171,7 @@ def run_identity_preflight(
         status=status,
         selection=selection,
         rates=rates,
-        correlation_mode=correlation_mode,
+        correlation_mode=selected,
         endpoint=endpoint,
         observations=observations,
     )
@@ -1499,7 +1545,7 @@ def enrich_unique_identities(
     failed_identity_count = 0
     with repository.transaction():
         for asset_identity_key in union.pending_keys:
-            _result, draft = _run_adapter(
+            _result, draft, _request, _response = _run_adapter(
                 asset_identity_key,
                 credentials=credentials,
                 transport=transport,
@@ -3333,7 +3379,9 @@ def run_pipeline(
         preflight_status=preflight_status.value,
         credentials=credentials,
         transport=graphql_transport,
-        correlation_mode=correlation_mode,
+        correlation_mode=GraphQLOperationCorrelationMode(
+            preflight_outcome.summary.graphql_operation_correlation_mode
+        ),
         retrieved_at_utc=clock(),
         union=union,
         projection=projection,
