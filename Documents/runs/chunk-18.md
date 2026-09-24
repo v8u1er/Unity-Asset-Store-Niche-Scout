@@ -205,3 +205,31 @@ Confirmed from the captured body (read, VERIFIED for this identity):
 Still UNVERIFIED after this capture: the shape/ordering for the **other nine** selected identities
 (uniformity), and whether an `operations` request header makes the endpoint echo `operationName`
 (H2 / option B). Both are one `python .scratch/chunk18-live-capture.py` run.
+
+## Full capture — all ten identities + H2 probe (human-run, 2026-09-24 11:45Z) — VERIFIED
+
+The human ran `.scratch/chunk18-live-capture.py`. Results (read from the pasted output):
+
+| Check | Result |
+|---|---|
+| HTTP status | **200** for all 10 identities |
+| sha256 vs recorded | **`matches_recorded=yes` for all 10** — every captured body is byte-identical to the response the tool persisted |
+| Ordering | **item 0 = ProductDetail, item 1 = ProductPageViews for all 10** (`product` then `productPageViews`) |
+| ProductDetail shape | `{"data":{"product":{id, productId, rating{average,count}, reviewCount, firstPublishedDate, state, category{id,name}, publisher{id,name}}}}` — uniform |
+| Page-views shape | `{"data":{"productPageViews": <int>=0>}}` — key is **`productPageViews`**; observed values 20/29/4/30/8/13/2/5/10/**0** (zero is a real value: identity `59028` = 0) |
+| Explicit key | **absent** in every item of all 10 |
+| **H2 / option (B)** | identity `117382` **with** `operations: ProductDetail,ProductPageViews` + `apollo-require-preflight: true` → HTTP 200, body **unchanged**, `contains_operationName=False`. **Option (B) is dead: the endpoint does not echo `operationName`.** |
+
+Decisive conclusions (VERIFIED):
+- **H2 closed: option (B) is not viable.** The explicit-key path cannot work; `VALIDATED_POSITION`
+  after preflight validation is required. Design **A.1b + A.2b** (human-approved) is the path.
+- **H3 closed:** the fixed two-operation ordering and both operation-specific shapes are uniform
+  across all ten selected preflight identities.
+- **H5 confirmed on all 10:** the ProductDetail payload is wrapped in `data.product`; the adapter must
+  unwrap it.
+- **G7 confirmed on all 10:** the page-views item key is `productPageViews`; the request field should be
+  aliased to `pageViews` so the frozen validation contract holds.
+- **Missing-not-zero note:** `productPageViews = 0` occurs (identity `59028`) and is a valid value, not
+  an error — any new validation must keep zero valid and not treat it as absent.
+
+Capture file: `.scratch/chunk18-capture.json`.
