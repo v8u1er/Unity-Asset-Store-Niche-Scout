@@ -28,7 +28,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from fixtures.graphql_fixtures import GQL_CREDENTIALS
+from fixtures.graphql_fixtures import (
+    GQL_CREDENTIALS,
+    body_json_for_items,
+    keyless_success_body_for_identity,
+    keyless_success_items_for_identity,
+)
 from niche_scout import sampling
 from niche_scout.collector_graphql import (
     PRODUCT_DETAIL_OPERATION_NAME,
@@ -92,6 +97,7 @@ __all__ = [
     "SUMMARY_KEY_SET",
     "TAXONOMY_PATH",
     "TRANSPORT_FAILURE",
+    "ProcessLocalRequestRecordingTransport",
     "VALIDATED_POSITION",
     "WRONG_DATA_SHAPE",
     "WRONG_SCALAR_TYPE",
@@ -104,6 +110,8 @@ __all__ = [
     "enrichment_result",
     "failure_mode_body",
     "failure_mode_transport",
+    "keyless_preflight_body",
+    "keyless_reversed_preflight_body",
     "observation",
     "observation_count",
     "one_asset_category_run",
@@ -598,6 +606,65 @@ class RecordingTransport:
         return tuple(seen)
 
 
+class ProcessLocalRequestRecordingTransport:
+    """A transport that records both the request and the response it returned.
+
+    ``RecordingTransport`` records only the requests; the Chunk 18 preflight
+    selection reads the already-received responses and re-interprets them in
+    memory without a second request, so a node must be able to see each
+    ``(request, response)`` call. ``body_for_identity`` is the inert lookup
+    table keyed by ``asset_identity_key``; ``default_body`` is served for an
+    identity absent from it. An identity with neither queued is a fixture defect
+    and raises ``AssertionError``. Nothing here touches the network or a clock.
+    """
+
+    def __init__(
+        self,
+        body_for_identity: Mapping[str, bytes],
+        *,
+        default_body: bytes | None = None,
+    ) -> None:
+        self._bodies = dict(body_for_identity)
+        self._default = default_body
+        self.calls: list[Any] = []
+        self.responses: list[Any] = []
+
+    def __call__(self, request: Any, headers: Mapping[str, str]) -> Any:
+        from niche_scout.collector_graphql import GraphQLBatchResponse
+
+        self.calls.append(request)
+        key = str(getattr(request, "asset_identity_key", ""))
+        body = self._bodies.get(key, self._default)
+        if body is None:
+            raise AssertionError(f"no fixture response queued for identity {key!r}")
+        if isinstance(body, (bytes, bytearray)):
+            body = bytes(body).decode("utf-8")
+        response = GraphQLBatchResponse(http_status=200, body_text=body)
+        self.responses.append(response)
+        return response
+
+    @property
+    def call_count(self) -> int:
+        """Return how many times the transport was called."""
+        return len(self.calls)
+
+    @property
+    def requested_identities(self) -> tuple[str, ...]:
+        """Return each call's ``asset_identity_key``, in call order."""
+        return tuple(
+            str(getattr(call, "asset_identity_key", "")) for call in self.calls
+        )
+
+    @property
+    def distinct_requested_identities(self) -> tuple[str, ...]:
+        """Return the distinct requested identities, in first-call order."""
+        seen: list[str] = []
+        for key in self.requested_identities:
+            if key not in seen:
+                seen.append(key)
+        return tuple(seen)
+
+
 class FailingTransport:
     """A transport that always raises (the adapter's ``TRANSPORT_FAILURE`` path)."""
 
@@ -676,6 +743,27 @@ def success_body(identity: str, *, page_views: object = 4321) -> bytes:
             "data": {"pageViews": page_views},
         },
     )
+
+
+def keyless_preflight_body(identity: str) -> bytes:
+    """Return ``identity``'s keyless two-envelope success body as bytes.
+
+    The live endpoint returns a 200 batch body with no explicit correlation key
+    (run log ``chunk-18.md`` "Full capture"), so the preflight nodes that
+    exercise the LREQ-GQL-030 validated-position selection serve bodies of this
+    shape: item 0 the ``data.product`` wrapper, item 1 ``{"pageViews": 20}``.
+    """
+    return keyless_success_body_for_identity(identity).encode("utf-8")
+
+
+def keyless_reversed_preflight_body(identity: str) -> bytes:
+    """Return ``identity``'s two keyless envelopes with their shapes reversed.
+
+    Item 0 is the page-views shape and item 1 the ProductDetail shape, which
+    breaks the fixed two-operation ordering the LREQ-GQL-030 fallback requires.
+    """
+    detail_item, page_views_item = keyless_success_items_for_identity(identity)
+    return body_json_for_items([page_views_item, detail_item]).encode("utf-8")
 
 
 #: The named failure modes exercised by ``test_preflight_identity_failure_modes``.

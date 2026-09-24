@@ -78,6 +78,8 @@ __all__ = [
     "GQL_OPERATION_NAMES",
     "IDENTITY_AGREEMENT_PRODUCT_DETAIL_PAYLOAD",
     "IDENTITY_MISMATCH_PRODUCT_DETAIL_PAYLOAD",
+    "KEYLESS_PRODUCT_DETAIL_ROOT_FIELDS",
+    "KEYLESS_PRODUCT_DETAIL_WRAPPER_FIELDS",
     "LREQ_GQL_040_FAILURE_CLASSES",
     "NON_FINITE_SCALAR_JSON",
     "OPERATION_STATUS_MEMBERS",
@@ -107,6 +109,24 @@ __all__ = [
     "empty_response_body",
     "in_order_success_body",
     "invalid_state_body",
+    "keyless_missing_page_views_body",
+    "keyless_one_item_body",
+    "keyless_page_views_boolean_body",
+    "keyless_page_views_captured_shape_body",
+    "keyless_page_views_float_body",
+    "keyless_page_views_negative_body",
+    "keyless_page_views_wrong_key_body",
+    "keyless_page_views_zero_body",
+    "keyless_product_detail_flat_legacy_body",
+    "keyless_product_detail_non_mapping_body",
+    "keyless_product_detail_null_body",
+    "keyless_product_detail_payload",
+    "keyless_success_body",
+    "keyless_success_body_for_identity",
+    "keyless_success_items",
+    "keyless_success_items_for_identity",
+    "keyless_three_item_body",
+    "keyless_wrong_order_body",
     "missing_correlation_key_body",
     "missing_identity_body",
     "missing_identity_member_body",
@@ -228,11 +248,14 @@ EXPECTED_PRODUCT_DETAIL_REQUEST_OBJECT: Mapping[str, Any] = {
     "variables": {"id": GQL_FIXTURE_ASSET_ID},
 }
 
+#: Chunk 18 G7 revision (plan §5.6): the request aliases the page-views field to
+#: ``pageViews`` so the live response ``{"data":{"pageViews": N}}`` satisfies the
+#: frozen ``validate_page_views_payload`` contract unchanged.
 EXPECTED_PRODUCT_PAGE_VIEWS_REQUEST_OBJECT: Mapping[str, Any] = {
     "operationName": "ProductPageViews",
     "query": (
         "query ProductPageViews($packageId: String!) {\n"
-        "  productPageViews(packageId: $packageId)\n"
+        "  pageViews: productPageViews(packageId: $packageId)\n"
         "}"
     ),
     "variables": {"packageId": GQL_FIXTURE_ASSET_ID},
@@ -724,6 +747,236 @@ def validated_position_ordering_body() -> str:
 def ambiguous_correlation_body() -> str:
     """Return a body whose correlation is ambiguous: a lone issued item."""
     return single_item_body()
+
+
+# ---------------------------------------------------------------------------
+# Keyless two-envelope bodies (Chunk 18, LREQ-GQL-030 / LREQ-GQL-040)
+#
+# The live endpoint returns an HTTP 200 batch body that is a JSON array of
+# exactly two bare envelopes with no ``operationName``, ``operation``, or
+# ``correlationKey`` at any level (run log ``chunk-18.md`` "Full capture" /
+# ``.scratch/chunk18-capture.json``): item 0 = ``{"data":{"product":{...}}}``
+# and item 1 = ``{"data":{"productPageViews": <int>=0>}}``. The bodies below are
+# hand-derived from that shape. They are keyless on purpose, so the adapter's
+# explicit-key path cannot associate them and position association is exercised
+# only through the LREQ-GQL-030 validated-position fallback.
+#
+# The nested ``product`` object is the H5 wrapper: every field
+# ``PRODUCT_DETAIL_REQUIRED_MEMBERS`` names is present at the product object's
+# own top level, ``id``/``productId`` agreeing with the requested identity so
+# the requested-vs-returned comparison passes. Under the Chunk 18 G7 alias the
+# adapter requests ``pageViews: productPageViews(...)``, so the live page-views
+# item is recorded here with the ``pageViews`` key the frozen validator reads.
+# The captured pre-alias shape is kept as its own variant
+# (:func:`keyless_page_views_captured_shape_body`) so a test can pin the
+# ``NULL_REQUIRED_DATA`` classification the run log's DRAFT got wrong.
+# ---------------------------------------------------------------------------
+
+#: The leaf members the live ``data.product`` object carries (SRS §4.2,
+#: ``LREQ-GQL-020``; run log ``chunk-18.md`` "Full capture"). Named so a test
+#: can assert the wrapper carries the required field set without re-listing it.
+KEYLESS_PRODUCT_DETAIL_ROOT_FIELDS: tuple[str, ...] = (
+    "id",
+    "productId",
+    "rating",
+    "reviewCount",
+    "firstPublishedDate",
+    "state",
+    "category",
+    "publisher",
+)
+
+#: The two root fields of the live two-envelope body: the ProductDetail item's
+#: ``data`` carries the ``product`` container; the page-views item's ``data``
+#: carries the ``pageViews`` scalar (run log "Full capture", G7).
+KEYLESS_PRODUCT_DETAIL_WRAPPER_FIELDS: tuple[str, ...] = ("product", "pageViews")
+
+
+def keyless_product_detail_payload(
+    asset_identity_key: str = GQL_FIXTURE_ASSET_ID,
+) -> dict[str, Any]:
+    """Return the live ``data.product`` object for a keyless envelope.
+
+    Golden (plan §8.2, hand-computed): ``rating.average`` 4.5, ``count`` 12,
+    ``reviewCount`` 7, ``firstPublishedDate`` 2019-03-04T12:30:00Z, ``state``
+    published, ``category`` ``{"id":"c1","name":"Tools"}``, ``publisher``
+    ``{"id":"p1","name":"Pub"}``, and both identity aliases equal to
+    ``asset_identity_key``. The container shapes match the live capture's
+    ``category``/``publisher`` objects (run log "Full capture").
+    """
+    return product_detail_payload(
+        asset_identity_key,
+        rating_count=12,
+        review_count=7,
+        category={"id": "c1", "name": "Tools"},
+        publisher={"id": "p1", "name": "Pub"},
+    )
+
+
+def keyless_success_items(
+    *,
+    product_detail: Mapping[str, Any] | None = None,
+    page_views: object = 20,
+) -> tuple[dict[str, Any], ...]:
+    """Return the live keyless two-envelope items, in the captured fixed order.
+
+    ``product_detail`` replaces the whole ``data`` mapping of item 0 (so a
+    variant can make the product container ``null`` or non-mapping);
+    ``page_views`` is the page-views item's scalar value (``0`` is valid).
+    No item carries an explicit correlation key of any spelling.
+    """
+    detail_data: Mapping[str, Any] = (
+        {"product": keyless_product_detail_payload()}
+        if product_detail is None
+        else product_detail
+    )
+    return (
+        {"data": detail_data},
+        {"data": {"pageViews": page_views}},
+    )
+
+
+def keyless_success_items_for_identity(identity: str) -> tuple[dict[str, Any], ...]:
+    """Return the keyless two-envelope items for ``identity``'s product object."""
+    return keyless_success_items(
+        product_detail={"product": keyless_product_detail_payload(identity)}
+    )
+
+
+def keyless_success_body(*, page_views: object = 20) -> str:
+    """Return the keyless in-order success body (ProductDetail, then page views).
+
+    Golden (plan §8.2, hand-derived): item 0 validates to a ProductDetail
+    success and item 1 yields ``product_page_views == 20``; under
+    ``VALIDATED_POSITION`` both operations must succeed. No item carries an
+    explicit key, so this body is the one the LREQ-GQL-030 fallback exists for.
+    """
+    return body_json_for_items(list(keyless_success_items(page_views=page_views)))
+
+
+def keyless_success_body_for_identity(identity: str) -> str:
+    """Return a keyless success body whose product aliases agree with ``identity``."""
+    return body_json_for_items(list(keyless_success_items_for_identity(identity)))
+
+
+def keyless_page_views_zero_body() -> str:
+    """Return a keyless success body whose page-views scalar is the valid ``0``."""
+    return keyless_success_body(page_views=0)
+
+
+def keyless_wrong_order_body() -> str:
+    """Return the same two keyless envelopes with the shapes reversed.
+
+    Item 0 is the page-views shape and item 1 is the ProductDetail shape, which
+    breaks the fixed two-operation ordering LREQ-GQL-030's fallback requires.
+    """
+    detail, page = keyless_success_items()
+    return body_json_for_items([page, detail])
+
+
+def keyless_one_item_body() -> str:
+    """Return a keyless body carrying only the ProductDetail envelope."""
+    detail, _page = keyless_success_items()
+    return body_json_for_items([detail])
+
+
+def keyless_three_item_body() -> str:
+    """Return a keyless body carrying three envelopes, not the fixed two."""
+    detail, page = keyless_success_items()
+    return body_json_for_items(
+        [detail, {"data": {"pageViews": 1}}, page]
+    )
+
+
+def keyless_product_detail_null_body() -> str:
+    """Return a keyless body whose ``data.product`` is JSON ``null``.
+
+    This is *no product data returned*: ``NULL_REQUIRED_DATA`` (plan §5.5),
+    never a zero-valued success.
+    """
+    return body_json_for_items(
+        list(keyless_success_items(product_detail={"product": None}))
+    )
+
+
+def keyless_product_detail_non_mapping_body() -> str:
+    """Return a keyless body whose ``data.product`` is a list, not a mapping.
+
+    A wrong container kind: ``WRONG_DATA_SHAPE`` (plan §5.5), distinct from the
+    null case above.
+    """
+    return body_json_for_items(
+        list(keyless_success_items(product_detail={"product": [product_detail_payload()]}))
+    )
+
+
+def keyless_product_detail_flat_legacy_body() -> str:
+    """Return a keyless body whose ``data`` is the flat legacy product payload.
+
+    There is no ``product`` key, so the H5 unwrap must leave the legacy payload
+    path unchanged and the body still validates as a success.
+    """
+    return body_json_for_items(
+        [
+            {"data": product_detail_payload()},
+            {"data": {"pageViews": 20}},
+        ]
+    )
+
+
+def keyless_page_views_captured_shape_body() -> str:
+    """Return a keyless body with the pre-G7 captured page-views key.
+
+    The live capture's page-views item was ``{"data":{"productPageViews":20}}``
+    (run log "Full capture", G7): a mapping *without* the required
+    ``pageViews`` member, which the frozen validator classifies
+    ``NULL_REQUIRED_DATA`` — never ``WRONG_DATA_SHAPE`` (plan §8.4 DRAFT
+    correction), and never a zero-valued success.
+    """
+    return body_json_for_items(
+        [
+            {"data": {"product": keyless_product_detail_payload()}},
+            {"data": {"productPageViews": 20}},
+        ]
+    )
+
+
+def keyless_page_views_wrong_key_body() -> str:
+    """Return a keyless body whose page-views item carries a non-``pageViews`` key."""
+    return keyless_page_views_captured_shape_body()
+
+
+def keyless_missing_page_views_body() -> str:
+    """Return a keyless body whose page-views ``data`` mapping is empty."""
+    return body_json_for_items(
+        [
+            {"data": {"product": product_detail_payload()}},
+            {"data": {}},
+        ]
+    )
+
+
+def keyless_page_views_negative_body() -> str:
+    """Return a keyless body whose ``pageViews`` is ``-1``.
+
+    LREQ-GQL-040 names boolean/negative/non-finite page views as an operation
+    error; the rejected scalar is never coerced to ``0``.
+    """
+    return keyless_success_body(page_views=-1)
+
+
+def keyless_page_views_boolean_body() -> str:
+    """Return a keyless body whose ``pageViews`` is JSON ``true``.
+
+    ``bool`` is rejected before any numeric test (LREQ-GQL-040), and it must not
+    pass as the integer ``1``.
+    """
+    return keyless_success_body(page_views=True)
+
+
+def keyless_page_views_float_body() -> str:
+    """Return a keyless body whose ``pageViews`` is the non-integral ``1.5``."""
+    return keyless_success_body(page_views=1.5)
 
 
 def empty_response_body() -> str:

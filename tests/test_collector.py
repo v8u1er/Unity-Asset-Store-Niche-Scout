@@ -2056,65 +2056,68 @@ def test_explicit_key_mode_never_falls_back_to_response_position() -> None:
 
 
 @pytest.mark.lreq("LREQ-GQL-030")
-def test_validated_position_mode_is_accepted_not_validated_here() -> None:
-    """``VALIDATED_POSITION`` is accepted as the caller's validated ordering."""
-    transport = gqlfx.RecordingTransport(
-        [{"http_status": 200, "body_text": gqlfx.in_order_success_body()}]
+def test_validated_position_mode_correlates_by_position_when_requested() -> None:
+    """``VALIDATED_POSITION`` associates the two keyless envelopes by position.
+
+    Chunk 18 §8.3 (approved rename): the caller's mode drives correlation; the
+    old "accepted, not validated here" stamping is gone. The fixed
+    two-operation ordering is what the identity preflight validates before this
+    mode is selected (LREQ-GQL-030, SRS-lean:300-312).
+    """
+    headers = collector_graphql.build_graphql_headers(
+        credentials=gqlfx.GQL_CREDENTIALS
     )
-    request = collector_graphql.build_graphql_batch_request(
-        GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+    transport = gqlfx.RecordingTransport(
+        [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
     )
     result = collector_graphql.execute_graphql_batch(
-        request,
-        transport=transport,
-        headers=collector_graphql.build_graphql_headers(
-            credentials=gqlfx.GQL_CREDENTIALS
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
         ),
+        transport=transport,
+        headers=headers,
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
         sleep=gqlfx.RecordingSleeper(),
     )
-    # Execution still defaults to the explicit-key mode; the caller's mode is
-    # stamped onto the result by ``enrich_asset`` and is not re-validated there.
-    transport2 = gqlfx.RecordingTransport(
-        [{"http_status": 200, "body_text": gqlfx.in_order_success_body()}]
-    )
-    sleeper = gqlfx.RecordingSleeper()
-    request2 = collector_graphql.build_graphql_batch_request(
-        GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
-    )
-    result2 = collector_graphql.execute_graphql_batch(
-        request2,
-        transport=transport2,
-        headers=collector_graphql.build_graphql_headers(
-            credentials=gqlfx.GQL_CREDENTIALS
-        ),
-        sleep=sleeper,
-    )
-    stamped = dataclasses.replace(
-        result2,
-        correlation=dataclasses.replace(
-            result2.correlation,
-            mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
-        ),
-    )
-    assert stamped.correlation.mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION
-    assert stamped.correlation.is_fully_correlated
-    assert stamped.page_views.is_success
 
-    # The two persisted modes are exactly the enum's members.
-    assert set(gqlfx.CORRELATION_MODE_MEMBERS) == set(
-        GraphQLOperationCorrelationMode
-    )
-    assert "excluded" not in {m.value for m in GraphQLOperationCorrelationMode}
-    assert "candidate" not in {m.value for m in GraphQLOperationCorrelationMode}
+    # Item 0 is the ProductDetail envelope and item 1 the page-views envelope:
+    # position is the association, and it is reported per operation.
+    by_index = {
+        match.operation_name: match.item_index for match in result.correlation.matches
+    }
+    assert by_index[GQL_ORDERED_OPERATIONS[0]] == 0
+    assert by_index[GQL_ORDERED_OPERATIONS[1]] == 1
+    assert result.correlation.is_fully_correlated is True
+    assert result.product_detail.is_success
+    assert result.page_views.is_success
+    assert result.page_views.payload == {"pageViews": 20}
+    assert transport.call_count == 1
 
-    # The ordering the adapter accepts, not validates: a keyed body whose items
-    # cannot present the fixed ordering is ambiguous, never silently reordered.
-    _t3, _s3, (ambiguous, _d3) = gql_exchange(
-        [{"http_status": 200, "body_text": gqlfx.validated_position_ordering_body()}]
-    )
-    assert ambiguous.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
-    assert result.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
-    assert result.is_success
+    # A keyed or one-item body cannot present the validated ordering: both
+    # operations are ambiguous, never a positional guess.
+    for body_text in (gqlfx.in_order_success_body(), gqlfx.keyless_one_item_body()):
+        ambiguous = collector_graphql.execute_graphql_batch(
+            collector_graphql.build_graphql_batch_request(
+                GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+            ),
+            transport=gqlfx.RecordingTransport(
+                [{"http_status": 200, "body_text": body_text}]
+            ),
+            headers=headers,
+            correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+            sleep=gqlfx.RecordingSleeper(),
+        )
+        assert ambiguous.correlation.is_fully_correlated is False
+        assert ambiguous.both_operations_malformed is True
+        assert ambiguous.product_detail.status is OperationStatus.ERROR
+        assert ambiguous.page_views.status is OperationStatus.ERROR
+        assert ambiguous.product_detail.payload is None
+        assert ambiguous.page_views.payload is None
+        for match in ambiguous.correlation.matches:
+            assert (
+                match.failure_class
+                is collector_graphql.GraphQLFailureClass.OPERATION_CORRELATION_AMBIGUOUS
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -3294,3 +3297,410 @@ def test_normalization_is_deterministic_for_equal_live_records() -> None:
     assert [projection(rows_a[ordinal]) for ordinal in sorted(rows_a)] == [
         projection(rows_b[ordinal]) for ordinal in sorted(rows_b)
     ]
+
+
+# ---------------------------------------------------------------------------
+# Chunk 18 — correlation-mode selection and the live keyless shapes
+# ---------------------------------------------------------------------------
+#
+# Scope authority: Documents/plans/chunk-18-graphql-correlation-mode-selection.md
+# §8.1. The live endpoint returns an HTTP 200 batch body with no explicit
+# correlation key (run log Documents/runs/chunk-18.md "Full capture"), so the
+# LREQ-GQL-030 validated-position fallback is the path production must reach.
+# Every transport here is a recording fake; no node reads a clock or a network.
+
+
+def gql_batch_response(body_text: str) -> collector_graphql.GraphQLBatchResponse:
+    """Return a 200 ``GraphQLBatchResponse`` carrying ``body_text``."""
+    return collector_graphql.GraphQLBatchResponse(
+        http_status=200, body_text=body_text
+    )
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+def test_execute_graphql_batch_honours_caller_correlation_mode() -> None:
+    """The mode passed to ``execute_graphql_batch`` is the mode correlation runs.
+
+    Plan §7.1: the keyword is validated and threaded to correlation, so the
+    passed mode is what each operation and ``correlation.mode`` report; omitting
+    it reproduces the explicit-key behaviour exactly.
+    """
+    headers = collector_graphql.build_graphql_headers(
+        credentials=gqlfx.GQL_CREDENTIALS
+    )
+    transport = gqlfx.RecordingTransport(
+        [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
+    )
+    result = collector_graphql.execute_graphql_batch(
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+        ),
+        transport=transport,
+        headers=headers,
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+        sleep=gqlfx.RecordingSleeper(),
+    )
+
+    # The passed mode is the mode each operation and the correlation report.
+    assert (
+        result.correlation.mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    assert (
+        result.product_detail.correlation_mode
+        is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    assert (
+        result.page_views.correlation_mode
+        is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    assert result.correlation.is_fully_correlated is True
+    assert result.product_detail.is_success and result.page_views.is_success
+
+    # The keyword omitted: the frozen default is explicit key, and over this
+    # keyless body the explicit-key path associates nothing.
+    default_result = collector_graphql.execute_graphql_batch(
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+        ),
+        transport=gqlfx.RecordingTransport(
+            [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
+        ),
+        headers=headers,
+        sleep=gqlfx.RecordingSleeper(),
+    )
+    assert (
+        default_result.correlation.mode
+        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )
+    assert (
+        default_result.product_detail.correlation_mode
+        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )
+    assert default_result.both_operations_malformed is True
+
+    # The omitted keyword over a keyed body reproduces the previous behaviour
+    # exactly: both operations succeed by their explicit keys.
+    keyed_default = collector_graphql.execute_graphql_batch(
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+        ),
+        transport=gqlfx.RecordingTransport(
+            [{"http_status": 200, "body_text": gqlfx.in_order_success_body()}]
+        ),
+        headers=headers,
+        sleep=gqlfx.RecordingSleeper(),
+    )
+    assert (
+        keyed_default.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )
+    assert keyed_default.is_success
+
+    # A non-member mode is refused before any correlation (§7.1).
+    bad_mode: Any = "validated_position_fixture_unvalidated"
+    with pytest.raises(TypeError):
+        collector_graphql.execute_graphql_batch(
+            collector_graphql.build_graphql_batch_request(
+                GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+            ),
+            transport=gqlfx.RecordingTransport(
+                [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
+            ),
+            headers=headers,
+            correlation_mode=bad_mode,
+            sleep=gqlfx.RecordingSleeper(),
+        )
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+def test_explicit_key_mode_marks_keyless_body_correlation_missing() -> None:
+    """Under the explicit-key mode a keyless body is malformed, never positional.
+
+    LREQ-GQL-030 (SRS-lean:300-312): with no explicit key and no validated
+    position, both operations are marked malformed and their fields stay
+    unavailable -- the run's candidate mode before the preflight selects.
+    """
+    result = collector_graphql.execute_graphql_batch(
+        collector_graphql.build_graphql_batch_request(
+            GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+        ),
+        transport=gqlfx.RecordingTransport(
+            [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
+        ),
+        headers=collector_graphql.build_graphql_headers(
+            credentials=gqlfx.GQL_CREDENTIALS
+        ),
+        correlation_mode=GraphQLOperationCorrelationMode.EXPLICIT_KEY,
+        sleep=gqlfx.RecordingSleeper(),
+    )
+
+    assert result.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    assert result.correlation.is_fully_correlated is False
+    assert result.both_operations_malformed is True
+    for match in result.correlation.matches:
+        assert (
+            match.failure_class
+            is collector_graphql.GraphQLFailureClass.OPERATION_CORRELATION_MISSING
+        )
+        assert match.item_index is None
+    assert result.product_detail.status is OperationStatus.ERROR
+    assert result.page_views.status is OperationStatus.ERROR
+    assert result.product_detail.payload is None
+    assert result.page_views.payload is None
+    assert not result.is_success
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+def test_product_detail_data_product_wrapper_is_unwrapped() -> None:
+    """The live ``data.product`` wrapper is unwrapped before validation (H5).
+
+    Plan §5.5/§8.2, hand-derived: a mapping ``product`` unwraps to the product
+    object and validates (rating average 4.5, count 12, review count 7, page
+    views 20); ``product: null`` is ``NULL_REQUIRED_DATA``; a non-mapping
+    ``product`` is ``WRONG_DATA_SHAPE``; ``data: null`` takes the envelope-null
+    branch (``NULL_REQUIRED_DATA``); a flat ``data`` (no ``product`` key) keeps
+    the legacy path unchanged. No field is defaulted or coerced.
+    """
+    # ``product`` mapping -> the unwrapped product object validates.
+    _t1, _s1, (unwrapped, draft_unwrapped) = gql_exchange(
+        [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+    assert unwrapped.product_detail.is_success
+    assert unwrapped.product_detail.payload is not None
+    assert "product" not in unwrapped.product_detail.payload
+    assert unwrapped.product_detail.payload["id"] == GQL_ASSET_ID
+    assert draft_unwrapped.graphql_id == GQL_ASSET_ID
+    assert draft_unwrapped.product_id == GQL_ASSET_ID
+    assert draft_unwrapped.rating_average == pytest.approx(4.5, abs=1e-9)
+    assert draft_unwrapped.rating_count == 12
+    assert draft_unwrapped.review_count == 7
+    assert draft_unwrapped.state == "published"
+    assert draft_unwrapped.product_page_views == 20
+
+    # ``product: null`` -> no product data returned.
+    _t2, _s2, (null_product, draft_null) = gql_exchange(
+        [{"http_status": 200, "body_text": gqlfx.keyless_product_detail_null_body()}],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+    assert null_product.product_detail.status is OperationStatus.ERROR
+    assert (
+        null_product.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA
+    )
+    assert null_product.product_detail.payload is None
+    assert draft_null.graphql_id is None
+    assert draft_null.product_id is None
+    # A failed operation's fields stay unavailable; the sibling is untouched.
+    assert null_product.page_views.is_success
+    assert draft_null.product_page_views == 20
+    assert null_product.is_partial_success
+
+    # ``product: [..]`` -> wrong container kind.
+    _t3, _s3, (list_product, _draft_list) = gql_exchange(
+        [
+            {
+                "http_status": 200,
+                "body_text": gqlfx.keyless_product_detail_non_mapping_body(),
+            }
+        ],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+    assert list_product.product_detail.status is OperationStatus.ERROR
+    assert (
+        list_product.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.WRONG_DATA_SHAPE
+    )
+    assert list_product.product_detail.payload is None
+
+    # ``data: null`` -> the existing envelope-null branch.
+    _t4, _s4, (null_data, draft_data) = gql_exchange(
+        [
+            {
+                "http_status": 200,
+                "body_text": gqlfx.body_json_for_items(
+                    [{"data": None}, {"data": {"pageViews": 20}}]
+                ),
+            }
+        ],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+    assert null_data.product_detail.status is OperationStatus.ERROR
+    assert (
+        null_data.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA
+    )
+    assert draft_data.product_page_views == 20
+
+    # A flat legacy ``data`` (no ``product`` key) validates as today.
+    _t5, _s5, (flat, draft_flat) = gql_exchange(
+        [
+            {
+                "http_status": 200,
+                "body_text": gqlfx.keyless_product_detail_flat_legacy_body(),
+            }
+        ],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+    assert flat.product_detail.is_success
+    assert draft_flat.graphql_id == GQL_ASSET_ID
+    assert draft_flat.product_id == GQL_ASSET_ID
+    assert draft_flat.product_page_views == 20
+
+
+@pytest.mark.lreq("LREQ-GQL-020")
+def test_product_page_views_request_alias_is_page_views() -> None:
+    """The ``ProductPageViews`` request aliases its scalar field to ``pageViews``.
+
+    Plan §5.6 (G7): the live response key is ``pageViews`` after the alias, so
+    the frozen ``validate_page_views_payload`` contract holds unchanged; the
+    request query text and the whole request body are the updated goldens.
+    """
+    operation = collector_graphql.build_product_page_views_operation(GQL_ASSET_ID)
+    request = collector_graphql.build_graphql_batch_request(
+        GQL_ASSET_ID, credentials=gqlfx.GQL_CREDENTIALS
+    )
+    expected_query = (
+        "query ProductPageViews($packageId: String!) {\n"
+        "  pageViews: productPageViews(packageId: $packageId)\n"
+        "}"
+    )
+
+    assert operation.query == expected_query
+    assert operation.query == gqlfx.EXPECTED_PRODUCT_PAGE_VIEWS_REQUEST_OBJECT["query"]
+    body_objects = gql_request_objects(request.body_json)
+    assert body_objects[1] == gqlfx.EXPECTED_PRODUCT_PAGE_VIEWS_REQUEST_OBJECT
+    assert body_objects[1]["variables"] == {"packageId": GQL_ASSET_ID}
+    assert request.body_json == gqlfx.TWO_OPERATION_BODY_JSON
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+def test_keyless_page_views_zero_is_a_valid_value() -> None:
+    """A keyless ``{"data":{"pageViews":0}}`` is the valid explicit zero.
+
+    LREQ-GQL-040 / plan §5.6: zero is a measured value, never absent and never
+    a failure; the operation succeeds and the draft carries ``0``, not ``None``.
+    """
+    _t, _s, (result, draft) = gql_exchange(
+        [{"http_status": 200, "body_text": gqlfx.keyless_page_views_zero_body()}],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+
+    assert result.is_success
+    assert result.page_views.is_success
+    assert result.page_views.payload == {"pageViews": 0}
+    assert draft.product_page_views == 0
+    assert draft.product_page_views is not None
+    assert isinstance(draft.product_page_views, int)
+    assert not isinstance(draft.product_page_views, bool)
+    assert draft.page_views_status == OperationStatus.SUCCESS.value
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+def test_keyless_page_views_wrong_key_is_null_required_data() -> None:
+    """The captured pre-G7 ``productPageViews`` key is ``NULL_REQUIRED_DATA``.
+
+    Run log ``chunk-18.md`` "Full capture" (G7) and plan §8.4: a mapping without
+    the required ``pageViews`` member is missing required data, not a wrong
+    shape, and never a zero-valued success.
+    """
+    _t, _s, (result, draft) = gql_exchange(
+        [{"http_status": 200, "body_text": gqlfx.keyless_page_views_wrong_key_body()}],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+
+    assert result.product_detail.is_success
+    assert not result.page_views.is_success
+    assert (
+        result.page_views.failure_class
+        is collector_graphql.GraphQLFailureClass.NULL_REQUIRED_DATA
+    )
+    assert result.page_views.payload is None
+    assert draft.product_page_views is None
+    assert draft.page_views_status == OperationStatus.ERROR.value
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+def test_select_operation_correlation_mode_rejects_empty_evidence() -> None:
+    """Selection is total: empty evidence raises, every shape rule selects the mode.
+
+    Plan §5.2/§7.2, exhaustively: a zero-identity preflight is ``insufficient``
+    and selection is not reached, so an empty sequence is a caller ``ValueError``
+    (never a substituted default). The valid keyless fixed-order shape selects
+    ``VALIDATED_POSITION``; an explicit key, a wrong count, a wrong shape, or a
+    decode failure selects ``EXPLICIT_KEY`` -- all-or-nothing across responses.
+    """
+    select_mode = collector_graphql.select_operation_correlation_mode
+
+    with pytest.raises(ValueError):
+        select_mode(())
+
+    # The valid keyless two-envelope shape: the LREQ-GQL-030 fallback.
+    assert (
+        select_mode((gql_batch_response(gqlfx.keyless_success_body()),))
+        is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    # Zero page views is a valid value, so it still validates the shape.
+    assert (
+        select_mode((gql_batch_response(gqlfx.keyless_page_views_zero_body()),))
+        is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    # The all-or-nothing rule: two clean keyless responses validate...
+    assert (
+        select_mode(
+            (
+                gql_batch_response(gqlfx.keyless_success_body()),
+                gql_batch_response(
+                    gqlfx.keyless_success_body_for_identity(
+                        gqlfx.GQL_FIXTURE_ASSET_ID_OTHER
+                    )
+                ),
+            )
+        )
+        is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+    )
+    # ...and one bad response anywhere selects explicit key for the whole run.
+    assert (
+        select_mode(
+            (
+                gql_batch_response(gqlfx.keyless_success_body()),
+                gql_batch_response(gqlfx.keyless_wrong_order_body()),
+            )
+        )
+        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )
+
+    for body_text in (
+        gqlfx.keyless_wrong_order_body(),  # reversed shapes
+        gqlfx.keyless_one_item_body(),  # wrong count
+        gqlfx.keyless_three_item_body(),  # wrong count
+        gqlfx.keyless_product_detail_null_body(),  # product: null
+        gqlfx.keyless_product_detail_non_mapping_body(),  # product: [..]
+        gqlfx.keyless_page_views_negative_body(),  # -1
+        gqlfx.keyless_page_views_boolean_body(),  # true
+        gqlfx.keyless_page_views_float_body(),  # 1.5
+        gqlfx.keyless_missing_page_views_body(),  # no pageViews member
+        gqlfx.keyless_page_views_wrong_key_body(),  # productPageViews
+        gqlfx.empty_response_body(),  # []
+        gqlfx.empty_body(),  # ""
+        gqlfx.non_json_body(),  # not JSON
+        gqlfx.non_array_body(),  # JSON object, not an array
+    ):
+        assert (
+            select_mode((gql_batch_response(body_text),))
+            is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        ), body_text
+
+    # An explicit key is the primary association, even mixed with keyless bodies.
+    assert (
+        select_mode((gql_batch_response(gqlfx.in_order_success_body()),))
+        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )
+    assert (
+        select_mode(
+            (
+                gql_batch_response(gqlfx.keyless_success_body()),
+                gql_batch_response(gqlfx.in_order_success_body()),
+            )
+        )
+        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+    )

@@ -139,6 +139,12 @@
   "tests/test_collector.py::test_exact_category_match_scalar_and_multivalued": [
     "LREQ-EXT-080"
   ],
+  "tests/test_collector.py::test_execute_graphql_batch_honours_caller_correlation_mode": [
+    "LREQ-GQL-030"
+  ],
+  "tests/test_collector.py::test_explicit_key_mode_marks_keyless_body_correlation_missing": [
+    "LREQ-GQL-030"
+  ],
   "tests/test_collector.py::test_explicit_key_mode_never_falls_back_to_response_position": [
     "LREQ-GQL-030"
   ],
@@ -172,6 +178,12 @@
     "LREQ-NFR-010"
   ],
   "tests/test_collector.py::test_invalid_state_value_and_missing_identity_are_operation_errors": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_keyless_page_views_wrong_key_is_null_required_data": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_keyless_page_views_zero_is_a_valid_value": [
     "LREQ-GQL-040"
   ],
   "tests/test_collector.py::test_live_multivalued_category_is_matched_verbatim_after_normalization": [
@@ -244,10 +256,16 @@
   "tests/test_collector.py::test_persisted_metadata_and_error_summaries_contain_no_credentials": [
     "LREQ-SEC-020"
   ],
+  "tests/test_collector.py::test_product_detail_data_product_wrapper_is_unwrapped": [
+    "LREQ-GQL-040"
+  ],
   "tests/test_collector.py::test_product_detail_query_requests_only_required_fields": [
     "LREQ-GQL-020"
   ],
   "tests/test_collector.py::test_product_detail_query_selects_category_and_publisher_id_name": [
+    "LREQ-GQL-020"
+  ],
+  "tests/test_collector.py::test_product_page_views_request_alias_is_page_views": [
     "LREQ-GQL-020"
   ],
   "tests/test_collector.py::test_raw_nested_discovery_fields_are_read_from_the_live_record_shape": [
@@ -282,6 +300,9 @@
     "LREQ-GQL-030",
     "LREQ-TST-040"
   ],
+  "tests/test_collector.py::test_select_operation_correlation_mode_rejects_empty_evidence": [
+    "LREQ-GQL-030"
+  ],
   "tests/test_collector.py::test_state_annotation_covers_published_excluded_and_unknown": [
     "LREQ-GQL-060"
   ],
@@ -304,7 +325,7 @@
   "tests/test_collector.py::test_uri_fallback_and_unparseable_candidates_contribute_nothing": [
     "LREQ-EXT-060"
   ],
-  "tests/test_collector.py::test_validated_position_mode_is_accepted_not_validated_here": [
+  "tests/test_collector.py::test_validated_position_mode_correlates_by_position_when_requested": [
     "LREQ-GQL-030"
   ],
   "tests/test_collector.py::test_zero_result_category_requires_verified_filter": [
@@ -809,6 +830,22 @@
   ],
   "tests/test_identity_preflight.py::test_preflight_policy_defaults_and_config_read": [
     "LREQ-ID-030"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_rejects_position_when_ordering_is_wrong": [
+    "LREQ-GQL-030",
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_selected_mode_is_persisted_and_reused_without_a_second_request": [
+    "LREQ-ID-040",
+    "LREQ-GQL-080"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_selects_explicit_key_when_any_identity_is_keyed": [
+    "LREQ-GQL-030",
+    "LREQ-ID-020"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_selects_validated_position_for_keyless_bodies": [
+    "LREQ-GQL-030",
+    "LREQ-ID-020"
   ],
   "tests/test_identity_preflight.py::test_run_identity_preflight_failed_operation_does_not_abort_loop": [
     "LREQ-ID-020"

@@ -1309,6 +1309,201 @@ def test_run_identity_preflight_passes_caller_seams_through(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# 9 — Chunk 18: evidence-derived correlation-mode selection (LREQ-GQL-030)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+@pytest.mark.lreq("LREQ-ID-020")
+def test_preflight_selects_validated_position_for_keyless_bodies(tmp_path):
+    """Every keyless live-shaped body selects and persists ``validated_position``.
+
+    Plan §5.4/§8.1: the candidate the caller supplied is explicit key, and the
+    keyless bodies cannot be associated under it; the preflight selects
+    ``validated_position`` from the already-received responses, re-interprets
+    them in memory, and gates on both operations succeeding.
+    """
+    run = pf.two_asset_run()
+    repository = _seeded(tmp_path, run)
+    try:
+        transport = pf.ProcessLocalRequestRecordingTransport(
+            {key: pf.keyless_preflight_body(key) for key in (pf.A, pf.B)}
+        )
+        outcome = _run_preflight(repository, run, transport=transport)
+
+        assert outcome.status.value == "passed"
+        assert (
+            outcome.summary.graphql_operation_correlation_mode
+            == pf.VALIDATED_POSITION.value
+        )
+        assert len(outcome.observations) == 2
+        for observation in outcome.observations:
+            assert observation.correlation_mode == pf.VALIDATED_POSITION.value
+            assert observation.product_detail_status == "success"
+            assert observation.page_views_status == "success"
+            assert observation.is_both_operations_success is True
+
+        # The persisted run row and summary carry the same selected mode.
+        record = repository.get_run(run.run_id)
+        assert record is not None
+        assert (
+            record.graphql_operation_correlation_mode
+            == pf.VALIDATED_POSITION.value
+        )
+        summary = json.loads(record.identity_preflight_summary_json)
+        assert (
+            summary["graphql_operation_correlation_mode"]
+            == pf.VALIDATED_POSITION.value
+        )
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+@pytest.mark.lreq("LREQ-ID-020")
+def test_preflight_selects_explicit_key_when_any_identity_is_keyed(tmp_path):
+    """A keyed response anywhere keeps the whole run on ``explicit_key``.
+
+    Plan §5.2: the explicit key is the primary association, and selection is
+    all-or-nothing across the selected identities. A mixed run selects
+    explicit key, so the keyless identity's operations are malformed rather
+    than silently associated by position.
+    """
+    run = pf.two_asset_run()
+    repository = _seeded(tmp_path, run)
+    try:
+        # (1) Every response keyed: selection keeps the primary association.
+        keyed = pf.ProcessLocalRequestRecordingTransport(
+            {key: pf.success_body(key) for key in (pf.A, pf.B)}
+        )
+        keyed_outcome = _run_preflight(repository, run, transport=keyed)
+        assert keyed_outcome.status.value == "passed"
+        assert (
+            keyed_outcome.summary.graphql_operation_correlation_mode
+            == pf.EXPLICIT_KEY.value
+        )
+        for observation in keyed_outcome.observations:
+            assert observation.correlation_mode == pf.EXPLICIT_KEY.value
+            assert observation.is_both_operations_success is True
+
+        # (2) Mixed: one keyed response forces explicit key for the whole run;
+        # the keyless identity cannot be associated under it.
+        mixed = pf.ProcessLocalRequestRecordingTransport(
+            {pf.A: pf.success_body(pf.A), pf.B: pf.keyless_preflight_body(pf.B)}
+        )
+        mixed_outcome = _run_preflight(repository, run, transport=mixed)
+        assert (
+            mixed_outcome.summary.graphql_operation_correlation_mode
+            == pf.EXPLICIT_KEY.value
+        )
+        by_key = {
+            observation.asset_identity_key: observation
+            for observation in mixed_outcome.observations
+        }
+        assert by_key[pf.A].is_both_operations_success is True
+        assert by_key[pf.A].correlation_mode == pf.EXPLICIT_KEY.value
+        assert by_key[pf.B].correlation_mode == pf.EXPLICIT_KEY.value
+        assert by_key[pf.B].product_detail_status == "error"
+        assert by_key[pf.B].page_views_status == "error"
+        assert by_key[pf.B].is_both_operations_success is False
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-GQL-030")
+@pytest.mark.lreq("LREQ-ID-020")
+def test_preflight_rejects_position_when_ordering_is_wrong(tmp_path):
+    """Reversed keyless shapes fail the LREQ-GQL-030 ordering validation.
+
+    Plan §8.1: a keyless run whose bodies cannot present the fixed
+    two-operation ordering selects ``explicit_key``; the preflight then fails
+    and both operations are malformed, never positionally guessed.
+    """
+    run = pf.two_asset_run()
+    repository = _seeded(tmp_path, run)
+    try:
+        transport = pf.ProcessLocalRequestRecordingTransport(
+            {key: pf.keyless_reversed_preflight_body(key) for key in (pf.A, pf.B)}
+        )
+        outcome = _run_preflight(repository, run, transport=transport)
+
+        assert (
+            outcome.summary.graphql_operation_correlation_mode
+            == pf.EXPLICIT_KEY.value
+        )
+        assert outcome.status.value == "failed"
+        assert outcome.rates.attempted_unique_identities == 2
+        assert outcome.rates.successful_unique_identities == 0
+        for observation in outcome.observations:
+            assert observation.correlation_mode == pf.EXPLICIT_KEY.value
+            assert observation.product_detail_status == "error"
+            assert observation.page_views_status == "error"
+            assert observation.is_both_operations_success is False
+
+        record = repository.get_run(run.run_id)
+        assert record is not None
+        assert record.graphql_operation_correlation_mode == pf.EXPLICIT_KEY.value
+        summary = json.loads(record.identity_preflight_summary_json)
+        assert summary["graphql_operation_correlation_mode"] == "explicit_key"
+        assert summary["status"] == "failed"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-ID-040")
+@pytest.mark.lreq("LREQ-GQL-080")
+def test_preflight_selected_mode_is_persisted_and_reused_without_a_second_request(
+    tmp_path,
+):
+    """Selection and re-interpretation make no second request; the mode persists.
+
+    LREQ-ID-040/LREQ-GQL-080: one request per unique selected identity, the
+    already-received response is reused (re-interpreted in memory under the
+    selected mode), and the selected mode reaches the run row, the summary,
+    and every observation.
+    """
+    run = pf.two_asset_run()
+    repository = _seeded(tmp_path, run)
+    try:
+        transport = pf.ProcessLocalRequestRecordingTransport(
+            {key: pf.keyless_preflight_body(key) for key in (pf.A, pf.B)}
+        )
+        outcome = _run_preflight(repository, run, transport=transport)
+
+        # Exactly one request per unique selected identity: the second pass is
+        # in-memory, so a re-request would raise the call count above the
+        # selection's identity count.
+        selected_keys = tuple(
+            identity.asset_identity_key
+            for identity in _selection(run, policy=pf.small_policy()).identities
+        )
+        assert selected_keys == (pf.A, pf.B)
+        assert len(transport.responses) == transport.call_count
+        assert transport.call_count == len(selected_keys)
+        assert transport.distinct_requested_identities == selected_keys
+        assert transport.call_count == len(outcome.observations)
+
+        # The selected mode is public on the outcome and on every observation.
+        assert (
+            outcome.summary.graphql_operation_correlation_mode
+            == "validated_position"
+        )
+        for observation in outcome.observations:
+            assert observation.correlation_mode == "validated_position"
+
+        # The persisted run row and summary carry the selected mode, and the
+        # successful responses are the one enrichment observation each.
+        record = repository.get_run(run.run_id)
+        assert record is not None
+        assert record.graphql_operation_correlation_mode == "validated_position"
+        summary = json.loads(record.identity_preflight_summary_json)
+        assert summary["graphql_operation_correlation_mode"] == "validated_position"
+        assert pf.observation_count(repository, run.run_id) == 2
+    finally:
+        repository.close()
+
+
+# --------------------------------------------------------------------------
 # Small local helpers (test-only; never fixture logic).
 # --------------------------------------------------------------------------
 
