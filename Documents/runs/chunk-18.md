@@ -246,3 +246,43 @@ Capture file: `.scratch/chunk18-capture.json`.
 | Lead verify (step 6) | DONE | `python -m pytest -q` → **645 passed in 20.61s**; `validate_traceability` → `631 matrix nodes`, valid; `check_import_boundaries` → valid; `check_scope_prohibitions` → valid; `check_secrets` → valid; `ruff check` on both changed files → `All checks passed!`; `git diff --name-only` = exactly the plan §6 files (`collector_graphql.py`, `pipeline.py`). `ruff format --check` reports both files would be reformatted (pre-existing style in untouched regions; no E/F/I findings) — same Chunk 14/15/16/17 format caveat, recorded as PARTIAL. |
 | Review — `spec-reviewer` | VERDICT: PASS | `ses_f2b4c6657ffeucDBs2o5Yo22vd`. No Blocker/Major; six Minors recorded below. Independently re-ran the suite (`645 passed`) and all four validators. |
 | Review fixes (round 1) | DONE | `ses_f2b3a65dcffeI4no721hKOT0Fr` (one provider 502, resumed once). Fixed Minor 1 (wrapped the new `E501` at `graphql_fixtures.py:909`) and Minor 4 (restored the enum-membership assertions in the renamed node). Lead re-verified: `pytest` **645 passed**; `validate_traceability` valid; `ruff check` on the two changed test files → 36 findings, **all pre-existing** (the new-hunk E501 at :909 is gone; no F401/I001 from the new code). Commit `c921dde`. |
+
+## Review (step 7) — Minors recorded
+
+`spec-reviewer` VERDICT: PASS, no Blocker/Major. Minors:
+
+1. **New `E501` in a changed fixture (FIXED, `c921dde`).** `graphql_fixtures.py:909` — wrapped.
+2. **Stale docstring (open, Minor).** `pipeline.py:601-610` `_correlation_mode_is_valid` still says
+   "`enrich_asset` rewrites the correlation to the caller-requested mode", which the relabel deletion
+   made false. The check itself is correct. Comment-only; no behaviour impact.
+3. **Selection-skip edge (open, Minor).** `pipeline.py:1142-1148` skips selection when any selected
+   identity has no response (all attempts raised). Not in plan §5.4, undocumented; conservative under
+   the production default (`EXPLICIT_KEY`), but a `VALIDATED_POSITION` **candidate** plus one
+   transport-failed identity would persist `validated_position` without the ordering/shape validation
+   having run across all selected identities (LREQ-GQL-030). **Human checkpoint:** decide whether to
+   document the branch (minimal) or change it to treat a missing response as not-validated.
+4. **Lost enum-membership assertion (FIXED, `c921dde`).** Restored in the renamed node.
+5. **`interpret_graphql_response` edge contract untested (open, plan gap, Minor).** No §8.1 node
+   asserts the documented `ValueError`/`TypeError` edges; only its normal path is exercised. Per the
+   reviewer, a plan gap, not an implementation deviation; would need a plan amendment to add.
+6. **Plan §5.5 `{"data": {}}` row imprecise (open, Minor).** The plan predicts `NULL_REQUIRED_DATA`
+   / `WRONG_DATA_SHAPE`; the existing validator yields `MISSING_IDENTITY` for that input. The code
+   defers to the frozen validator (defensible); the plan parenthetical is imprecise and that case has
+   no test.
+
+## Gate — Chunk 18
+
+Chunk 18 has no dependency-map §3 gate; the gate is plan §9 plus the dispatch DoD.
+
+| DoD bullet | Result | Evidence |
+|---|---|---|
+| DoD-1 (human live run reaches and passes the identity preflight; summary/run row show `validated_position`) | **PENDING HUMAN** | Not provable offline; the capture shows the corrected request returns 200 with the shapes the selection now validates. |
+| DoD-2 (offline suite green, real counts) | PASS | `python -m pytest -q` → `645 passed` (lead `20.61s`, `24.12s`; reviewer independent `23.34s`). |
+| DoD-3 (four validators valid) | PASS | traceability `631 matrix nodes`; import boundaries valid; scope prohibitions valid; secrets valid. |
+| DoD-4 (lint; no new lint) | PASS after fix round 1 | `ruff check` on both `src` files → `All checks passed!`; on the changed test files, the one new-hunk `E501` was wrapped (`c921dde`) and the remaining 36 findings are pre-existing (`graphql_fixtures.py` 6, `test_collector.py` 30; the two `I001`/`F401`s in `test_collector.py` are pre-existing on untouched lines). `ruff format --check` reports pre-existing deviations in untouched regions — same Chunk 14/15/16/17 PARTIAL caveat. |
+| DoD-5 (no secrets; no live network in tests) | PASS | `check_secrets` valid; fixtures use synthetic tokens; every transport is a recording double; no response body persisted. |
+| DoD-6 (records) | PASS | FROZEN plan; this log; tests `c9e816e`; implementation `6dac865`; review fix `c921dde`; one rename + 11 new traceability nodes. |
+
+**GATE: PASSED** on every agent-verifiable bullet. DoD-1 is reserved for the human live run (the
+dispatch DoD), and four review Minors remain recorded above, none a Blocker or Major. Item 3
+(selection-skip edge) is surfaced to the human as a checkpoint, not silently resolved.
