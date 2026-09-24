@@ -1767,18 +1767,23 @@ def test_object_shaped_category_and_publisher_payload_validates() -> None:
         "name": "Lukas Bobor",
     }
 
-    # A missing pair stays ``None``: no fabricated ``"{}"``, no zero-fill.
+    # A payload that omits ``category``/``publisher`` violates a required member
+    # of ``PRODUCT_DETAIL_REQUIRED_MEMBERS``, so the operation is an error and no
+    # ``ProductDetailFields`` is produced at all. The plan §9 node 4 intent --
+    # never a fabricated ``"{}"`` -- holds vacuously: there is no field to carry
+    # one. A missing required member is an operation error, not a ``None``-valued
+    # field on a successful operation.
     missing = gqlfx.container_category_and_publisher_payload(
         include_category=False, include_publisher=False
     )
     missing_validation = collector_graphql.validate_product_detail_payload(missing)
-    assert missing_validation.is_valid
-    missing_fields = missing_validation.product_detail
-    assert missing_fields is not None
-    assert missing_fields.category_json is None
-    assert missing_fields.publisher_json is None
-    assert missing_fields.category_json != "{}"
-    assert missing_fields.publisher_json != "{}"
+    assert missing_validation.is_valid is False
+    assert (
+        missing_validation.failure_class
+        is collector_graphql.GraphQLFailureClass.WRONG_DATA_SHAPE
+    )
+    # No fabricated JSON mapping is produced: the whole payload is unavailable.
+    assert missing_validation.product_detail is None
 
 
 # ---------------------------------------------------------------------------
