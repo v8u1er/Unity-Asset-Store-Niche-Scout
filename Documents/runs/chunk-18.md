@@ -145,3 +145,38 @@ any file. Its pytest/traceability/ruff counts are **reviewer-reported**, not lea
 - `plans/chunk-18-...md:376, 460` — wrong locants: `interfaces/chunk-6A.md`, `tests/fixtures/identity_preflight_vectors.py`.
 - Add H5/G11 (above) and the null-vs-wrong-shape correction; re-freeze only after the human rules on
   H1–H5.
+
+## Human rulings (2026-09-24) — approved
+
+The human approved the advisory recommendations in full: **H1 = A.1b + A.2b**, **H2 = probe first**,
+**H3 = capture**, **H4 = guard only**, **H5 = unwrap `data.product` in the adapter**,
+**G7 = alias the query field to `pageViews`**, **traceability = follow the committed node-ID→LREQ
+mapping**, and "test/probe first when unsure". The plan will be revised and re-frozen by
+`chunk-planner` after the live capture lands.
+
+### Counted evidence added (from the failed-run DB, read via `.scratch/diag_run0949.py`)
+
+- **All ten** selected preflight identities are keyless in the tool's own records:
+  `correlation_keys` = `{"ProductDetail": null, "ProductPageViews": null}` and
+  `additional_correlation_keys` = `{"ProductDetail": [], "ProductPageViews": []}` for each of
+  `117382, 119971, 307191, 341506, 373708, 373872, 400474, 405518, 44625, 59028`. This is **counted**
+  from `enrichment_observations.request_metadata_json` for
+  `run-2026-09-24T09:49:22.649368+00:00` (10 rows; unit = rows). It confirms no explicit key on any
+  selected identity; item order and per-operation shapes remain UNVERIFIED (H3).
+- The run also persisted a distinct `response_sha256` per identity (10 distinct hashes); those values
+  are embedded in the capture probe below so the human's capture can be proven byte-identical to the
+  response the tool received.
+
+### Live capture request (human-run; agent must not run credential-bearing network)
+
+- Probe script: `.scratch/chunk18-live-capture.py` (syntactically validated with `python -m
+  py_compile`; request body verified to match the committed shape via an offline import — output is
+  the exact `json.dumps(..., sort_keys=True, separators=(",", ":"))` the adapter builds).
+  - It harvests `_csrf` from the storefront GET, then POSTs the committed two-operation body for each
+    of the ten identities (no `operations` header), prints the HTTP status, the body, and the sha256
+    vs the recorded value, then repeats identity `117382` **with** `operations` +
+    `apollo-require-preflight` to test option (B). It never prints the `_csrf` value.
+  - Run: `$env:PYTHONPATH = "src"; python .scratch/chunk18-live-capture.py` (no PYTHONPATH needed; the
+    script imports only the stdlib).
+  - Capture file: `.scratch/chunk18-capture.json`.
+- Equivalent raw curl and the exact fields the human must return are given in the lead's reply.
