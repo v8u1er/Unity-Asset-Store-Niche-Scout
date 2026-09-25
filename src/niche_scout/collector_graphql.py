@@ -1054,13 +1054,24 @@ def _usable_string(value: object) -> str | None:
 
 
 def _usable_number(value: object, declared: type) -> int | float | None:
-    """Return ``value`` when it matches ``declared``, excluding ``bool``."""
+    """Return ``value`` when it matches ``declared``, excluding ``bool``.
+
+    A ``declared is float`` member accepts a non-bool ``float`` as-is and a
+    non-bool ``int`` as ``float(value)``: JSON carries no distinction between
+    integral and fractional numbers, so an integral JSON number (``5``, ``0``)
+    is a valid value for a float member and is widened without rounding. The
+    ``bool`` exclusion applies first, so ``True``/``False`` are never accepted
+    as ``1.0``/``0.0``. A ``declared is int`` member stays int-only.
+    """
     if isinstance(value, bool):
         return None
     if declared is int and isinstance(value, int):
         return value
-    if declared is float and isinstance(value, float):
-        return value
+    if declared is float:
+        if isinstance(value, float):
+            return value
+        if isinstance(value, int):
+            return float(value)
     return None
 
 
