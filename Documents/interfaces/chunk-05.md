@@ -1,6 +1,8 @@
 # Chunk 5 — GraphQL protocol adapter and response correlation (public interface)
 
 Status: VERIFIED
+Amended by: `Documents/plans/chunk-19-graphql-identity-alias-agreement-remediation.md`
+(2026-09-25, ruling Option A: the authoritative returned `id` is the `LREQ-GQL-070` agreement alias).
 Source plan: `Documents/plans/chunk-05-graphql-protocol-adapter-and-response-correlation.md`
 Verified at: working tree state 2026-09-19; gates `python -m pytest tests/ -q`
 (150 passed, exit 0), `python -m pytest tests/test_collector.py -q` (54 passed,
@@ -531,6 +533,14 @@ must not re-derive acceptance from the raw scalar.
 
 ## 5.8 State and identity annotation (annotation only)
 
+> **Recorded amendment (2026-09-25) — Chunk 19.** The human ruling of 2026-09-25 (Chunk 19,
+> `.scratch/chunk18-capture.json`) fixes the returned `id` as the authoritative identity for
+> `LREQ-GQL-070` agreement; the returned `productId` remains requested (`LREQ-GQL-020`), validated
+> as a required member, and persisted, but is not an agreement alias. Chunk 1's
+> `compare_graphql_identity_aliases` keeps its "every supplied alias agrees" semantics unchanged;
+> only the alias set the adapter supplies changes. See
+> `Documents/plans/chunk-19-graphql-identity-alias-agreement-remediation.md` §5.
+
 ```python
 def annotate_product_detail_identity(
     requested_identity: str, product_detail: ProductDetailFields, *,
@@ -540,7 +550,9 @@ def annotate_product_detail_identity(
 `annotate_product_detail_identity` returns `product_detail` with
 `identity_comparison` set to the result of
 `validation.compare_graphql_identity_aliases(requested_identity, aliases)` where
-`aliases` is built from `graphql_id` and `product_id` when present. Semantics
+`aliases` is built from the returned authoritative `id` (`graphql_id`) when present.
+The returned `productId` is persisted on `ProductDetailFields.product_id` and remains
+part of the request (`LREQ-GQL-020`), but is **not** an agreement alias. Semantics
 copied from LREQ-GQL-070 and the Chunk 1 contract:
 
 - `identity_comparison.id_mapping_mismatch is True` sets the pre-record's
