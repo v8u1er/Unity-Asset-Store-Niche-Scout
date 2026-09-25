@@ -71,6 +71,18 @@ The Chunk 18 DoD-1 live run is that confirmation; it falsifies the assumption.
 | Tests — red state (lead) | DONE | `python -m pytest -q` → **4 failed, 654 passed in 22.76s** (behavioral `AssertionError`s only; no syntax/collection errors). `python -m niche_scout.tools.validate_traceability` → valid, `639 matrix nodes`. `git status --short` → the five `tests/` files only. |
 | Implement — `impl-deep` | DONE | `ses_f27e908a7ffe8b93HPWxtFd5oQ`. `annotate_product_detail_identity` builds the agreement alias map from `graphql_id` alone; `product_id` no longer added; comment on `PRODUCT_DETAIL_ALIAS_MEMBERS` records it is the required/absent group, not the agreement set. `compare_graphql_identity_aliases` and `validation.py` untouched. Only `src/niche_scout/collector_graphql.py` changed (+17/-2). |
 | Lead verify (step 6) | DONE | `python -m pytest -q` → **658 passed in 22.61s**; `validate_traceability` → valid (`639 matrix nodes`); `check_import_boundaries` valid; `check_scope_prohibitions` valid; `check_secrets` valid; `python -m ruff check src/niche_scout/collector_graphql.py` → `All checks passed!`; `git diff --stat` → exactly `collector_graphql.py` (+17/-2). |
+| Review — `spec-reviewer` | VERDICT: PASS | `ses_f27e22f38ffeHRo2XNnWuyOyaR`. No Blocker/Major. Independently re-ran the suite (`658 passed`), all four validators, and confirmed `git diff 9dcec9c 6bc9b01 -- tests/` is empty and `validation.py` is byte-identical (`git hash-object`) to base. Three Minors recorded below. |
+| Lead confirmation (step 8 support) | DONE | traceability key set `d746444` → `6bc9b01`: 634 → 639, exactly the 5 new nodes added, **0 removed** (no rename). |
+
+## Review (step 7) — Minors recorded
+
+`spec-reviewer` VERDICT: PASS, no Blocker/Major:
+
+1. **Pre-existing banner blank line (open, cosmetic, not caused by Chunk 19).** `src/niche_scout/collector_graphql.py:1614-1615` — the "State and identity annotation" banner has one blank line before it, not the file's two. No gate impact.
+2. **Plan-text typo (open, plan only).** `plans/chunk-19-...md` §6 places node 5 in `test_collector.py`; §8.1/§13 place it in `test_identity.py`. Confirmed zero code impact — the node exists once, in `test_identity.py`. Recorded above; the plan is frozen and is not edited.
+3. **Informational (plan §4 wording).** The amendment's own note is present in `interfaces/chunk-05.md` §5.8; the plan's §4 mechanism text does not restate the SRS constant citations. No action needed.
+
+Repo-hygiene note (separate from Chunk 19): `python -m ruff format --check` reports the corpus (including untouched lines) as unformatted at the branch base; DoD-4's lint gate is `ruff check` on changed files, which is clean.
 
 ### Plan inconsistency (Minor, resolved by lead ruling, no plan edit)
 
