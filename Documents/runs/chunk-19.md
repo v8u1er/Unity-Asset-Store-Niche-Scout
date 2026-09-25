@@ -84,6 +84,21 @@ The Chunk 18 DoD-1 live run is that confirmation; it falsifies the assumption.
 
 Repo-hygiene note (separate from Chunk 19): `python -m ruff format --check` reports the corpus (including untouched lines) as unformatted at the branch base; DoD-4's lint gate is `ruff check` on changed files, which is clean.
 
+## Gate — Chunk 19
+
+Chunk 19 has no dependency-map §3 gate; the gate is plan §9 plus the dispatch DoD.
+
+| DoD bullet | Result | Evidence |
+|---|---|---|
+| DoD-1 (human live run reaches and **passes** the identity preflight) | **PENDING HUMAN** | Not provable offline; the fix makes the ten captured live shapes agree on the authoritative `id`. The run row must show `successful == attempted`, `conflicting == 0`, and the run proceeding past the preflight. |
+| DoD-2 (offline suite green, real counts) | PASS | `python -m pytest -q` → `658 passed` (lead `22.61s`; reviewer independent `25.55s`). |
+| DoD-3 (four validators valid) | PASS | traceability valid (`89 LREQ IDs`, `639 matrix nodes`, 0 unmarked); import boundaries valid; scope prohibitions valid; secrets valid. |
+| DoD-4 (lint; no new lint) | PASS | `python -m ruff check src/niche_scout/collector_graphql.py` → `All checks passed!`; no new lint in the changed tests/fixtures. `ruff format --check` non-conformance is pre-existing corpus-wide (reported as a repo-hygiene note, not a Chunk 19 finding). |
+| DoD-5 (no secrets; no live network in tests) | PASS | `check_secrets` valid; new fixtures carry public product metadata only; every transport is a recording double; no response body persisted. |
+| DoD-6 (records) | PASS | FROZEN plan; this log; interface amendment `interfaces/chunk-05.md` §5.8; tests `9dcec9c`; implementation `6bc9b01`; review log `cf2a44e`; 5 traceability keys added, 0 removed. |
+
+**GATE: PASSED** on every agent-verifiable bullet. DoD-1 is reserved for the human live run (the dispatch DoD). Three review Minors remain recorded above, none a Blocker or Major. Residual risks and the open obligations (URI extraction, OI-6, `taxonomy_sha256`, `tests/AGENTS.md` prose) stay open and are not closed by this chunk.
+
 ### Plan inconsistency (Minor, resolved by lead ruling, no plan edit)
 
 `plans/chunk-19-...md` §6's `test_collector.py` row says it gets "the Q1-a edge node 5", while §8.1's node table and §13 pin node 5 as `tests/test_identity.py::test_unusable_authoritative_id_is_not_agreement`. The lead directed the test-author to follow the explicit node ID in §8.1/§13 (option a) and create no duplicate; recorded here as a plan-text typo, not an interface change.
