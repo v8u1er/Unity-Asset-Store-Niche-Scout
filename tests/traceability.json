@@ -265,6 +265,15 @@
   "tests/test_collector.py::test_product_detail_query_selects_category_and_publisher_id_name": [
     "LREQ-GQL-020"
   ],
+  "tests/test_collector.py::test_product_detail_rating_average_accepts_integral_json_number": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_average_bool_and_string_are_wrong_scalar_type": [
+    "LREQ-GQL-040"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_average_container_values_are_rejected": [
+    "LREQ-GQL-040"
+  ],
   "tests/test_collector.py::test_product_page_views_request_alias_is_page_views": [
     "LREQ-GQL-020"
   ],

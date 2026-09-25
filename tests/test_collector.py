@@ -3711,3 +3711,92 @@ def test_select_operation_correlation_mode_rejects_empty_evidence() -> None:
         )
         is GraphQLOperationCorrelationMode.EXPLICIT_KEY
     )
+
+
+# ---------------------------------------------------------------------------
+# Chunk 18 follow-on / LREQ-GQL-040 -- ``rating.average`` scalar acceptance
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+@pytest.mark.parametrize(
+    ("rating_average", "expected"),
+    [
+        (5, 5.0),
+        (0, 0.0),
+        (4.5, 4.5),
+    ],
+)
+def test_product_detail_rating_average_accepts_integral_json_number(
+    rating_average: object, expected: float
+) -> None:
+    """An integral JSON number for ``rating.average`` is accepted as a float.
+
+    ``LREQ-GQL-040`` (``SRS-lean.md``:318-323) makes a wrong scalar type an
+    operation error but does not make an integral JSON number wrong for a
+    numeric member; the live endpoint returns integral JSON numbers for whole
+    rating averages (human ruling on the Chunk 18 follow-on). The frozen
+    interface types the field ``rating_average: float | None``
+    (``interfaces/chunk-05.md`` section 5.6), so the accepted value is carried
+    as a ``float`` -- no rounding, float64 throughout.
+
+    Hand-derived expected values: ``float(5)`` is exactly ``5.0``;
+    ``float(0)`` is exactly ``0.0`` (zero is a real value, not an absent or
+    failed one); ``4.5`` is exactly representable (9/2). All three are exact
+    in binary, so the ``1e-9`` tolerance is slack, not a fudge.
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_payload(rating_average=rating_average)
+    )
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_average == pytest.approx(expected, abs=1e-9)
+    assert isinstance(fields.rating_average, float)
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+@pytest.mark.parametrize("rating_average", [True, False, "2.5"])
+def test_product_detail_rating_average_bool_and_string_are_wrong_scalar_type(
+    rating_average: object,
+) -> None:
+    """``bool`` and ``str`` stay ``WRONG_SCALAR_TYPE`` for ``rating.average``.
+
+    ``LREQ-GQL-040`` (``SRS-lean.md``:318-323) records a wrong scalar type as
+    an operation error. The human ruling keeps ``bool`` rejected -- Python's
+    ``isinstance(True, int)`` must not smuggle JSON ``true``/``false`` in as
+    ``1.0``/``0.0`` -- and ``"2.5"`` is a JSON string, not a JSON number, so
+    no coercion to ``2.5`` is permitted either.
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_payload(rating_average=rating_average)
+    )
+
+    assert validation.is_valid is False
+    assert (
+        validation.failure_class
+        is collector_graphql.GraphQLFailureClass.WRONG_SCALAR_TYPE
+    )
+
+
+@pytest.mark.lreq("LREQ-GQL-040")
+@pytest.mark.parametrize("rating_average", [[2.5], {"average": 2.5}])
+def test_product_detail_rating_average_container_values_are_rejected(
+    rating_average: object,
+) -> None:
+    """Container values for ``rating.average`` are rejected, never coerced.
+
+    The human ruling keeps list/dict values rejected. ``LREQ-GQL-040``
+    (``SRS-lean.md``:318-323) names both wrong data shape and wrong scalar
+    type as operation errors and does not fix which one a container at this
+    scalar position takes, so this node pins invalidity only and deliberately
+    leaves the failure class unpinned.
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_payload(rating_average=rating_average)
+    )
+
+    assert validation.is_valid is False
+    assert validation.failure_class is not collector_graphql.GraphQLFailureClass.NONE
