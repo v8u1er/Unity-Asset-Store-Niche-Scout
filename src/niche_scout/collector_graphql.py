@@ -933,6 +933,12 @@ def correlate_operations(
 # Per-operation response validation (plan sections 5.6, 5.7)
 # --------------------------------------------------------------------------
 
+# The required/absent identity-member group used by
+# ``validate_product_detail_payload`` and the ``LREQ-GQL-040``
+# ``response_missing_identity`` classification. It is **not** the
+# ``LREQ-GQL-070`` agreement alias set: the agreement alias set is the
+# authoritative returned ``id`` alone, supplied by
+# ``annotate_product_detail_identity`` (Chunk 19; interfaces/chunk-05.md §5.8).
 PRODUCT_DETAIL_ALIAS_MEMBERS: tuple[str, ...] = ("id", "productId")
 
 # ``state`` is deliberately not a member here: it is validated semantically by
@@ -1623,12 +1629,21 @@ def annotate_product_detail_identity(
     result is stored unchanged. A mismatch is an adapter-level mark and a redacted
     reason only: whether a mismatched asset is excluded from D, R, and Q is Chunk
     7A's decision, and this module produces no such verdict.
+
+    The agreement alias set is built from the returned authoritative ``id``
+    (``graphql_id``) when present, and from nothing else (``LREQ-GQL-070``;
+    ``Documents/interfaces/chunk-05.md`` §5.8, amended by Chunk 19). The returned
+    ``productId`` is still requested (``LREQ-GQL-020``) and persisted on
+    ``ProductDetailFields.product_id``, but it is not an agreement alias, so a
+    populated-but-different ``productId`` does not make an agreeing ``id`` a
+    mismatch. When ``graphql_id`` is ``None`` the alias map is empty and the
+    comparison is an explicit mismatch ("no GraphQL identity alias was
+    returned"), never an assumed agreement; ``product_id`` is never consulted as
+    a fallback identity.
     """
     aliases: dict[str, object] = {}
     if product_detail.graphql_id is not None:
         aliases["id"] = product_detail.graphql_id
-    if product_detail.product_id is not None:
-        aliases["productId"] = product_detail.product_id
     comparison = compare_graphql_identity_aliases(
         requested_identity, aliases, mapping_rule_version=mapping_rule_version
     )
