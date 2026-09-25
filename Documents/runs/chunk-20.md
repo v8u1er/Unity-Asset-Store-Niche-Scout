@@ -52,7 +52,7 @@ Routing: `impl-deep` with `test-author` first (metrics semantics on a frozen
 | # | Stage | Status | Notes |
 |---|---|---|---|
 | 0 | Preflight | DONE | Tree clean at `20514d9`; branch `chunk-20` created. |
-| 1 | Plan | PENDING | `chunk-planner`, plan path `Documents/plans/chunk-20-...`. |
+| 1 | Plan | DONE | `chunk-planner`; plan frozen at `Documents/plans/chunk-20-usable-quality-count-fabricated-zero-remediation.md`. Two runs were needed (the first exhausted steps after verification; the second authored the plan). |
 | 2 | Tests first | PENDING | `test-author`. |
 | 3 | Implement | PENDING | `impl-deep`. |
 | 4 | Verify | PENDING | pytest, traceability, import boundaries, scope, secrets, ruff. |
