@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 
+import fixtures.graphql_fixtures as gqlfx
 import pytest
 from fixtures import identity_preflight_vectors as pf
 
@@ -1499,6 +1500,71 @@ def test_preflight_selected_mode_is_persisted_and_reused_without_a_second_reques
         summary = json.loads(record.identity_preflight_summary_json)
         assert summary["graphql_operation_correlation_mode"] == "validated_position"
         assert pf.observation_count(repository, run.run_id) == 2
+    finally:
+        repository.close()
+
+
+# --------------------------------------------------------------------------
+# Chunk 19 / LREQ-ID-020 — the preflight passes on the authoritative-id shape
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-ID-020")
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_preflight_passes_when_returned_product_id_differs(tmp_path):
+    """The live shape passes the preflight: ids agree, ``productId`` differs.
+
+    Plan ``chunk-19`` §8.1 node 4 / DoD-1's offline proof: each selected unique
+    identity is served a keyless live-shape body whose returned authoritative
+    ``id`` equals the requested identity and whose returned ``productId`` is the
+    distinct captured internal id ``GQL_FIXTURE_INTERNAL_PRODUCT_ID``. Because
+    the adapter compares only ``id`` for ``LREQ-GQL-070``, every observation is
+    an identity match and the run is ``passed``.
+
+    Derivation (SRS-lean:393-406): the selection is the two unique identities
+    ``{A, B}`` from ``two_asset_run``; ``successful`` requires both operations
+    and the identity check, so ``successful = attempted = 2``,
+    ``conflicting = 0``, ``other_failed = 0``, ``success_rate = 2/2 = 1.0``,
+    ``conflict_rate = 0/2 = 0.0``. ``attempted`` is the unique-identity count,
+    never the category-reference count (the overlap defense).
+    """
+    from niche_scout.models import IdentityPreflightStatus
+
+    run = pf.two_asset_run()
+    repository = _seeded(tmp_path, run)
+    try:
+        transport = pf.ProcessLocalRequestRecordingTransport(
+            {
+                key: gqlfx.keyless_success_body_for_identity(key).encode("utf-8")
+                for key in (pf.A, pf.B)
+            }
+        )
+        outcome = _run_preflight(repository, run, transport=transport)
+
+        # One request per unique selected identity; the keyless bodies are
+        # re-interpreted in memory under the selected validated-position mode.
+        selected_keys = tuple(
+            identity.asset_identity_key
+            for identity in _selection(run, policy=pf.small_policy()).identities
+        )
+        assert selected_keys == (pf.A, pf.B)
+        assert transport.call_count == len(selected_keys)
+
+        assert outcome.status is IdentityPreflightStatus.PASSED
+        assert outcome.rates.attempted_unique_identities == 2
+        assert outcome.rates.conflicting_unique_identities == 0
+        assert (
+            outcome.rates.successful_unique_identities
+            == outcome.rates.attempted_unique_identities
+        )
+        assert outcome.rates.success_rate == pytest.approx(1.0, abs=1e-9)
+        assert outcome.rates.conflict_rate == pytest.approx(0.0, abs=1e-9)
+
+        assert len(outcome.observations) == len(selected_keys)
+        for observation in outcome.observations:
+            assert observation.identity_match is True
+            assert observation.product_detail_status == "success"
+            assert observation.page_views_status == "success"
     finally:
         repository.close()
 

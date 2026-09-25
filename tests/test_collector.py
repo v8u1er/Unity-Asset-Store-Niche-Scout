@@ -3477,7 +3477,10 @@ def test_product_detail_data_product_wrapper_is_unwrapped() -> None:
     assert "product" not in unwrapped.product_detail.payload
     assert unwrapped.product_detail.payload["id"] == GQL_ASSET_ID
     assert draft_unwrapped.graphql_id == GQL_ASSET_ID
-    assert draft_unwrapped.product_id == GQL_ASSET_ID
+    # Chunk 19 §5.3 S3: the live-shape keyless body carries the returned
+    # internal ``productId``; it is persisted verbatim and is not required to
+    # agree with the requested identity.
+    assert draft_unwrapped.product_id == gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID
     assert draft_unwrapped.rating_average == pytest.approx(4.5, abs=1e-9)
     assert draft_unwrapped.rating_count == 12
     assert draft_unwrapped.review_count == 7
@@ -3800,3 +3803,93 @@ def test_product_detail_rating_average_container_values_are_rejected(
 
     assert validation.is_valid is False
     assert validation.failure_class is not collector_graphql.GraphQLFailureClass.NONE
+
+
+# ---------------------------------------------------------------------------
+# Chunk 19 / LREQ-GQL-070 -- the authoritative-id agreement alias set
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_identity_alias_set_compares_authoritative_id_only() -> None:
+    """``annotate_product_detail_identity`` supplies only the returned ``id``.
+
+    Plan ``chunk-19`` §8.1 node 3 / §5.1 S1 and §7.1: the agreement alias map
+    is ``{"id": <returned id>}`` built from ``graphql_id`` alone. The returned
+    ``productId`` is persisted on ``ProductDetailFields.product_id`` and stays
+    requested (``LREQ-GQL-020``, asserted through the selection set), but it is
+    **not** an agreement alias:
+
+    * ``id`` agrees / ``productId`` differs -> match on ``id`` alone, and the
+      compared-alias map has no ``"productId"`` key;
+    * ``id`` differs / ``productId`` agrees -> mismatch: a populated-but-
+      agreeing ``productId`` cannot rescue a differing ``id``;
+    * ``id`` is ``None`` -> the alias map is empty, so the comparison is an
+      explicit mismatch whose reason names the missing GraphQL identity alias;
+      ``productId`` is never consulted and never defaulted;
+    * the returned fields are preserved verbatim (frozen ``dataclasses.replace``
+      contract), and a non-member ``mapping_rule_version`` is still refused.
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_payload()
+    )
+    fields = validation.product_detail
+    assert fields is not None
+    requested = gqlfx.GQL_FIXTURE_ASSET_ID
+
+    # (a) The live shape: id agrees, productId is the distinct internal id.
+    agrees = dataclasses.replace(
+        fields,
+        graphql_id=requested,
+        product_id=gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID,
+    )
+    annotated = collector_graphql.annotate_product_detail_identity(requested, agrees)
+    comparison = annotated.identity_comparison
+    assert comparison is not None
+    assert comparison.matches_requested_identity is True
+    assert comparison.id_mapping_mismatch is False
+    assert dict(comparison.compared_aliases) == {"id": requested}
+    assert "productId" not in dict(comparison.compared_aliases)
+    # Every other returned field is preserved verbatim (no coercion).
+    assert annotated.graphql_id == requested
+    assert annotated.product_id == gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID
+    assert annotated.rating_average == pytest.approx(fields.rating_average, abs=1e-9)
+
+    # (b) id differs while productId agrees: productId is not authoritative.
+    disagrees = dataclasses.replace(
+        fields,
+        graphql_id=gqlfx.GQL_FIXTURE_ASSET_ID_OTHER,
+        product_id=requested,
+    )
+    mismatch = collector_graphql.annotate_product_detail_identity(
+        requested, disagrees
+    ).identity_comparison
+    assert mismatch is not None
+    assert mismatch.id_mapping_mismatch is True
+    assert mismatch.matches_requested_identity is False
+    assert dict(mismatch.compared_aliases) == {"id": gqlfx.GQL_FIXTURE_ASSET_ID_OTHER}
+
+    # (c) No usable authoritative id at all: the map is empty, never an assumed
+    # agreement, and productId is never consulted as a fallback identity.
+    no_id = dataclasses.replace(
+        fields,
+        graphql_id=None,
+        product_id=gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID,
+    )
+    empty = collector_graphql.annotate_product_detail_identity(
+        requested, no_id
+    ).identity_comparison
+    assert empty is not None
+    assert empty.id_mapping_mismatch is True
+    assert empty.matches_requested_identity is False
+    assert empty.compared_aliases == ()
+    assert "no GraphQL identity alias" in (empty.reason or "")
+
+    # The request side is unchanged: productId stays in the selection set.
+    assert "productId" in gqlfx.PRODUCT_DETAIL_SELECTION_SET
+
+    # An unknown mapping rule version is still refused by the adapter call.
+    with pytest.raises(ValueError):
+        collector_graphql.annotate_product_detail_identity(
+            requested, fields, mapping_rule_version="9.9.9"
+        )

@@ -67,6 +67,12 @@ The Chunk 18 DoD-1 live run is that confirmation; it falsifies the assumption.
 | Preflight (lead) | DONE | table above |
 | Recon / root cause (lead) | DONE | chain above; human ruled Option A |
 | Plan — `chunk-planner` | **FROZEN** | `ses_f282acf80ffeVl6rup2GFOR8e4`. Wrote `Documents/plans/chunk-19-graphql-identity-alias-agreement-remediation.md` (DRAFT→FROZEN after the human answered Q1/Q2) and amended `Documents/interfaces/chunk-05.md` §5.8 per the human ruling. Root cause re-verified against source and `.scratch/chunk18-capture.json`. Routing: `test-author` then `impl-deep`. |
+| Tests — `test-author` | DONE | `ses_f280cff12ffepEtampAXi87CHC` (two passes; first hit the step cap after one fixture edit, resumed). Fixtures: `graphql_fixtures.py` (internal-productId constant, `product_detail_payload(product_id=...)`, live-shape keyless payload, three authoritative-id bodies); 5 new nodes (4 `test_identity.py`/`test_collector.py`/`test_identity_preflight.py` discriminator + 1 Q1-a edge); one same-ID supersession at `test_collector.py:3480`; 5 `traceability.json` keys, no renames. |
+| Tests — red state (lead) | DONE | `python -m pytest -q` → **4 failed, 654 passed in 22.76s** (behavioral `AssertionError`s only; no syntax/collection errors). `python -m niche_scout.tools.validate_traceability` → valid, `639 matrix nodes`. `git status --short` → the five `tests/` files only. |
+
+### Plan inconsistency (Minor, resolved by lead ruling, no plan edit)
+
+`plans/chunk-19-...md` §6's `test_collector.py` row says it gets "the Q1-a edge node 5", while §8.1's node table and §13 pin node 5 as `tests/test_identity.py::test_unusable_authoritative_id_is_not_agreement`. The lead directed the test-author to follow the explicit node ID in §8.1/§13 (option a) and create no duplicate; recorded here as a plan-text typo, not an interface change.
 
 ## Human rulings (2026-09-25) — resolved
 

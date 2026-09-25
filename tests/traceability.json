@@ -174,6 +174,9 @@
   "tests/test_collector.py::test_http_failure_is_an_operation_error": [
     "LREQ-GQL-040"
   ],
+  "tests/test_collector.py::test_identity_alias_set_compares_authoritative_id_only": [
+    "LREQ-GQL-070"
+  ],
   "tests/test_collector.py::test_insert_outside_category_transaction_raises_repository_error": [
     "LREQ-NFR-010"
   ],
@@ -675,6 +678,13 @@
   "tests/test_identity.py::test_agreeing_candidates_resolve": [
     "LREQ-EXT-070"
   ],
+  "tests/test_identity.py::test_authoritative_id_agrees_when_returned_product_id_differs": [
+    "LREQ-GQL-070",
+    "LREQ-GQL-020"
+  ],
+  "tests/test_identity.py::test_authoritative_id_disagrees_when_returned_product_id_agrees": [
+    "LREQ-GQL-070"
+  ],
   "tests/test_identity.py::test_candidate_source_fields_are_retained": [
     "LREQ-EXT-060"
   ],
@@ -749,6 +759,10 @@
   ],
   "tests/test_identity.py::test_unresolved_excluded_from_denominator_and_enrichment": [
     "LREQ-EXT-070"
+  ],
+  "tests/test_identity.py::test_unusable_authoritative_id_is_not_agreement": [
+    "LREQ-GQL-070",
+    "LREQ-GQL-040"
   ],
   "tests/test_identity.py::test_uri_derived_proper_suffix_of_anchor_is_conflict": [
     "LREQ-EXT-070"
@@ -830,6 +844,10 @@
   ],
   "tests/test_identity_preflight.py::test_preflight_observations_are_redacted": [
     "LREQ-ID-040"
+  ],
+  "tests/test_identity_preflight.py::test_preflight_passes_when_returned_product_id_differs": [
+    "LREQ-ID-020",
+    "LREQ-GQL-070"
   ],
   "tests/test_identity_preflight.py::test_preflight_persisted_before_gate_returns": [
     "LREQ-ID-040"

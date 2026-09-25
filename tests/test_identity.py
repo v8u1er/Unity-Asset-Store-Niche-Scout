@@ -1119,3 +1119,96 @@ def test_adapter_mismatch_is_a_flag_not_a_metric_exclusion() -> None:
     # set, so no verdict appears only when a mismatch is set.
     _agreeing, agreeing_draft = _enrich_identity(gqlfx.in_order_success_body())
     assert type(agreeing_draft).__slots__ == type(draft).__slots__
+
+
+# --------------------------------------------------------------------------
+# Chunk 19 / LREQ-GQL-070 — the authoritative-id agreement alias set
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+@pytest.mark.lreq("LREQ-GQL-020")
+def test_authoritative_id_agrees_when_returned_product_id_differs() -> None:
+    """The returned authoritative ``id`` is the sole agreement alias (the fix).
+
+    Plan ``chunk-19`` §8.1 node 1 / §5.1 S1: the adapter supplies only the
+    returned ``id`` (``graphql_id``) to ``compare_graphql_identity_aliases``.
+    This body is the live shape (``.scratch/chunk18-capture.json``, G6): the
+    returned ``id`` equals the requested ``GQL_FIXTURE_ASSET_ID`` ("1234567")
+    while the returned ``productId`` is the distinct captured internal id
+    ``GQL_FIXTURE_INTERNAL_PRODUCT_ID`` ("275244114082"), page views 4321.
+    ``productId`` stays requested (``LREQ-GQL-020``) and is persisted verbatim,
+    but is not required to agree, so this exchange is a clean success.
+    """
+    result, draft = _enrich_identity(gqlfx.authoritative_id_agrees_body())
+
+    assert result.correlation.is_fully_correlated
+    assert result.product_detail.is_success
+    assert draft.graphql_id == gqlfx.GQL_FIXTURE_ASSET_ID
+    # Persisted verbatim: the distinct internal id, never the requested identity.
+    assert draft.product_id == gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID
+    assert draft.product_id != gqlfx.GQL_FIXTURE_ASSET_ID
+    assert draft.id_mapping_mismatch is False
+    assert "graphql_id_mapping_mismatch" not in {
+        issue.code for issue in result.product_detail.issues
+    }
+    assert result.page_views.is_success
+    assert draft.product_page_views == 4321
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+def test_authoritative_id_disagrees_when_returned_product_id_agrees() -> None:
+    """A populated-but-agreeing ``productId`` is not agreement; ``id`` decides.
+
+    Plan ``chunk-19`` §8.1 node 2 / §13 R2: this body's returned ``productId``
+    equals the requested ``GQL_FIXTURE_ASSET_ID`` while the authoritative
+    returned ``id`` is ``GQL_FIXTURE_ASSET_ID_OTHER`` ("7654321"); page views
+    4321. The mismatch is the ``id``, so the adapter marks
+    ``id_mapping_mismatch``. The mark is a flag on an otherwise successful
+    operation, never an operation error (``failure_class`` stays ``NONE``).
+    """
+    result, draft = _enrich_identity(gqlfx.authoritative_id_disagrees_body())
+
+    assert draft.graphql_id == gqlfx.GQL_FIXTURE_ASSET_ID_OTHER
+    assert draft.product_id == gqlfx.GQL_FIXTURE_ASSET_ID
+    assert draft.id_mapping_mismatch is True
+    assert "graphql_id_mapping_mismatch" in {
+        issue.code for issue in result.product_detail.issues
+    }
+    assert result.product_detail.is_success
+    assert (
+        result.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.NONE
+    )
+
+
+@pytest.mark.lreq("LREQ-GQL-070")
+@pytest.mark.lreq("LREQ-GQL-040")
+def test_unusable_authoritative_id_is_not_agreement() -> None:
+    """Q1-a: an unusable ``id`` with a populated ``productId`` is a safe non-agreement.
+
+    Plan ``chunk-19`` §8.1 node 5 / §13 R1 (Q1-a, ruled 2026-09-25):
+    ``validate_product_detail_payload`` is unchanged, so a present-but-empty
+    ``id`` (``""``) is not ``absent_alias`` and the populated ``productId``
+    keeps ``no_populated_alias`` False; the operation stays ``SUCCESS`` with
+    ``failure_class`` ``NONE``. The adapter's alias map is then ``{}``, which
+    the frozen comparator reports as an explicit mismatch ("no GraphQL identity
+    alias was returned"), so the identity is ``conflicting`` — never a silent
+    pass and never re-classified ``MISSING_IDENTITY``. The fixture body is the
+    agrees body with only ``"id"`` set to ``""``: ``productId`` is
+    ``GQL_FIXTURE_INTERNAL_PRODUCT_ID`` and page views are 4321.
+    """
+    result, draft = _enrich_identity(gqlfx.authoritative_id_empty_body())
+
+    assert result.product_detail.is_success
+    assert (
+        result.product_detail.failure_class
+        is collector_graphql.GraphQLFailureClass.NONE
+    )
+    assert draft.graphql_id is None
+    assert draft.product_id == gqlfx.GQL_FIXTURE_INTERNAL_PRODUCT_ID
+    assert draft.id_mapping_mismatch is True
+    assert "graphql_id_mapping_mismatch" in {
+        issue.code for issue in result.product_detail.issues
+    }
+    assert result.page_views.is_success

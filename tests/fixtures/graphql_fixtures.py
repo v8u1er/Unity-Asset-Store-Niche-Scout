@@ -75,6 +75,7 @@ __all__ = [
     "GQL_FIXTURE_ASSET_ID",
     "GQL_FIXTURE_ASSET_ID_OTHER",
     "GQL_FIXTURE_CSRF_TOKEN",
+    "GQL_FIXTURE_INTERNAL_PRODUCT_ID",
     "GQL_OPERATION_NAMES",
     "IDENTITY_AGREEMENT_PRODUCT_DETAIL_PAYLOAD",
     "IDENTITY_MISMATCH_PRODUCT_DETAIL_PAYLOAD",
@@ -100,6 +101,9 @@ __all__ = [
     "TWO_OPERATION_BODY_JSON",
     "TWO_OPERATION_REVERSED_BODY_JSON",
     "ambiguous_correlation_body",
+    "authoritative_id_agrees_body",
+    "authoritative_id_disagrees_body",
+    "authoritative_id_empty_body",
     "body_json_for_items",
     "container_category_and_publisher_payload",
     "correlation_body",
@@ -161,6 +165,14 @@ GQL_FIXTURE_ASSET_ID: str = CANONICAL_ASSET_ID
 
 #: A second, distinct identifier, used only to provoke an identity mismatch.
 GQL_FIXTURE_ASSET_ID_OTHER: str = "7654321"
+
+#: The live captured internal ``productId`` for identity ``"117382"``
+#: (``.scratch/chunk18-capture.json``, plan ``chunk-19`` §5.3 G6). It is
+#: representative of the live shape: ``product.id`` equals the requested package
+#: identity while ``product.productId`` is a distinct long internal id. The
+#: value is public product metadata only -- no credential, cookie, or header
+#: value (LREQ-SEC-010/020).
+GQL_FIXTURE_INTERNAL_PRODUCT_ID: str = "275244114082"
 
 #: Offline CSRF credential material. A fixture value, never a real credential.
 GQL_FIXTURE_CSRF_TOKEN: str = "fixture-graphql-csrf-token"
@@ -343,6 +355,7 @@ TARGET_ASSET_DOCUMENT: Mapping[str, Any] = {
 def product_detail_payload(
     asset_identity_key: str = GQL_FIXTURE_ASSET_ID,
     *,
+    product_id: object = None,
     rating_average: object = 4.5,
     rating_count: object = 210,
     review_count: object = 34,
@@ -352,13 +365,18 @@ def product_detail_payload(
 ) -> dict[str, Any]:
     """Return a valid ``ProductDetail`` payload for ``asset_identity_key``.
 
-    Both identity aliases are populated and agree with the requested identity, so
-    the payload validates and carries no identity mismatch. Every member
-    ``PRODUCT_DETAIL_REQUIRED_MEMBERS`` names is present.
+    ``id`` is always ``asset_identity_key``. ``productId`` defaults to the same
+    identifier (``product_id is None``), which reproduces the pre-Chunk-19
+    output exactly, so every existing keyed golden stays byte-identical; a
+    supplied value is emitted verbatim. Under the Chunk 19 ruling the returned
+    ``productId`` is persisted but is **not** an agreement alias, so a payload
+    whose ``productId`` differs from the requested identity still validates and
+    agrees through ``id`` alone. Every member ``PRODUCT_DETAIL_REQUIRED_MEMBERS``
+    names is present.
     """
     return {
         "id": asset_identity_key,
-        "productId": asset_identity_key,
+        "productId": asset_identity_key if product_id is None else product_id,
         "rating": {"average": rating_average, "count": rating_count},
         "reviewCount": review_count,
         "firstPublishedDate": "2019-03-04T12:30:00Z",
@@ -639,6 +657,87 @@ def in_order_success_body() -> str:
     return target_asset_body()
 
 
+# ---------------------------------------------------------------------------
+# Authoritative-``id`` keyed bodies (Chunk 19, LREQ-GQL-070)
+#
+# The live shape (plan §5.3 S3 / §8.2 G6, hand-derived from
+# ``.scratch/chunk18-capture.json``): the returned authoritative ``id`` equals
+# the requested package identity while ``productId`` is a distinct long internal
+# id. Under the Chunk 19 ruling only ``id`` is an agreement alias, so the first
+# body must compare as a match and the second as a mismatch. The fixture id
+# values are the fixture identity ``GQL_FIXTURE_ASSET_ID`` and the captured
+# internal id ``GQL_FIXTURE_INTERNAL_PRODUCT_ID``; no capture file is read.
+# ---------------------------------------------------------------------------
+
+
+def authoritative_id_agrees_body() -> str:
+    """Return a keyed body whose ``id`` agrees and whose ``productId`` differs.
+
+    Golden (plan §8.2, hand-derived): the returned authoritative ``id`` equals
+    the requested ``GQL_FIXTURE_ASSET_ID`` ("1234567") and the returned
+    ``productId`` is ``GQL_FIXTURE_INTERNAL_PRODUCT_ID`` ("275244114082"); the
+    page-views scalar is 4321. Under the ruling the agreement alias set is
+    ``{"id": "1234567"}`` alone, so ``id_mapping_mismatch`` is False even
+    though ``productId`` disagrees with the requested identity.
+    """
+    return correlation_body(
+        {
+            "operationName": gql.PRODUCT_DETAIL_OPERATION_NAME,
+            "data": product_detail_payload(product_id=GQL_FIXTURE_INTERNAL_PRODUCT_ID),
+        },
+        {
+            "operationName": gql.PRODUCT_PAGE_VIEWS_OPERATION_NAME,
+            "data": {"pageViews": 4321},
+        },
+    )
+
+
+def authoritative_id_disagrees_body() -> str:
+    """Return a keyed body whose ``id`` disagrees and whose ``productId`` agrees.
+
+    Golden (plan §8.2 negative, hand-derived): the returned authoritative ``id``
+    is ``GQL_FIXTURE_ASSET_ID_OTHER`` ("7654321") while the returned
+    ``productId`` equals the requested ``GQL_FIXTURE_ASSET_ID``; the page-views
+    scalar is 4321. The mismatch is the authoritative ``id``, so
+    ``id_mapping_mismatch`` is True: a populated-but-agreeing ``productId`` is
+    not agreement (plan §13 R2).
+    """
+    return correlation_body(
+        {
+            "operationName": gql.PRODUCT_DETAIL_OPERATION_NAME,
+            "data": product_detail_payload(
+                GQL_FIXTURE_ASSET_ID_OTHER, product_id=GQL_FIXTURE_ASSET_ID
+            ),
+        },
+        {
+            "operationName": gql.PRODUCT_PAGE_VIEWS_OPERATION_NAME,
+            "data": {"pageViews": 4321},
+        },
+    )
+
+
+def authoritative_id_empty_body() -> str:
+    """Return the Q1-a edge body: unusable ``id``, populated ``productId``.
+
+    Golden (plan §8.2 Q1-a / §13 R1): byte-identical to
+    :func:`authoritative_id_agrees_body` with only the ``"id"`` member set to
+    ``""``; ``productId`` stays ``GQL_FIXTURE_INTERNAL_PRODUCT_ID`` and page
+    views stay 4321. The payload validates (a present-but-empty ``id`` is not
+    ``absent_alias`` and the populated ``productId`` keeps
+    ``no_populated_alias`` False), the operation is a ``SUCCESS``, and the
+    empty agreement alias map makes the comparison a safe non-agreement.
+    """
+    payload = product_detail_payload(product_id=GQL_FIXTURE_INTERNAL_PRODUCT_ID)
+    payload["id"] = ""
+    return correlation_body(
+        {"operationName": gql.PRODUCT_DETAIL_OPERATION_NAME, "data": payload},
+        {
+            "operationName": gql.PRODUCT_PAGE_VIEWS_OPERATION_NAME,
+            "data": {"pageViews": 4321},
+        },
+    )
+
+
 def reversed_order_success_body() -> str:
     """Return the same two items as :func:`in_order_success_body`, order swapped."""
     return correlation_body(
@@ -763,11 +862,14 @@ def ambiguous_correlation_body() -> str:
 #
 # The nested ``product`` object is the H5 wrapper: every field
 # ``PRODUCT_DETAIL_REQUIRED_MEMBERS`` names is present at the product object's
-# own top level, ``id``/``productId`` agreeing with the requested identity so
-# the requested-vs-returned comparison passes. Under the Chunk 18 G7 alias the
-# adapter requests ``pageViews: productPageViews(...)``, so the live page-views
-# item is recorded here with the ``pageViews`` key the frozen validator reads.
-# The captured pre-alias shape is kept as its own variant
+# own top level. Chunk 19 §5.3 (live shape, G6): the returned authoritative
+# ``id`` equals the requested identity while the returned ``productId`` is the
+# distinct captured internal id ``GQL_FIXTURE_INTERNAL_PRODUCT_ID``. Under the
+# Chunk 19 ruling only the returned ``id`` is an agreement alias, so the
+# requested-vs-returned comparison passes through ``id`` alone. Under the Chunk
+# 18 G7 alias the adapter requests ``pageViews: productPageViews(...)``, so the
+# live page-views item is recorded here with the ``pageViews`` key the frozen
+# validator reads. The captured pre-alias shape is kept as its own variant
 # (:func:`keyless_page_views_captured_shape_body`) so a test can pin the
 # ``NULL_REQUIRED_DATA`` classification the run log's DRAFT got wrong.
 # ---------------------------------------------------------------------------
@@ -797,15 +899,19 @@ def keyless_product_detail_payload(
 ) -> dict[str, Any]:
     """Return the live ``data.product`` object for a keyless envelope.
 
-    Golden (plan §8.2, hand-computed): ``rating.average`` 4.5, ``count`` 12,
-    ``reviewCount`` 7, ``firstPublishedDate`` 2019-03-04T12:30:00Z, ``state``
-    published, ``category`` ``{"id":"c1","name":"Tools"}``, ``publisher``
-    ``{"id":"p1","name":"Pub"}``, and both identity aliases equal to
-    ``asset_identity_key``. The container shapes match the live capture's
+    Golden (plan §8.2 and §5.3, hand-computed): ``rating.average`` 4.5,
+    ``count`` 12, ``reviewCount`` 7, ``firstPublishedDate``
+    2019-03-04T12:30:00Z, ``state`` published, ``category``
+    ``{"id":"c1","name":"Tools"}``, ``publisher`` ``{"id":"p1","name":"Pub"}``.
+    The live shape (Chunk 19 §5.3): ``id`` equals ``asset_identity_key`` while
+    ``productId`` is the distinct captured internal id
+    ``GQL_FIXTURE_INTERNAL_PRODUCT_ID``; under the ruling only ``id`` is an
+    agreement alias. The container shapes match the live capture's
     ``category``/``publisher`` objects (run log "Full capture").
     """
     return product_detail_payload(
         asset_identity_key,
+        product_id=GQL_FIXTURE_INTERNAL_PRODUCT_ID,
         rating_count=12,
         review_count=7,
         category={"id": "c1", "name": "Tools"},
