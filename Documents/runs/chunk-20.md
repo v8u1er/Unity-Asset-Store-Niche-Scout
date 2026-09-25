@@ -7,9 +7,10 @@ downstream chunk. Scope is the diagnosis in the dispatch brief of 2026-09-25
 before this chunk started.
 
 Branch: `chunk-20` (created from `main` at `20514d9 chunk-19: gate passed`).
-Routing: `impl-deep` with `test-author` first (metrics semantics on a frozen
-7B surface), then `impl-fast` for the report-rendering subpart, then
-`spec-reviewer`.
+Routing: `test-author` first, then `impl-deep` (metrics semantics on a frozen
+7B surface), then `spec-reviewer`. No report-rendering subpart: the report already
+prints the persisted column (`report.py:431`), so no `impl-fast` stage was needed
+and the plan's file list stayed at two files.
 
 ## Root cause (verified read-only before planning; see the brief)
 
@@ -52,12 +53,67 @@ Routing: `impl-deep` with `test-author` first (metrics semantics on a frozen
 | # | Stage | Status | Notes |
 |---|---|---|---|
 | 0 | Preflight | DONE | Tree clean at `20514d9`; branch `chunk-20` created. |
-| 1 | Plan | DONE | `chunk-planner`; plan frozen at `Documents/plans/chunk-20-usable-quality-count-fabricated-zero-remediation.md`. Two runs were needed (the first exhausted steps after verification; the second authored the plan). |
-| 2 | Tests first | PENDING | `test-author`. |
-| 3 | Implement | PENDING | `impl-deep`. |
-| 4 | Verify | PENDING | pytest, traceability, import boundaries, scope, secrets, ruff. |
-| 5 | Review | PENDING | `spec-reviewer`. |
-| 6 | Gate | PENDING | Dispatch DoD opened in the plan. |
+| 1 | Plan | DONE | `chunk-planner`; plan frozen at `Documents/plans/chunk-20-usable-quality-count-fabricated-zero-remediation.md` (commit `042e8ff`). Two runs were needed (the first exhausted steps after verification; the second authored the plan). No open questions; plan §12 = none. |
+| 2 | Tests first | DONE | `test-author` (commit `1d7961c`). `python -m pytest -q tests/test_metrics.py` → **2 failed, 39 passed**: `test_quality_raw_zero_visibility_denominator_is_null` (`assert 0 == 5`, line 601) and `test_quality_raw_null_below_required_coverage` (`assert 0 == 5`, line 680) — missing-implementation-value failures, not syntax or collection errors. Only `tests/test_metrics.py` changed (+50); `tests/traceability.json` unchanged. |
+| 3 | Implement | DONE | `impl-deep` (commit `191601f`). `metrics.py` +8/-1: the two keyword arguments at the `INSUFFICIENT_COVERAGE` and `ZERO_DENOMINATOR` returns plus the §4.3 docstring sentence. |
+| 4 | Verify (lead) | DONE | See "Gate evidence" below. Lead re-ran every command; all pass. |
+| 5 | Review | DONE | `spec-reviewer`: **VERDICT: PASS**, no Blocker or Major; three Minors recorded in "Review findings". |
+| 6 | Gate | DONE | All six plan §8 DoD bullets have direct evidence below. **GATE: PASSED.** |
+
+## Gate evidence (plan §8)
+
+- **DoD-1 (offline suite).** `python -m pytest -q` → **658 passed, 0 failed, 0
+  skipped, in 24.98s** (lead-run, verbatim count). Scoped:
+  `python -m pytest -q tests/test_metrics.py` → **41 passed**.
+- **DoD-2 (validators).** All exit 0, verbatim:
+  `validate_traceability` → "Traceability valid: 89 required/defined LREQ IDs
+  mapped, 639 matrix nodes, 0 unmarked analytical tests outside exemption (3
+  exempted non-analytical nodes)";
+  `check_import_boundaries` → "Import boundaries valid for metrics.py, scoring.py";
+  `check_scope_prohibitions` → "Scope prohibitions valid: no retired token found
+  … (6 tokens checked)";
+  `check_secrets` → "Secret check valid: no literal credential found under src,
+  tests, config, pyproject.toml; .gitignore ignores .env and no tracked .env
+  exists".
+- **DoD-3 (lint/format).** `ruff check src/niche_scout/metrics.py` → "All checks
+  passed!"; `ruff format --check` on the two changed files → "2 files already
+  formatted". Repo-wide ruff reports 241 pre-existing errors and 17
+  would-reformat files, all byte-identical to `main` and none of them the two
+  changed files (reviewer's exact statement).
+- **DoD-4 (traceability reconciliation).** `git diff --stat
+  main...chunk-20 -- tests/traceability.json` → **empty**. `git diff --name-only
+  main...chunk-20 -- src tests` → exactly `src/niche_scout/metrics.py` and
+  `tests/test_metrics.py`. No key added, changed, or removed.
+- **DoD-5 (prohibitions).** `git diff --stat main...chunk-20` → 4 files: the
+  plan (+545), this run log (+71), `metrics.py` (+8/-1), `tests/test_metrics.py`
+  (+50). No import, purity, clock, dependency, config knob, persisted field, or
+  node-ID change. No live network.
+
+### Real-data proof (lead, beyond the suite)
+
+Re-running the read-only probe against the operator's persisted run with the
+fixed code: the 7B count is now **17 / 0 / 6 / 20 / 10 / 8 / 9 / 16** — exactly
+the per-stratum `Σ u_quality_h` over the `usable` strata and exactly what 6B
+finalized, so §5.5 check B can no longer fire on this shape and Chunk 10's
+overwrite now writes the true value. A differently-shaped probe built fresh
+typed `CategoryMetricInput`s (not the test fixtures) and returned:
+`eligible_set_too_small: 0 0`; `no_usable_stratum: 0 0`;
+`insufficient_coverage: 5 25`, coverage `0.25`; `zero_denominator: 5 25`,
+coverage `1.0`. Null and zero stay distinct.
+
+## Review findings (spec-reviewer, VERDICT: PASS)
+
+- **Minor (record-only).** The stage table and DoD-1 evidence were pending at
+  review time; this section and "Gate evidence" resolve it.
+- **Minor (optional defensive pin).** No count assertion pins the
+  `ZERO_POPULATION` and `PAGE_VIEW_SEMANTICS_CONTRADICTED` paths at `0`/`0`. The
+  plan explicitly excludes them (pre-loop / unreachable); the lead's fresh-input
+  probe covers `ZERO_POPULATION` semantics indirectly. Not a violation; no loop.
+- **Minor (recorded risk).** The `min_age_days_for_rate` coupling
+  (`metrics.py:620-626` vs `:1013-1017`) and the analogous
+  `min_usable_samples_per_stratum` config-vs-constant split (`pipeline.py:3412`
+  vs `:2018/:2025/:2033`) can diverge under non-default config and would flag
+  check B. Same item as plan §11.3; still a non-goal, still open.
 
 ## Deviations
 
