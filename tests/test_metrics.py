@@ -595,6 +595,16 @@ def test_quality_raw_zero_visibility_denominator_is_null() -> None:
     result = m.quality_raw(mfx.QUALITY_ZERO_VISIBILITY)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_ZERO_DENOMINATOR
+    # Plan §4.4 / §7.2: the null value does not null the counts. One usable
+    # stratum, N_h = 25 with 5 quality-eligible observations (SRS §6.5 line
+    # 637: counts are never nullable).
+    assert result.usable_sample_count == 5
+    assert result.eligible_population_count == 25
+    aggregate = m.compute_category_raw_metrics(
+        mfx.QUALITY_ZERO_VISIBILITY,
+        mfx.make_breadth_input(None, 100),
+    )
+    assert aggregate.usable_quality_sample_count == 5
     coverage = m.quality_stratum_eligibility_coverage(mfx.QUALITY_ZERO_VISIBILITY)
     assert coverage == pytest.approx(1.0, abs=1e-9)
 
@@ -613,6 +623,35 @@ def test_quality_eligible_set_too_small_is_null() -> None:
     result = m.quality_raw(mfx.QUALITY_ELIGIBLE_SET_TOO_SMALL)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_ELIGIBLE_SET_TOO_SMALL
+    # Plan §4.4 / §7.2: total eligible 4 < QUALITY_MIN_ELIGIBLE_ASSETS, so no
+    # stratum accumulated; the fix must leave these true zeros at 0 and not
+    # leak a stale count upward.
+    assert result.usable_sample_count == 0
+    assert result.eligible_population_count == 0
+    # Plan §4.4 / §7.2: a locally-built NO_USABLE_STRATUM input with two
+    # strata of 3 quality-eligible observations each. Total eligible is
+    # 6 >= 5 so the eligible-set guard does not fire, but 3 <
+    # MIN_USABLE_SAMPLES_PER_STRATUM (5) so neither stratum is quality-usable
+    # and both counts stay the true zero.
+    no_usable_stratum_input = mfx.make_category_input(
+        (
+            mfx.make_stratum(
+                0,
+                50,
+                (mfx.make_observation(),) * 3,
+            ),
+            mfx.make_stratum(
+                1,
+                50,
+                (mfx.make_observation(),) * 3,
+            ),
+        ),
+        category="no-usable-quality-stratum",
+    )
+    no_usable_stratum = m.quality_raw(no_usable_stratum_input)
+    assert no_usable_stratum.unavailable_reason == m.METRIC_REASON_NO_USABLE_STRATUM
+    assert no_usable_stratum.usable_sample_count == 0
+    assert no_usable_stratum.eligible_population_count == 0
 
 
 @pytest.mark.lreq("LREQ-MET-090")
@@ -634,6 +673,17 @@ def test_quality_raw_null_below_required_coverage() -> None:
     ) == pytest.approx(0.25, abs=1e-9)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_INSUFFICIENT_COVERAGE
+    # Plan §4.4 / §7.2: only stratum 0 (N_0 = 25, 5 eligible) is quality-usable,
+    # so the counts accumulated before the coverage guard returns are the
+    # 5 eligible observations and the N_0 = 25 population weight. The null
+    # value must not fabricate a zero count (SRS §6.5 line 637).
+    assert result.usable_sample_count == 5
+    assert result.eligible_population_count == 25
+    aggregate = m.compute_category_raw_metrics(
+        mfx.QUALITY_LOW_COVERAGE,
+        mfx.make_breadth_input(None, 100),
+    )
+    assert aggregate.usable_quality_sample_count == 5
 
 
 @pytest.mark.lreq("LREQ-MET-090")
