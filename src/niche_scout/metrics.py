@@ -1519,7 +1519,10 @@ def quality_raw(input: CategoryMetricInput) -> MetricResult:
     ``METRIC_REASON_ZERO_DENOMINATOR`` (``sum(den_h) == 0.0``), or
     ``METRIC_REASON_PAGE_VIEW_SEMANTICS_CONTRADICTED`` (run-level status is
     ``CONTRADICTED``, which also makes every observation quality-ineligible
-    through Chunk 7A). ``rating_count`` never weights the formula. The reason
+    through Chunk 7A). ``usable_sample_count`` and ``eligible_population_count``
+    describe the quality-usable strata (the strata whose ``N_h / N`` terms build
+    the coverage) and are returned even when ``.value`` is null; counts are never
+    null (SRS §6.5 line 637). ``rating_count`` never weights the formula. The reason
     order above is a documented RECOMMENDATION (plan §12 C-1). Pure.
     """
     total_population = _category_population(input.strata)
@@ -1579,11 +1582,15 @@ def quality_raw(input: CategoryMetricInput) -> MetricResult:
     if coverage < input.min_required_component_coverage:
         return _null_result(
             METRIC_REASON_INSUFFICIENT_COVERAGE,
+            usable_sample_count=usable_sample_count,
+            eligible_population_count=eligible_population_count,
             eligibility_coverage=coverage,
         )
     if denominator == 0.0:
         return _null_result(
             METRIC_REASON_ZERO_DENOMINATOR,
+            usable_sample_count=usable_sample_count,
+            eligible_population_count=eligible_population_count,
             eligibility_coverage=coverage,
         )
     if input.page_view_semantics_status == PageViewSemanticsStatus.CONTRADICTED:
