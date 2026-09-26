@@ -100,6 +100,8 @@ Record corrections carried forward (from the assessment):
 | 2 | Tests first | DONE | `test-author`; five `tests/` files, committed `6757a58 chunk-21: tests`. Lead re-ran: `python -m pytest -q tests/test_validation.py tests/test_enrichment.py tests/test_metrics.py` → **6 failed, 129 passed**; failures are missing-implementation (`TypeError: unexpected keyword argument` ×5, one `assert 0.0 == 1.0`) — no syntax/collection errors. `validate_traceability` → 645 matrix nodes (six added keys). |
 | 3 | Implement | DONE | `impl-deep` (S1–S3) + `chunk-planner` (S4 interface docs + plan amendment). `src/niche_scout/metrics.py`, `src/niche_scout/pipeline.py`, four interface docs, plan amended. One accepted forced deviation (below). |
 | 4 | Verify (lead) | DONE | See "Gate evidence". Lead re-ran every command; all pass. |
+| 5 | Review | DONE | `spec-reviewer` pass 1: `VERDICT: FAIL` (1 Major record gap + 2 Minors; no code defect); fixed by adding the "Gate evidence" section (`889e1a1 chunk-21: review fixes`). Pass 2: **`VERDICT: PASS`**, no findings. |
+| 6 | Gate | DONE | Every plan §9 DoD-1…DoD-6 bullet has evidence in "Gate evidence"; reviewer independently reproduced pytest 664, the four validators, and `ruff check`. **GATE: PASSED.** |
 
 ## Accepted deviation (recorded 2026-09-26)
 
@@ -268,3 +270,13 @@ resolved by the section above.
   `quality_observation_eligibility`. Recorded, not changed (no loop).
 - **UNVERIFIED (reviewer).** Pre-change red state not independently re-executed (6 failed
   / 129 passed) — the environment denies the needed commands; verified by inspection.
+
+### Second pass (after fix round 1)
+
+`VERDICT: PASS` — no Blocker, Major, or Minor. The reviewer independently reproduced
+`pytest` 664 passed, the four validators (exit 0, matching text), `ruff check` on both
+changed source files ("All checks passed!"), and the `+21/−0` six-key traceability diff;
+confirmed `889e1a1` touches only the run log and that tests are unchanged since `6757a58`;
+and mapped the 8 `pipeline.py` format hunks outside the chunk's changed lines.
+
+**GATE: PASSED.**
