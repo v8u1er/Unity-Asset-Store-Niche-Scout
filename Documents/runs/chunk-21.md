@@ -218,3 +218,53 @@ plan chooses one. The plan must name every frozen signature it changes.
 **Correction owed elsewhere.** `Documents/runs/chunk-20.md:112–116` ("would flag check B")
 is inaccurate per the reading above; it is noted here rather than edited (chunk-20 is a
 closed record; change-control is the human's).
+
+## Gate evidence (plan §9 DoD-1…DoD-6)
+
+Lead-run, verbatim, on branch `chunk-21` at `d3b81bc chunk-21: implementation`.
+
+- **DoD-1 (offline suite).** `python -m pytest -q` → **664 passed in 23.05s**.
+- **DoD-2 (validators).** All exit 0, verbatim:
+  `python -m niche_scout.tools.validate_traceability` → "Traceability valid: 89
+  required/defined LREQ IDs mapped, 645 matrix nodes, 0 unmarked analytical tests outside
+  exemption (3 exempted non-analytical nodes)";
+  `check_import_boundaries` → "Import boundaries valid for metrics.py, scoring.py";
+  `check_scope_prohibitions` → "Scope prohibitions valid: no retired token found … (6
+  tokens checked)";
+  `check_secrets` → "Secret check valid: no literal credential found under src, tests,
+  config, pyproject.toml; .gitignore ignores .env and no tracked .env exists".
+- **DoD-3 (lint/format).** `python -m ruff check src/niche_scout/metrics.py
+  src/niche_scout/pipeline.py` → "All checks passed!". `ruff format --check` → metrics.py
+  clean; `pipeline.py` reports **8 hunks that pre-exist on `main`** — verified byte-exact:
+  `git show main:src/niche_scout/pipeline.py` written to `.scratch/` as bytes (via
+  `subprocess`, byte-exact) and `ruff format --check` on that copy reports the same 8
+  hunks at shifted line numbers; none lies in this chunk's changed hunks. Not a new
+  violation.
+- **DoD-4 (traceability reconciliation).** `tests/traceability.json` diff is **+21/−0**
+  (six added node-ID keys, no key changed or removed); reused node IDs byte-identical.
+  `git diff --name-only ebd3d3a..d3b81bc -- src tests` → `src/niche_scout/metrics.py`,
+  `src/niche_scout/pipeline.py`, and the five `tests/` files from commit `6757a58`.
+- **DoD-5 (prohibitions).** `git diff --stat ebd3d3a d3b81bc -- src/niche_scout/models.py
+  src/niche_scout/config.py src/niche_scout/scoring.py Documents/SRS-lean.md
+  tests/test_contracts.py` → empty. No import, purity, clock, or dependency change. No
+  live network.
+- **DoD-6 (records).** Plan (FROZEN + accepted-deviation amendment) and this run log
+  updated; residual obligations stay open.
+
+## Review findings (spec-reviewer, first pass)
+
+`VERDICT: FAIL` — one **Major** and two **Minors**, no code defect. The Major was a record
+gap (this run log lacked the §9 "Gate evidence" section the stage table deferred to); it is
+resolved by the section above.
+
+- **Minor (format-only, accepted).** `tests/test_validation.py:1859-1861, 1881-1883`: two
+  new `assert (` blocks `ruff format` would collapse to one line; same pattern as the
+  pre-existing flagged line 1826. Recorded, not changed (tests are `test-author`'s;
+  no loop).
+- **Minor (wording, accepted).** `Documents/interfaces/chunk-6B.md:306-310` and
+  `pipeline.py:1682-1686`: "forwarded to `stratum_is_usable`,
+  `age_normalized_page_view_index`, and `quality_observation_eligibility` respectively"
+  omits that `min_age_days_for_rate` also reaches the quality verdict through
+  `quality_observation_eligibility`. Recorded, not changed (no loop).
+- **UNVERIFIED (reviewer).** Pre-change red state not independently re-executed (6 failed
+  / 129 passed) — the environment denies the needed commands; verified by inspection.
