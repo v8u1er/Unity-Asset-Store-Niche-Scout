@@ -124,6 +124,8 @@ def quality_observation_eligibility(
     page_view_semantics_status: PageViewSemanticsStatus,
     product_page_views: object, first_published_date_utc: object,
     scoring_cutoff_utc: datetime,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> MetricEligibility: ...
 ```
 
@@ -136,8 +138,11 @@ def quality_observation_eligibility(
 - **`ValueError` is raised only for caller/policy parameters**, never for a
   product-level value: a naive or non-UTC `scoring_cutoff_utc`; a
   `min_age_days_for_rate < 1` (so the index division cannot be by zero); a
-  `recent_window_days` or `min_usable_samples_per_stratum` that is not an
-  `int >= 0`; a `usable_observation_count` that is a `bool` or negative.
+  `quality_min_rating_count < 1`; a `recent_window_days` or
+  `min_usable_samples_per_stratum` that is not an `int >= 0`; a
+  `usable_observation_count` that is a `bool` or negative. Both
+  `min_age_days_for_rate` and `quality_min_rating_count` are `int >= 1` with
+  `bool` rejected.
 
 ### 4.2 Behavior summary
 
@@ -168,7 +173,11 @@ def quality_observation_eligibility(
 - `quality_observation_eligibility`: the SRS §7.5 conjunction with the reason
   precedence in plan §5.3 (operations → identity → state → rating average →
   rating count → page-view index reason propagation → contradicted semantics).
-  `contradicted` is consumed, not detected (Chunk 7B detects it). LREQ-MET-090.
+  `contradicted` is consumed, not detected (Chunk 7B detects it). The
+  `min_age_days_for_rate` policy value is forwarded to
+  `age_normalized_page_view_index` and `quality_min_rating_count` to the
+  rating-count classification (`_classify_rating_count`), so a caller override of
+  either governs this per-observation verdict (chunk-21). LREQ-MET-090.
 
 ## 5. What downstream chunks must NOT expect
 

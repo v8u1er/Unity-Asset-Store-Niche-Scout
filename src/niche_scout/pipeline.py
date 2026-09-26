@@ -81,6 +81,7 @@ from niche_scout.models import (
     MIN_AGE_DAYS_FOR_RATE,
     MIN_CATEGORIES_PER_RUN,
     MIN_USABLE_SAMPLES_PER_STRATUM,
+    QUALITY_MIN_RATING_COUNT,
     RECENT_WINDOW_DAYS,
     SAMPLING_RULE_VERSION,
     CategoryFilterValidationStatus,
@@ -1656,6 +1657,7 @@ def finalize_stratum_counts(
     min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
     min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
     recent_window_days: int = RECENT_WINDOW_DAYS,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> tuple[StratumFinalization, ...]:
     """Finalize one category's per-stratum usable counts (LREQ-SMP-080).
 
@@ -1676,6 +1678,12 @@ def finalize_stratum_counts(
     §5.6 token ``demand=<r>;recent=<r>;quality=<r>``. A missing observation for a
     sampled member is never zero: it raises ``ValueError`` naming the category
     only. ``category.strata == ()`` returns ``()``. Pure: no I/O, no clock.
+
+    ``min_usable_samples_per_stratum``, ``min_age_days_for_rate``, and
+    ``quality_min_rating_count`` are caller/policy parameters (SRS §14), defaulted
+    from ``models``; they are forwarded to ``stratum_is_usable``,
+    ``age_normalized_page_view_index``, and ``quality_observation_eligibility``
+    respectively, so a non-default config governs this path too (chunk-21).
     """
     members_by_stratum: dict[int, list[Any]] = {
         stratum.stratum_index: [] for stratum in category.strata
@@ -1738,6 +1746,8 @@ def finalize_stratum_counts(
                 product_page_views=observation.product_page_views,
                 first_published_date_utc=observation.first_published_date_utc,
                 scoring_cutoff_utc=scoring_cutoff_utc,
+                min_age_days_for_rate=min_age_days_for_rate,
+                quality_min_rating_count=quality_min_rating_count,
             )
             if quality.eligible:
                 u_quality_h += 1
@@ -1906,6 +1916,9 @@ def finalize_enrichment(
     computed_at_utc: datetime,
     page_view_semantics_status: PageViewSemanticsStatus,
     union: EnrichmentUnion,
+    min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> FinalizationReport:
     """Finalize and persist the authoritative sample summaries (LREQ-SMP-080).
 
@@ -1941,6 +1954,11 @@ def finalize_enrichment(
     ``stratum_statistics_json`` and identical counts. ``union.members == ()``
     yields ``categories == ()``, ``category_rows_written == 0``, and
     ``mismatches == ()``.
+
+    ``min_usable_samples_per_stratum``, ``min_age_days_for_rate``, and
+    ``quality_min_rating_count`` are caller/policy parameters (SRS §14) defaulted
+    from ``models``; the run level passes the ``config`` values so the finalized
+    path and the scored ``CategoryMetricInput`` read one policy source (chunk-21).
     """
     if not union.members:
         return FinalizationReport(
@@ -1999,6 +2017,9 @@ def finalize_enrichment(
             observations,
             scoring_cutoff_utc=scoring_cutoff_utc,
             page_view_semantics_status=page_view_semantics_status,
+            min_usable_samples_per_stratum=min_usable_samples_per_stratum,
+            min_age_days_for_rate=min_age_days_for_rate,
+            quality_min_rating_count=quality_min_rating_count,
         )
 
         stratum_statistics_json = _finalized_stratum_statistics_json(
@@ -2015,7 +2036,7 @@ def finalize_enrichment(
             for final in stratum_finalizations
             if stratum_is_usable(
                 final.u_demand_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
         usable_recent_supply_sample_count = sum(
@@ -2023,7 +2044,7 @@ def finalize_enrichment(
             for final in stratum_finalizations
             if stratum_is_usable(
                 final.u_recent_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
         usable_quality_sample_count = sum(
@@ -2031,7 +2052,7 @@ def finalize_enrichment(
             for final in stratum_finalizations
             if stratum_is_usable(
                 final.u_quality_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
 
@@ -2074,6 +2095,9 @@ def finalize_enrichment(
         report,
         scoring_cutoff_utc=scoring_cutoff_utc,
         page_view_semantics_status=page_view_semantics_status,
+        min_usable_samples_per_stratum=min_usable_samples_per_stratum,
+        min_age_days_for_rate=min_age_days_for_rate,
+        quality_min_rating_count=quality_min_rating_count,
     )
     merged: list[str] = list(report.mismatches)
     for message in consistency_mismatches:
@@ -2091,6 +2115,9 @@ def _consistency_mismatches_for_category(
     scoring_cutoff_utc: datetime,
     page_view_semantics_status: PageViewSemanticsStatus,
     persisted_row: CategoryScoreRecord,
+    min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> tuple[str, ...]:
     """Checks A–D for one finalized category (plan §5.5).
 
@@ -2113,7 +2140,7 @@ def _consistency_mismatches_for_category(
             for final in finalized.strata
             if stratum_is_usable(
                 final.u_demand_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
         != finalized.usable_demand_sample_count
@@ -2125,7 +2152,7 @@ def _consistency_mismatches_for_category(
             for final in finalized.strata
             if stratum_is_usable(
                 final.u_recent_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
         != finalized.usable_recent_supply_sample_count
@@ -2137,7 +2164,7 @@ def _consistency_mismatches_for_category(
             for final in finalized.strata
             if stratum_is_usable(
                 final.u_quality_h,
-                min_usable_samples_per_stratum=MIN_USABLE_SAMPLES_PER_STRATUM,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
             )
         )
         != finalized.usable_quality_sample_count
@@ -2193,6 +2220,9 @@ def _consistency_mismatches_for_category(
                         scoring_cutoff_utc=scoring_cutoff_utc,
                         page_view_semantics_status=page_view_semantics_status,
                         strata=tuple(strata_inputs),
+                        min_usable_samples_per_stratum=min_usable_samples_per_stratum,
+                        min_age_days_for_rate=min_age_days_for_rate,
+                        quality_min_rating_count=quality_min_rating_count,
                     ),
                     BreadthMetricInput(
                         verified_total_count=None,
@@ -2272,6 +2302,9 @@ def assert_finalization_consistency(
     *,
     scoring_cutoff_utc: datetime,
     page_view_semantics_status: PageViewSemanticsStatus,
+    min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> tuple[str, ...]:
     """The 6B-owned agreement check (gate bullet, dependency map line 763).
 
@@ -2306,6 +2339,13 @@ def assert_finalization_consistency(
     supplies ``scoring_cutoff_utc``, ruling C). It is deterministic and
     order-stable: categories are visited in ``run.categories`` order. Empty-union
     input yields ``()``.
+
+    ``min_usable_samples_per_stratum``, ``min_age_days_for_rate``, and
+    ``quality_min_rating_count`` are caller/policy parameters (SRS §14) defaulted
+    from ``models``; check A uses ``min_usable_samples_per_stratum`` and check B's
+    ``CategoryMetricInput`` receives all three, so the assertion compares
+    like-for-like with the finalized counts under any non-default config
+    (chunk-21).
     """
     if not finalization.categories:
         return ()
@@ -2343,6 +2383,9 @@ def assert_finalization_consistency(
                 scoring_cutoff_utc=scoring_cutoff_utc,
                 page_view_semantics_status=page_view_semantics_status,
                 persisted_row=persisted_row,
+                min_usable_samples_per_stratum=min_usable_samples_per_stratum,
+                min_age_days_for_rate=min_age_days_for_rate,
+                quality_min_rating_count=quality_min_rating_count,
             )
         )
 
@@ -3399,6 +3442,9 @@ def run_pipeline(
         computed_at_utc=clock(),
         page_view_semantics_status=page_view_status,
         union=union,
+        min_usable_samples_per_stratum=config.min_usable_samples_per_stratum,
+        min_age_days_for_rate=config.min_age_days_for_rate,
+        quality_min_rating_count=config.quality_min_rating_count,
     )
 
     metrics: list[Any] = []

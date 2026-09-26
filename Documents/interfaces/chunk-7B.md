@@ -74,7 +74,7 @@ class CategoryMetricInput:
     min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM
     min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE
     recent_window_days: int = RECENT_WINDOW_DAYS
-    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT  # INERT for 7B
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT  # live; forwarded to 7A
     quality_min_eligible_assets: int = QUALITY_MIN_ELIGIBLE_ASSETS
     min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE
 
@@ -103,10 +103,13 @@ class CategoryRawMetrics:
     breadth_completeness_status: BreadthCompletenessStatus
 ```
 
-`CategoryMetricInput.quality_min_rating_count` is accepted for interface
-completeness but is **INERT** for Chunk 7B: the rating-count minimum is enforced
-by Chunk 7A's `quality_observation_eligibility` via `QUALITY_MIN_RATING_COUNT`
-(LREQ-MET-090), so a caller-supplied override has no effect on 7B outputs.
+`CategoryMetricInput.quality_min_rating_count` is **live** for Chunk 7B:
+`_quality_observation_index` forwards `input.quality_min_rating_count` (and
+`input.min_age_days_for_rate`) to Chunk 7A's
+`quality_observation_eligibility`, so a caller-supplied override changes the
+eligibility verdict and therefore `quality_stratum_eligibility_coverage`,
+`quality_raw`, and `usable_quality_sample_count` (LREQ-MET-090). The field
+default remains `QUALITY_MIN_RATING_COUNT`.
 
 ## 4. Public functions
 

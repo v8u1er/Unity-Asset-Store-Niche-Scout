@@ -280,6 +280,7 @@ def finalize_stratum_counts(
     min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
     min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
     recent_window_days: int = RECENT_WINDOW_DAYS,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> tuple[StratumFinalization, ...]:
     """Finalize one category's per-stratum usable counts (LREQ-SMP-080).
 
@@ -302,7 +303,11 @@ def finalize_stratum_counts(
     token. A missing observation for a sampled member is unavailable and never
     zero. `observations` must contain an entry for every sampled member of
     `category`; a missing key raises `ValueError` naming the category only.
-    Pure: no I/O, no clock.
+    `min_usable_samples_per_stratum`, `min_age_days_for_rate`, and
+    `quality_min_rating_count` are caller/policy parameters (SRS §14) defaulted
+    from `models`; they are forwarded to `stratum_is_usable`,
+    `age_normalized_page_view_index`, and `quality_observation_eligibility`
+    respectively (chunk-21). Pure: no I/O, no clock.
     """
 
 def finalize_enrichment(
@@ -313,6 +318,9 @@ def finalize_enrichment(
     computed_at_utc: datetime,
     page_view_semantics_status: PageViewSemanticsStatus,
     union: EnrichmentUnion,
+    min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> FinalizationReport:
     """Finalize and persist the authoritative sample summaries (LREQ-SMP-080).
 
@@ -333,6 +341,13 @@ def finalize_enrichment(
     Must be called after `capture_scoring_cutoff_utc` and before Chunk 10's
     metric computation. `computed_at_utc` is caller-supplied; this module reads
     no clock. Idempotent.
+
+    `min_usable_samples_per_stratum`, `min_age_days_for_rate`, and
+    `quality_min_rating_count` are caller/policy parameters (SRS §14) defaulted
+    from `models`; they are forwarded to `finalize_stratum_counts`, replace the
+    `MIN_USABLE_SAMPLES_PER_STRATUM` literal in the three category-level sums,
+    and are forwarded to `assert_finalization_consistency`, so the finalized path
+    and the scored `CategoryMetricInput` read one policy source (chunk-21).
     """
 ```
 
@@ -346,6 +361,9 @@ def assert_finalization_consistency(
     *,
     scoring_cutoff_utc: datetime,
     page_view_semantics_status: PageViewSemanticsStatus,
+    min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> tuple[str, ...]:
     """The 6B-owned agreement check.
 
@@ -373,6 +391,15 @@ def assert_finalization_consistency(
          retains `usable_status == "pending"` on a completed run.
       E. `unique_enrichment_count` equals the run-wide distinct enriched
          identity count and is identical on every category row.
+
+    `min_usable_samples_per_stratum`, `min_age_days_for_rate`, and
+    `quality_min_rating_count` are caller/policy parameters (SRS §14) defaulted
+    from `models`; check A uses `min_usable_samples_per_stratum` and check B's
+    `CategoryMetricInput` receives all three, so the assertion compares
+    like-for-like with the finalized counts under any non-default config
+    (chunk-21). The per-category implementation helper
+    `_consistency_mismatches_for_category` carries the same three keyword-only
+    parameters.
     """
 ```
 

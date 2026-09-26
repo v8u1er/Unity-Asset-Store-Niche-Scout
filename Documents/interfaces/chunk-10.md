@@ -79,7 +79,10 @@ Executes one complete run in the SRS §3.2 order (plan §5.1/§5.2 steps 1–18)
     through `update_run_scoring_cutoff` and passed to every pure call and to
     `finalize_enrichment` (LREQ-ARCH-020).
 11. `finalize_enrichment` finalizes the authoritative per-stratum usable counts
-    before metrics.
+    before metrics. It receives `min_usable_samples_per_stratum`,
+    `min_age_days_for_rate`, and `quality_min_rating_count` taken from `config` —
+    the same source step 12's `CategoryMetricInput` uses, so the finalize path and
+    the scored path read one policy-parameter source (chunk-21).
 12–16. Metrics → LOO references → scores → the fixed `base_rankable_candidates`
     → sensitivity **only over that set** → final evidence and rankability
     (Chunks 7B/8/9A/9B; no writes).

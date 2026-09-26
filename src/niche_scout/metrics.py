@@ -295,15 +295,21 @@ def _classify_rating_average(rating_average: object) -> str | None:
     return None
 
 
-def _classify_rating_count(rating_count: object) -> str | None:
+def _classify_rating_count(
+    rating_count: object,
+    *,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
+) -> str | None:
     """Classify ``rating_count``; return a reason or ``None`` when usable.
 
     ``None`` is ``null``; a ``bool`` or non-integral numeric object is
     ``wrong_type`` (a finite float with zero fractional part is accepted as the
     equal ``int``, where ``4.5`` is non-integral and therefore wrong-typed); a
     non-finite float is ``non_finite``; an integral value ``< 0`` is
-    ``negative``; an integral value ``< QUALITY_MIN_RATING_COUNT`` is
-    ``rating_count_below_minimum``. Never raises.
+    ``negative``; an integral value ``< quality_min_rating_count`` is
+    ``rating_count_below_minimum``. ``quality_min_rating_count`` is a
+    caller/policy parameter (SRS §14 ``QUALITY_MIN_RATING_COUNT``, default 5)
+    and never a product-level value. Never raises for ``rating_count``.
     """
     if rating_count is None:
         return METRIC_REASON_NULL
@@ -319,7 +325,7 @@ def _classify_rating_count(rating_count: object) -> str | None:
         integral_count = rating_count
     if integral_count < 0:
         return METRIC_REASON_NEGATIVE
-    if integral_count < QUALITY_MIN_RATING_COUNT:
+    if integral_count < quality_min_rating_count:
         return METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
     return None
 
@@ -553,6 +559,8 @@ def quality_observation_eligibility(
     product_page_views: object,
     first_published_date_utc: object,
     scoring_cutoff_utc: datetime,
+    min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
+    quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT,
 ) -> MetricEligibility:
     """Per-observation quality eligibility (SRS §7.5, LREQ-MET-090).
 
@@ -578,11 +586,12 @@ def quality_observation_eligibility(
        non-integral numeric object → ``METRIC_REASON_WRONG_TYPE`` (a finite
        ``float`` with zero fractional part is accepted as the equal ``int``);
        an integral value ``< 0`` → ``METRIC_REASON_NEGATIVE``;
-       ``< QUALITY_MIN_RATING_COUNT`` → ``METRIC_REASON_RATING_COUNT_BELOW_MINIMUM``.
+       ``< quality_min_rating_count`` →
+       ``METRIC_REASON_RATING_COUNT_BELOW_MINIMUM``.
     6. the page-view index is unusable (delegated to
-       :func:`age_normalized_page_view_index`, whose steps 1–5 classify
-       ``product_page_views`` and ``first_published_date_utc`` the same way) →
-       that function's reason.
+       :func:`age_normalized_page_view_index` with ``min_age_days_for_rate``,
+       whose steps 1–5 classify ``product_page_views`` and
+       ``first_published_date_utc`` the same way) → that function's reason.
     7. ``page_view_semantics_status is PageViewSemanticsStatus.CONTRADICTED`` →
        ``METRIC_REASON_PAGE_VIEW_SEMANTICS_CONTRADICTED``.
     8. otherwise ``eligible = True``.
@@ -590,9 +599,11 @@ def quality_observation_eligibility(
     ``rating_count`` is a reliability minimum only and never weights anything
     here. ``contradicted`` is consumed, not detected (Chunk 7B detects it). No
     product-level value raises; only a caller/policy parameter breach does
-    (``scoring_cutoff_utc`` not timezone-aware UTC, or
-    ``min_age_days_for_rate < 1``). Pure.
+    (``scoring_cutoff_utc`` not timezone-aware UTC, or ``min_age_days_for_rate``
+    / ``quality_min_rating_count`` not an ``int >= 1``). Pure.
     """
+    _require_positive_int(min_age_days_for_rate, name="min_age_days_for_rate")
+    _require_positive_int(quality_min_rating_count, name="quality_min_rating_count")
     if product_detail_status != OperationStatus.SUCCESS or (
         page_views_status != OperationStatus.SUCCESS
     ):
@@ -613,7 +624,9 @@ def quality_observation_eligibility(
     if reason is not None:
         return MetricEligibility(eligible=False, unavailable_reason=reason)
 
-    reason = _classify_rating_count(rating_count)
+    reason = _classify_rating_count(
+        rating_count, quality_min_rating_count=quality_min_rating_count
+    )
     if reason is not None:
         return MetricEligibility(eligible=False, unavailable_reason=reason)
 
@@ -623,6 +636,7 @@ def quality_observation_eligibility(
         scoring_cutoff_utc=scoring_cutoff_utc,
         state=state,
         id_mapping_mismatch=id_mapping_mismatch,
+        min_age_days_for_rate=min_age_days_for_rate,
     )
     if not index.is_available:
         return MetricEligibility(
@@ -763,14 +777,14 @@ class CategoryMetricInput:
     ``models`` constants because SRS §14 marks them configurable; production
     callers use the defaults.
 
-    ``quality_min_rating_count`` is accepted for interface completeness only and
-    is **INERT** for every Chunk 7B estimator in this module. The rating-count
-    minimum is enforced by Chunk 7A's :func:`quality_observation_eligibility`
-    through the module constant ``QUALITY_MIN_RATING_COUNT`` (LREQ-MET-090), not
-    by this field: no 7B estimator reads ``quality_min_rating_count``, so a
-    caller-supplied override has **no effect** on any 7B output. The field is
-    part of the frozen plan §5.2 contract and is retained (and validated at
-    construction) unchanged.
+    ``quality_min_rating_count`` is **live** for the Chunk 7B quality estimator.
+    :func:`_quality_observation_index` forwards it (with
+    ``min_age_days_for_rate``) to Chunk 7A's
+    :func:`quality_observation_eligibility`, so a caller-supplied override
+    changes ``quality_stratum_eligibility_coverage``, ``quality_raw``, and
+    ``usable_quality_sample_count`` (LREQ-MET-090; SRS §14 marks it Configurable
+    ``Yes``). The field is part of the frozen plan §5.2 contract and is retained
+    (and validated at construction) unchanged.
 
     Construction validates the caller/policy contract (a caller breach raises
     ``ValueError``): ``scoring_cutoff_utc`` must be timezone-aware UTC;
@@ -790,11 +804,11 @@ class CategoryMetricInput:
     min_usable_samples_per_stratum: int = MIN_USABLE_SAMPLES_PER_STRATUM
     min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE
     recent_window_days: int = RECENT_WINDOW_DAYS
-    #: INERT for Chunk 7B: the rating-count minimum is enforced by Chunk 7A's
-    #: ``quality_observation_eligibility`` via ``QUALITY_MIN_RATING_COUNT``
-    #: (LREQ-MET-090). Retained from the frozen plan §5.2 contract for interface
-    #: completeness; a caller override changes no 7B output. Validated at
-    #: construction only.
+    #: Live for Chunk 7B: ``_quality_observation_index`` forwards this to Chunk
+    #: 7A's ``quality_observation_eligibility``, so an override changes
+    #: ``quality_stratum_eligibility_coverage``, ``quality_raw``, and
+    #: ``usable_quality_sample_count`` (LREQ-MET-090). Retained from the frozen
+    #: plan §5.2 contract; validated at construction only.
     quality_min_rating_count: int = QUALITY_MIN_RATING_COUNT
     quality_min_eligible_assets: int = QUALITY_MIN_ELIGIBLE_ASSETS
     min_required_component_coverage: float = MIN_REQUIRED_COMPONENT_COVERAGE
@@ -994,7 +1008,10 @@ def _quality_observation_index(
 
     Delegates to Chunk 7A's :func:`quality_observation_eligibility` first; when
     eligible, the index itself comes from Chunk 7A's
-    :func:`age_normalized_page_view_index` with explicit parameters.
+    :func:`age_normalized_page_view_index` with explicit parameters. Both the age
+    minimum (``input.min_age_days_for_rate``) and the rating-count minimum
+    (``input.quality_min_rating_count``) are forwarded, so a
+    ``CategoryMetricInput`` policy override reaches Chunk 7A (SRS §7.5).
     """
     eligibility = quality_observation_eligibility(
         product_detail_status=observation.product_detail_status,
@@ -1007,6 +1024,8 @@ def _quality_observation_index(
         product_page_views=observation.product_page_views,
         first_published_date_utc=observation.first_published_date_utc,
         scoring_cutoff_utc=input.scoring_cutoff_utc,
+        min_age_days_for_rate=input.min_age_days_for_rate,
+        quality_min_rating_count=input.quality_min_rating_count,
     )
     if not eligibility.eligible:
         return None
@@ -1570,8 +1589,16 @@ def quality_raw(input: CategoryMetricInput) -> MetricResult:
         eligible_population_count += stratum.discovered_population_count
 
     if total_eligible < input.quality_min_eligible_assets:
+        # The count fields are independent of ``.value`` (frozen chunk-7B
+        # interface §4.2; SRS §6.5 line 637 makes counts the non-nullable
+        # exception): report the quality-eligible observations over
+        # quality-usable strata accumulated above, not a forced ``0``. At the
+        # default policy the guard can only fire when no stratum reached
+        # ``min_usable_samples_per_stratum``, so these are the same true zeros.
         return _null_result(
             METRIC_REASON_ELIGIBLE_SET_TOO_SMALL,
+            usable_sample_count=usable_sample_count,
+            eligible_population_count=eligible_population_count,
             eligibility_coverage=coverage,
         )
     if usable_sample_count == 0:

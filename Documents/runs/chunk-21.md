@@ -96,7 +96,21 @@ Record corrections carried forward (from the assessment):
 | 0 | Preflight | DONE | Tree clean at `ebd3d3a`; branch `chunk-21` created. |
 | 1 | Plan | BLOCKED | `chunk-planner` authored `Documents/plans/chunk-21-quality-component-usability-remediation.md` as **DRAFT — BLOCKED**. Every candidate scope item is gated by an unresolved human ruling, so no signature, file, or test could be frozen. Stopped per `AGENTS.md` (surface, never resolve). |
 | 1b | Re-plan | BLOCKED | `chunk-planner` re-dispatched to freeze the single item Q2(a). The plan was rewritten to S-A but cannot freeze: end-to-end wiring requires additive keyword-only parameters on `finalize_stratum_counts` / `finalize_enrichment` (frozen public contract in `Documents/interfaces/chunk-6B.md` lines 274–316; `pipeline.py:1730`) and falsifies the frozen INERT note in `Documents/interfaces/chunk-7B.md` (lines 106–109). Only the `chunk-7A.md` change was authorized. Stopped per procedure. |
-| 1c | Re-plan | IN PROGRESS | Independent assessment adopted as ruling **(c)**: re-scope to one dedicated config-vs-constant reconciliation concern covering `min_usable_samples_per_stratum`, `min_age_days_for_rate`, `quality_min_rating_count`. `chunk-planner` re-dispatched. |
+| 1c | Re-plan | DONE | Independent assessment adopted as ruling **(c)**; plan rewritten and **FROZEN** as a single-concern config-vs-constant reconciliation (`Documents/plans/chunk-21-quality-component-usability-remediation.md`). Committed `412ce49 chunk-21: plan`. |
+| 2 | Tests first | DONE | `test-author`; five `tests/` files, committed `6757a58 chunk-21: tests`. Lead re-ran: `python -m pytest -q tests/test_validation.py tests/test_enrichment.py tests/test_metrics.py` → **6 failed, 129 passed**; failures are missing-implementation (`TypeError: unexpected keyword argument` ×5, one `assert 0.0 == 1.0`) — no syntax/collection errors. `validate_traceability` → 645 matrix nodes (six added keys). |
+| 3 | Implement | DONE | `impl-deep` (S1–S3) + `chunk-planner` (S4 interface docs + plan amendment). `src/niche_scout/metrics.py`, `src/niche_scout/pipeline.py`, four interface docs, plan amended. One accepted forced deviation (below). |
+| 4 | Verify (lead) | DONE | See "Gate evidence". Lead re-ran every command; all pass. |
+
+## Accepted deviation (recorded 2026-09-26)
+
+`metrics.quality_raw`'s `METRIC_REASON_ELIGIBLE_SET_TOO_SMALL` branch now returns the
+accumulated `usable_sample_count` / `eligible_population_count` instead of a forced `0`.
+Required so check B's 7B count equals the finalized count under
+`min_usable_samples_per_stratum=1` (the committed §8.2 tests enforce it); default-preserving
+because at `MIN_USABLE_SAMPLES_PER_STRATUM=5` the guard fires only when no stratum is usable,
+so the values are true zeros. Consistent with frozen `chunk-7B.md` §4.2 and SRS §6.5 line
+637. It extends Chunk 20's two-path fix to the third path. Plan §5/§7 amended to name
+`quality_raw`; recorded as an accepted deviation.
 
 ### Blocker question (planner, verbatim, 2026-09-26)
 

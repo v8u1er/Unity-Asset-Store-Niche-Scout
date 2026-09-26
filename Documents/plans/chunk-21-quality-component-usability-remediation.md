@@ -1,6 +1,8 @@
 # Chunk 21 — Config-vs-constant reconciliation (one policy-parameter source)
 
-Status: **FROZEN** (2026-09-26). Single-concern labeled post-Chunk-20 remediation.
+Status: **FROZEN** (2026-09-26; amended 2026-09-26 — one accepted forced
+deviation recorded in §5 "Accepted deviations"). Single-concern labeled
+post-Chunk-20 remediation.
 
 This chunk is a **labeled post-completion remediation** (Chunks 14–20 pattern): it has no
 `requirements-dependency-map.md` §3/§4 gate row, no new interface file, and no downstream
@@ -273,6 +275,21 @@ and would either duplicate or non-additively replace `finalize_stratum_counts`'s
 parameters. The single source is `NicheScoutConfig`, threaded explicitly. The file
 `src/niche_scout/models.py` is untouched.
 
+**Accepted deviations (2026-09-26).**
+
+One forced deviation was accepted during implementation. `metrics.quality_raw`'s
+`METRIC_REASON_ELIGIBLE_SET_TOO_SMALL` branch (`metrics.py:1591–1603`) now returns the
+accumulated `usable_sample_count` / `eligible_population_count` instead of `0`. This is
+required so check B's 7B count can equal the finalized count under
+`min_usable_samples_per_stratum=1`: with a non-default minimum the guard can fire while a
+stratum is usable, and a forced `0` would make `assert_finalization_consistency` flag a
+mismatch that is not a real drift (the test `§8.2` node 5 pins this). It is
+default-preserving: at the default `MIN_USABLE_SAMPLES_PER_STRATUM = 5` the guard fires
+only when no stratum is usable, so the accumulated values are the same true zeros (`0`).
+The count fields are independent of `.value` and non-nullable (frozen chunk-7B interface
+§4.2; SRS §6.5 line 637). No default, formula, or reason precedence changes. This adds
+`metrics.py::quality_raw` to the touched surface beyond the signatures listed above.
+
 ## 6. LREQs by role (cited, not paraphrased)
 
 Chunk 21 has no `requirements-dependency-map.md` §3 section.
@@ -299,6 +316,7 @@ Yes (line 1295); `QUALITY_MIN_RATING_COUNT` default 5 / Yes (line 1296).
 | File | New/modified | Purpose |
 |---|---|---|
 | `src/niche_scout/metrics.py` | modified | S1: two keyword-only params on `quality_observation_eligibility`; `_classify_rating_count` param; `_quality_observation_index` forwards both; docstrings/INERT note. |
+| `src/niche_scout/metrics.py::quality_raw` | modified | accepted deviation (§5): `METRIC_REASON_ELIGIBLE_SET_TOO_SMALL` branch returns accumulated `usable_sample_count` / `eligible_population_count` instead of `0`; default-preserving. |
 | `src/niche_scout/pipeline.py` | modified | S2/S3: three frozen signatures gain additive keyword-only params; check A/B use them; run-level call passes `config.*`. |
 | `Documents/interfaces/chunk-7A.md` | modified | **authorized**: `quality_observation_eligibility` signature + §4.1 list + §4.2 note. |
 | `Documents/interfaces/chunk-6B.md` | modified | **authorized**: the three signatures + their docstring parameter notes. |
