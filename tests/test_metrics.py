@@ -774,6 +774,64 @@ def test_quality_raw_ineligible_observations_are_excluded() -> None:
     assert aggregate.usable_quality_sample_count == 5
 
 
+@pytest.mark.lreq("LREQ-MET-090")
+def test_quality_min_rating_count_changes_quality_coverage() -> None:
+    """A non-default ``quality_min_rating_count`` changes the eligible set.
+
+    SRS §7.5 / LREQ-MET-090: an observation is quality-eligible only when
+    ``rating_count >= QUALITY_MIN_RATING_COUNT`` (default 5, SRS §14 marks it
+    Configurable ``Yes``). ``CategoryMetricInput`` carries the policy value
+    (frozen chunk-7B interface), so ``_quality_observation_index`` must consume
+    ``input.quality_min_rating_count`` instead of the module constant.
+
+    One stratum, ``N_h = 25``, ``n_h = 5``; every observation is otherwise
+    usable (published, matched identity, both operations successful,
+    ``rating_average = 5.0``, 100 page views at ``DATE_70D``) but carries
+    ``rating_count = 3``:
+
+    * at the default 5 no observation is eligible, so no stratum is
+      quality-usable and ``quality_stratum_eligibility_coverage == 0.0``;
+    * at the override 3 all five are eligible, the stratum is quality-usable,
+      and coverage is the population weight ``N_h / N = 25 / 25 = 1.0``.
+
+    Hand-derived ``QualityRaw`` at the override (SRS §7.5 / LREQ-MET-100):
+    index = 100 * 7 / 70 = 10.0; quality_weight = 25 / 5 = 5.0;
+    numerator = 5.0 * sum((5.0 / 5) * 10.0) = 250.0; denominator =
+    5.0 * sum(10.0) = 250.0; value = 250.0 / 250.0 = 1.0.
+    """
+    strata = (
+        mfx.make_stratum(
+            0,
+            25,
+            (mfx.make_observation(rating_count=3),) * 5,
+        ),
+    )
+    default_input = mfx.make_category_input(
+        strata, category="quality-rating-count-default"
+    )
+    override_input = dataclasses.replace(default_input, quality_min_rating_count=3)
+
+    default_coverage = m.quality_stratum_eligibility_coverage(default_input)
+    override_coverage = m.quality_stratum_eligibility_coverage(override_input)
+    assert default_coverage == pytest.approx(0.0, abs=1e-9)
+    assert override_coverage == pytest.approx(1.0, abs=1e-9)
+
+    default_quality = m.quality_raw(default_input)
+    override_quality = m.quality_raw(override_input)
+    # 0 eligible < QUALITY_MIN_ELIGIBLE_ASSETS (5): null, never a zero value.
+    assert default_quality.usable_sample_count == 0
+    assert default_quality.unavailable_reason == m.METRIC_REASON_ELIGIBLE_SET_TOO_SMALL
+    assert override_quality.usable_sample_count == 5
+    assert override_quality.value == pytest.approx(1.0, abs=1e-9)
+
+    # The aggregate bundle's reported count follows the same eligible set.
+    breadth = mfx.make_breadth_input(None, 25)
+    default_aggregate = m.compute_category_raw_metrics(default_input, breadth)
+    override_aggregate = m.compute_category_raw_metrics(override_input, breadth)
+    assert default_aggregate.usable_quality_sample_count == 0
+    assert override_aggregate.usable_quality_sample_count == 5
+
+
 # ---------------------------------------------------------------------------
 # Batch 5 — aggregate bundles, coverage/count reporting, caller contract,
 # purity, and determinism (LREQ-MET-030/060/070/080/090/100, LREQ-ARCH-*)

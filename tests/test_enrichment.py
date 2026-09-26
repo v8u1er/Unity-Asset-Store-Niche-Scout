@@ -438,18 +438,29 @@ def _finalize(
     *,
     cutoff=ef.SCORING_CUTOFF_UTC,
     semantics=PageViewSemanticsStatus.UNVALIDATED,
+    **overrides,
 ):
-    """Call ``finalize_stratum_counts`` with the frozen fixture cutoff."""
+    """Call ``finalize_stratum_counts`` with the frozen fixture cutoff.
+
+    ``overrides`` carries the additive chunk-21 policy parameters
+    (``min_usable_samples_per_stratum``, ``min_age_days_for_rate``,
+    ``quality_min_rating_count``) for the non-default tests only.
+    """
     return pipeline.finalize_stratum_counts(
         category,
         observations,
         scoring_cutoff_utc=cutoff,
         page_view_semantics_status=semantics,
+        **overrides,
     )
 
 
-def _finalize_enrichment(repository, run, union):
-    """Call ``finalize_enrichment`` with the fixed caller-supplied timestamps."""
+def _finalize_enrichment(repository, run, union, **overrides):
+    """Call ``finalize_enrichment`` with the fixed caller-supplied timestamps.
+
+    ``overrides`` carries the additive chunk-21 policy parameters for the
+    non-default tests only; an empty mapping keeps the frozen default call.
+    """
     return pipeline.finalize_enrichment(
         repository,
         run,
@@ -457,6 +468,7 @@ def _finalize_enrichment(repository, run, union):
         computed_at_utc=ef.RETRIEVED_AT_UTC,
         page_view_semantics_status=PageViewSemanticsStatus.UNVALIDATED,
         union=union,
+        **overrides,
     )
 
 
@@ -557,6 +569,59 @@ def test_finalize_stratum_counts_from_observations():
     assert final.u_recent_h == ef.FINALIZATION_U_RECENT
     assert final.u_quality_h == ef.FINALIZATION_U_QUALITY
     assert final.usable_status == ef.FINALIZATION_USABLE_STATUS
+
+
+@pytest.mark.lreq("LREQ-SMP-080")
+@pytest.mark.lreq("LREQ-MET-090")
+def test_finalize_stratum_counts_quality_min_rating_count_override():
+    """``finalize_stratum_counts`` forwards ``quality_min_rating_count`` to 7A.
+
+    SRS §7.5 / LREQ-MET-090: an observation is quality-eligible only when
+    ``rating_count >= QUALITY_MIN_RATING_COUNT``; SRS §14 pins the default at 5
+    and marks it Configurable ``Yes``, so the override must reach Chunk 7A's
+    ``quality_observation_eligibility`` through this frozen §5.4 caller.
+
+    Hand-computed on a locally built one-stratum category with three members
+    whose only non-default field is ``rating_count = 3`` (aware UTC date 100
+    days before the cutoff, 4321 page views, both operations successful,
+    published state — the golden finalization fields):
+
+    * at ``quality_min_rating_count = 3`` (and ``min_usable_samples_per_stratum
+      = 1``) all three pass the rating gate, so ``u_quality_h == 3``;
+    * at the default 5 none passes, so ``u_quality_h == 0`` — a measured zero,
+      never a reclassification of the observations.
+    """
+    keys = ("Q1", "Q2", "Q3")
+    category = ef.category_result(
+        "Category/QualityRatingOverride",
+        tuple((key, rank) for rank, key in enumerate(keys, start=1)),
+    )
+    observations = {
+        key: ef.observation_record(
+            ef.RUN_ID,
+            key,
+            rating_count=3,
+            first_published_date_utc=ef.FINALIZATION_DATE_UTC,
+        )
+        for key in keys
+    }
+
+    override = _finalize(
+        category,
+        observations,
+        quality_min_rating_count=3,
+        min_usable_samples_per_stratum=1,
+    )
+    assert len(override) == 1
+    assert override[0].u_quality_h == 3
+    # The rating minimum excludes nothing from the other two components: the
+    # same three observations stay demand- and recent-eligible.
+    assert override[0].u_demand_h == 3
+    assert override[0].u_recent_h == 3
+
+    default = _finalize(category, observations)
+    assert len(default) == 1
+    assert default[0].u_quality_h == 0
 
 
 @pytest.mark.lreq("LREQ-SMP-080")
@@ -841,6 +906,116 @@ def test_assert_consistency_clean_run_returns_no_mismatches(tmp_path):
         ) == (0, ef.FINALIZATION_U_RECENT, 0)
         assert report.mismatches == ()
         assert _assert_consistency(repository, run, report) == ()
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-SMP-080")
+@pytest.mark.lreq("LREQ-MET-090")
+def test_finalize_enrichment_non_default_policy_is_self_consistent(tmp_path):
+    """A non-default policy reaches the finalize sums and check A/B together.
+
+    SRS §5.1 / LREQ-SMP-080 (persisted per-stratum ``u_*_h`` counts and category
+    sums) with SRS §7.5 / LREQ-MET-090. On the seeded golden single-category run
+    (``N_h = 10``, ``n_h = 6``, hand-computed 4/5/3 component counts):
+
+    * defaults (``M = 5``): demand 4 < 5, recent 5 >= 5, quality 3 < 5, so the
+      category sums are ``(0, 5, 0)``;
+    * ``min_usable_samples_per_stratum = 1``: every component's stratum is
+      usable, so ``(4, 5, 3)``;
+    * ``min_age_days_for_rate = 101``: the golden date is exactly 100 days
+      before the cutoff, so every dated index is ``age_below_minimum`` and
+      demand/quality drop to 0 while recent stays 5 -> ``(0, 5, 0)``.
+
+    ``mismatches == ()`` on each non-default call proves the §5.5 assertion
+    received the same parameters: check A's ``stratum_is_usable`` and check B's
+    ``CategoryMetricInput`` would otherwise compare a constant/timeout split
+    against the non-default finalized counts and return a named mismatch.
+    """
+    run = ef.finalization_run()
+    repository = _open(tmp_path)
+    try:
+        ef.seed_finalization(repository, run)
+        union = pipeline.compute_enrichment_union(run, already_enriched_keys=set())
+
+        at_defaults = _finalize_enrichment(repository, run, union)
+        assert at_defaults.mismatches == ()
+        assert (
+            at_defaults.categories[0].usable_demand_sample_count,
+            at_defaults.categories[0].usable_recent_supply_sample_count,
+            at_defaults.categories[0].usable_quality_sample_count,
+        ) == (0, ef.FINALIZATION_U_RECENT, 0)
+
+        min_one = _finalize_enrichment(
+            repository, run, union, min_usable_samples_per_stratum=1
+        )
+        assert min_one.mismatches == ()
+        assert (
+            min_one.categories[0].usable_demand_sample_count,
+            min_one.categories[0].usable_recent_supply_sample_count,
+            min_one.categories[0].usable_quality_sample_count,
+        ) == (
+            ef.FINALIZATION_U_DEMAND,
+            ef.FINALIZATION_U_RECENT,
+            ef.FINALIZATION_U_QUALITY,
+        )
+
+        older_rate = _finalize_enrichment(
+            repository, run, union, min_age_days_for_rate=101
+        )
+        assert older_rate.mismatches == ()
+        assert (
+            older_rate.categories[0].usable_demand_sample_count,
+            older_rate.categories[0].usable_recent_supply_sample_count,
+            older_rate.categories[0].usable_quality_sample_count,
+        ) == (0, ef.FINALIZATION_U_RECENT, 0)
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-SMP-080")
+@pytest.mark.lreq("LREQ-MET-090")
+def test_finalize_enrichment_rating_min_matches_seventh_b(tmp_path):
+    """The finalize path and check B's 7B input share one rating minimum.
+
+    SRS §7.5 / LREQ-MET-090 with the §8.3 rating-count-straddling fixture: one
+    stratum, ``N_h = 25``, ``n_h = 5``, rating counts 2/3/4/5/7 straddling the
+    default minimum 5 and the override 3.
+
+    Hand-computed ``u_quality_h`` (``rating_count >= minimum``): at
+    ``quality_min_rating_count = 3`` the eligible set is Q2 (3), Q3 (4), Q4 (5),
+    Q5 (7) -> 4; Q1 (2) stays below the minimum. At the default 5 only Q4 and Q5
+    are eligible -> 2, which is below ``M = 5`` and contributes a measured 0.
+
+    With ``min_usable_samples_per_stratum = 1`` the override call must return
+    and persist ``usable_quality_sample_count == 4`` and ``mismatches == ()``:
+    if check B's ``CategoryMetricInput`` had not received the same rating
+    minimum, its 7B computation (default 5 -> 2) would flag the column.
+    """
+    run = ef.quality_straddle_finalization_run()
+    repository = _open(tmp_path)
+    try:
+        ef.seed_quality_straddle_finalization(repository, run)
+        union = pipeline.compute_enrichment_union(run, already_enriched_keys=set())
+
+        report = _finalize_enrichment(
+            repository,
+            run,
+            union,
+            min_usable_samples_per_stratum=1,
+            quality_min_rating_count=3,
+        )
+        final = report.categories[0]
+        assert [entry.u_quality_h for entry in final.strata] == [4]
+        assert final.usable_quality_sample_count == 4
+        assert report.mismatches == ()
+        persisted = repository.get_category_scores(run.run_id)
+        assert [row.usable_quality_sample_count for row in persisted] == [4]
+
+        # The default minimum 5 leaves Q4 and Q5 (2 < M = 5): a measured 0.
+        default = _finalize_enrichment(repository, run, union)
+        assert default.categories[0].usable_quality_sample_count == 0
+        assert default.mismatches == ()
     finally:
         repository.close()
 

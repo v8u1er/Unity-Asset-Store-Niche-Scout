@@ -1834,6 +1834,105 @@ def test_quality_rating_range_and_count_thresholds() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-090")
+def test_quality_observation_eligibility_rating_count_override() -> None:
+    """``quality_min_rating_count`` is a caller/policy parameter, default 5.
+
+    SRS §7.5 / LREQ-MET-090: an observation is quality-eligible only when
+    ``rating_count >= QUALITY_MIN_RATING_COUNT``; SRS §14 pins the default at 5
+    and marks it Configurable ``Yes``. Chunk 21 (7A §4.1) validates the override
+    as an ``int`` that is not a ``bool`` and is ``>= 1`` with ``ValueError``.
+    """
+    # The inclusive minimum boundary at the override: 3 >= 3 is eligible.
+    at_override = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=3, quality_min_rating_count=3)
+    )
+    assert at_override.eligible is True
+    assert at_override.unavailable_reason is None
+    assert at_override.is_available is True
+
+    # One below the override stays the distinct below-minimum reason.
+    below_override = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=2, quality_min_rating_count=3)
+    )
+    assert below_override.eligible is False
+    assert (
+        below_override.unavailable_reason
+        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+    )
+
+    # The smallest legal override, 1, is also inclusive: 1 >= 1 eligible while
+    # an explicit rating_count of 0 is classified below the minimum, not zero.
+    minimum_override = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=1, quality_min_rating_count=1)
+    )
+    assert minimum_override.eligible is True
+    zero_count = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=0, quality_min_rating_count=1)
+    )
+    assert zero_count.eligible is False
+    assert zero_count.unavailable_reason == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+
+    # Omitting the parameter keeps the models default 5 (SRS §14).
+    default_applies = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(rating_count=3)
+    )
+    assert default_applies.eligible is False
+    assert (
+        default_applies.unavailable_reason
+        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+    )
+
+    # Caller/policy breaches raise; a product-level rating count never does.
+    for bad in (True, 0, 1.5, "3"):
+        with pytest.raises(ValueError):
+            m.quality_observation_eligibility(
+                **dfx.quality_kwargs(quality_min_rating_count=bad)
+            )
+
+
+@pytest.mark.lreq("LREQ-MET-090")
+def test_quality_observation_eligibility_min_age_override() -> None:
+    """``min_age_days_for_rate`` is forwarded to the page-view index (7A §4.1).
+
+    SRS §7.5 / LREQ-MET-090 requires a usable page-view index; SRS §7.2 /
+    LREQ-MET-040 makes the index usable only when
+    ``age_days_exact >= min_age_days_for_rate``, and SRS §14 pins the default at
+    30 and marks it Configurable ``Yes``. ``dfx.DATE_30D`` is exactly 30.0 days
+    before the cutoff, so the threshold is inclusive at 30 and excludes at 31.
+    """
+    at_boundary = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(min_age_days_for_rate=30)
+    )
+    assert at_boundary.eligible is True
+
+    below_override = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(min_age_days_for_rate=31)
+    )
+    assert below_override.eligible is False
+    assert below_override.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
+
+    # A looser threshold admits the same 30.0-day-old observation.
+    looser = m.quality_observation_eligibility(
+        **dfx.quality_kwargs(min_age_days_for_rate=29)
+    )
+    assert looser.eligible is True
+
+    # The index primitive agrees on the same override (one shared policy value).
+    index = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs(min_age_days_for_rate=31)
+    )
+    assert index.is_available is False
+    assert index.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
+
+    # Caller/policy breaches raise: bool, 0, and a non-int are invalid.
+    for bad in (True, 0, 1.5):
+        with pytest.raises(ValueError):
+            m.quality_observation_eligibility(
+                **dfx.quality_kwargs(min_age_days_for_rate=bad)
+            )
+
+
+@pytest.mark.lreq("LREQ-MET-090")
 @pytest.mark.lreq("LREQ-MET-010")
 def test_quality_rating_wrong_type_and_negative_are_distinct_reasons() -> None:
     """Wrong-typed ratings are WRONG_TYPE and a negative count is NEGATIVE."""

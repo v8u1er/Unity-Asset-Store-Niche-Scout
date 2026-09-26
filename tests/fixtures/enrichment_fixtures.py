@@ -66,6 +66,10 @@ __all__ = [
     "PROJECTION_INTERVAL",
     "PROJECTION_MINIMUM_SECONDS",
     "PROJECTION_PENDING",
+    "QUALITY_STRADDLE_CATEGORY",
+    "QUALITY_STRADDLE_MEMBERS",
+    "QUALITY_STRADDLE_POPULATION",
+    "QUALITY_STRADDLE_RATING_COUNTS",
     "REDACTION_CREDENTIALS",
     "RETRIEVED_AT_UTC",
     "REUSE_EXECUTED_CALLS",
@@ -82,7 +86,11 @@ __all__ = [
     "observation_record",
     "overlap_run",
     "persisted_finalization_observations",
+    "quality_straddle_finalization_category",
+    "quality_straddle_finalization_observations",
+    "quality_straddle_finalization_run",
     "seed_finalization",
+    "seed_quality_straddle_finalization",
     "seed_run",
     "success_bodies",
     "success_transport",
@@ -475,6 +483,89 @@ def seed_finalization(repository: Any, run: sampling.RunSamplingResult) -> None:
     seed_sampling_and_run(repository, run)
     if any(category.category == FINALIZATION_CATEGORY for category in run.categories):
         persisted_finalization_observations(repository, run.run_id)
+
+
+# --------------------------------------------------------------------------
+# Chunk 21 rating-count-straddling finalization fixture (plan §8.3).
+#
+# One stratum, N_h = 25, n_h = 5. Every member mirrors the golden finalization
+# fixture's product-level fields (aware UTC date 100 days before the cutoff,
+# 4321 page views, both operations successful, published state) except
+# ``rating_count``, which straddles the default QUALITY_MIN_RATING_COUNT (5)
+# and the chunk-21 override minimum 3 (SRS §14 marks it Configurable ``Yes``):
+#
+#   Q1 rating_count = 2 -> below both minimums, ineligible under both
+#   Q2 rating_count = 3 -> eligible only at an override of 3
+#   Q3 rating_count = 4 -> eligible only at an override of 3
+#   Q4 rating_count = 5 -> eligible at the default 5 and at 3
+#   Q5 rating_count = 7 -> eligible at the default 5 and at 3
+#
+# Hand-computed u_quality_h (SRS §7.5, ``rating_count >= minimum``):
+#   4 at quality_min_rating_count = 3 (Q2, Q3, Q4, Q5)
+#   2 at the default 5 (Q4, Q5)
+# The fixture stores inputs only; expectations live in the test (plan §8.3).
+# --------------------------------------------------------------------------
+
+QUALITY_STRADDLE_CATEGORY = "Category/QualityStraddle"
+QUALITY_STRADDLE_POPULATION = 25
+QUALITY_STRADDLE_MEMBERS: tuple[str, ...] = ("Q1", "Q2", "Q3", "Q4", "Q5")
+#: ``(member key, rating_count)`` in member/sample-rank order.
+QUALITY_STRADDLE_RATING_COUNTS: tuple[tuple[str, int], ...] = (
+    ("Q1", 2),
+    ("Q2", 3),
+    ("Q3", 4),
+    ("Q4", 5),
+    ("Q5", 7),
+)
+
+
+def quality_straddle_finalization_category() -> sampling.CategorySamplingResult:
+    """Return the straddling category: one stratum, ``N_h = 25``, ``n_h = 5``."""
+    return _finalization_category_result(
+        QUALITY_STRADDLE_CATEGORY,
+        tuple(
+            (key, rank) for rank, key in enumerate(QUALITY_STRADDLE_MEMBERS, start=1)
+        ),
+        population_count=QUALITY_STRADDLE_POPULATION,
+    )
+
+
+def quality_straddle_finalization_observations(
+    run_id: str = RUN_ID,
+) -> dict[str, EnrichmentObservationRecord]:
+    """Return the five straddling observations keyed by identity, in rank order."""
+    return {
+        key: observation_record(
+            run_id,
+            key,
+            rating_count=rating_count,
+            first_published_date_utc=FINALIZATION_DATE_UTC,
+        )
+        for key, rating_count in QUALITY_STRADDLE_RATING_COUNTS
+    }
+
+
+def quality_straddle_finalization_run(
+    run_id: str = RUN_ID,
+) -> sampling.RunSamplingResult:
+    """Return the single-category straddling run whose samples are Q1-Q5."""
+    return sampling.RunSamplingResult(
+        run_id=run_id,
+        sampling_rule_version="1.0.0",
+        categories=(quality_straddle_finalization_category(),),
+    )
+
+
+def seed_quality_straddle_finalization(
+    repository: Any, run: sampling.RunSamplingResult
+) -> None:
+    """Seed run + 4B sampling rows + the five straddling observations for ``run``."""
+    seed_sampling_and_run(repository, run)
+    if any(
+        category.category == QUALITY_STRADDLE_CATEGORY for category in run.categories
+    ):
+        for record in quality_straddle_finalization_observations(run.run_id).values():
+            repository.upsert_enrichment_observation(record)
 
 
 # --------------------------------------------------------------------------

@@ -627,6 +627,14 @@
   "tests/test_enrichment.py::test_finalize_enrichment_merges_consistency_assertion_mismatches": [
     "LREQ-SMP-080"
   ],
+  "tests/test_enrichment.py::test_finalize_enrichment_non_default_policy_is_self_consistent": [
+    "LREQ-SMP-080",
+    "LREQ-MET-090"
+  ],
+  "tests/test_enrichment.py::test_finalize_enrichment_rating_min_matches_seventh_b": [
+    "LREQ-SMP-080",
+    "LREQ-MET-090"
+  ],
   "tests/test_enrichment.py::test_finalize_explicit_zero_page_views_counts_toward_demand": [
     "LREQ-SMP-080"
   ],
@@ -638,6 +646,10 @@
   ],
   "tests/test_enrichment.py::test_finalize_stratum_counts_from_observations": [
     "LREQ-SMP-080"
+  ],
+  "tests/test_enrichment.py::test_finalize_stratum_counts_quality_min_rating_count_override": [
+    "LREQ-SMP-080",
+    "LREQ-MET-090"
   ],
   "tests/test_enrichment.py::test_finalize_unique_enrichment_count_identical_on_every_category": [
     "LREQ-SMP-080"
@@ -1038,6 +1050,9 @@
     "LREQ-MET-090"
   ],
   "tests/test_metrics.py::test_quality_eligible_set_too_small_is_null": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_metrics.py::test_quality_min_rating_count_changes_quality_coverage": [
     "LREQ-MET-090"
   ],
   "tests/test_metrics.py::test_quality_raw_contradicted_semantics_is_null": [
@@ -2037,6 +2052,12 @@
     "LREQ-MET-040"
   ],
   "tests/test_validation.py::test_quality_observation_eligibility_combines_conditions": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_validation.py::test_quality_observation_eligibility_min_age_override": [
+    "LREQ-MET-090"
+  ],
+  "tests/test_validation.py::test_quality_observation_eligibility_rating_count_override": [
     "LREQ-MET-090"
   ],
   "tests/test_validation.py::test_quality_rating_range_and_count_thresholds": [
