@@ -30,7 +30,7 @@ SAMPLING_RULE_VERSION: str = "1.0.0"
 # Discovery and reference constants
 # --------------------------------------------------------------------------
 
-MAX_DISCOVERY_RESULTS_PER_CATEGORY: int = 2000
+MAX_DISCOVERY_RESULTS_PER_CATEGORY: int = 9000
 PAGE_SIZE: int = 96
 MIN_CATEGORIES_PER_RUN: int = 8
 STRONG_REFERENCE_CATEGORY_COUNT: int = 21

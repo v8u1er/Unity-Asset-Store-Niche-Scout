@@ -13,7 +13,7 @@ categories_path = "config/categories.json"
 taxonomy_path = "config/category_taxonomy.json"
 db_path = "runtime/niche_scout.sqlite3"
 
-max_discovery_results_per_category = 2000
+max_discovery_results_per_category = 9000
 page_size = 96
 min_categories_per_run = 8
 strong_reference_category_count = 21

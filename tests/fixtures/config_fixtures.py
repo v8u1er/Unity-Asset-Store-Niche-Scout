@@ -19,25 +19,39 @@ REQUIRED_TAXONOMY_FIELDS: tuple[str, ...] = (
     "template_sha256",
 )
 
-# The eight live Q4 categories (chunk-14 plan appendix B) as canonical
-# '/'-form paths: the same eight strings `config/categories.json` and the
-# committed template facet must each carry.
-#
-# The order here is ascending lexical, a fixture-local choice: the two
-# committed files' own order is fixed by the impl-side regeneration (and the
-# `test_committed_categories_match_template_facet_byte_for_byte` node compares
-# those two files to each other, never to this fixture). Lexical order keeps
-# fixture-derived ordering assertions valid, e.g. `get_category_scores`
-# returning rows lexically by category for `DEFAULT_CATEGORIES[0]` then `[1]`.
+# The twenty-four live chunk-22 categories (the committed `config/categories.json`
+# selection) as canonical '/'-form paths. The order here is ascending lexical, a
+# fixture-local choice: the committed file's own order is fixed by the impl-side
+# regeneration (and `test_committed_categories_match_template_facet_byte_for_byte`
+# compares those two committed files to each other, never to this fixture).
+# Lexical order keeps fixture-derived ordering assertions valid, e.g.
+# `get_category_scores` returning rows lexically by category for
+# `DEFAULT_CATEGORIES[0]` then `[1]`.
 DEFAULT_CATEGORIES: tuple[str, ...] = (
     "2d/gui/icons",
-    "2d/textures-materials/stone",
-    "3d/characters/animals/mammals",
+    "2d/textures-materials/floors",
+    "2d/textures-materials/nature",
+    "2d/textures-materials/sky",
+    "3d/characters/animals",
+    "3d/characters/creatures",
     "3d/characters/humanoids",
-    "3d/vegetation/trees",
+    "3d/characters/humanoids/fantasy",
+    "3d/environments/fantasy",
+    "3d/environments/landscapes",
+    "3d/environments/sci-fi",
+    "3d/environments/urban",
+    "3d/props/exterior",
+    "3d/props/furniture",
+    "3d/props/guns",
+    "3d/props/interior",
+    "3d/props/weapons",
+    "3d/vehicles/air",
     "3d/vehicles/land",
-    "audio/music/orchestral",
+    "3d/vehicles/space",
+    "vfx/particles/environment",
     "vfx/particles/fire-explosions",
+    "vfx/particles/spells",
+    "vfx/shaders/fullscreen-camera-effects",
 )
 
 DEFAULT_TOML_BODY: str = """
@@ -45,7 +59,7 @@ categories_path = "config/categories.json"
 taxonomy_path = "config/category_taxonomy.json"
 db_path = "runtime/niche_scout.sqlite3"
 
-max_discovery_results_per_category = 2000
+max_discovery_results_per_category = 9000
 page_size = 96
 min_categories_per_run = 8
 strong_reference_category_count = 21
@@ -94,7 +108,7 @@ min_age_days_for_rate = 60
 """.strip()
 
 DEFAULT_TOML_VALUES: dict[str, Any] = {
-    "max_discovery_results_per_category": 2000,
+    "max_discovery_results_per_category": 9000,
     "page_size": 96,
     "min_categories_per_run": 8,
     "strong_reference_category_count": 21,

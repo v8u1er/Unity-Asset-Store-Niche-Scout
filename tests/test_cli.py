@@ -711,7 +711,7 @@ def test_cli_option_overrides_toml_and_toml_overrides_default(
     """CLI overrides TOML; TOML overrides the documented in-code default.
 
     Golden values: ``--max-discovery-results-per-category 500`` over TOML
-    ``1500`` and default ``2000`` resolves to ``500`` (``source == "cli"``);
+    ``1500`` and default ``9000`` resolves to ``500`` (``source == "cli"``);
     TOML ``min_age_days_for_rate = 45`` with the option unset resolves to ``45``
     (``source == "toml"``).
     """

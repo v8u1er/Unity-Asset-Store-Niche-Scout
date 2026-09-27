@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0.0",
-  "captured_at_utc": "2026-09-17T04:28:28.915Z",
+  "captured_at_utc": "2026-09-27T06:43:41Z",
   "source_url": "https://assetstore.unity.com/",
   "organization_id": "unitytechnologiesproductionmkahteav",
   "endpoint": "https://unitytechnologiesproductionmkahteav.org.coveo.com/rest/search/v2",
-  "template_sha256": "a6bf5a2a3ea9a966f490f447c44a68174f7763aecde10524caffe09401fa1229",
+  "template_sha256": "9dee9a6cd88cd679fff342a4978661dfc59da91fa6435dab95afa1c187c641ed",
   "request_body": {
     "locale": "en",
     "tab": "All",
@@ -38,23 +38,55 @@
         "numberOfValues": 150,
         "currentValues": [
           {
-            "value": "2d/gui/icons",
-            "state": "idle"
-          },
-          {
-            "value": "2d/textures-materials/stone",
-            "state": "idle"
-          },
-          {
-            "value": "3d/characters/animals/mammals",
-            "state": "idle"
-          },
-          {
             "value": "3d/characters/humanoids",
             "state": "idle"
           },
           {
-            "value": "3d/vegetation/trees",
+            "value": "3d/characters/creatures",
+            "state": "idle"
+          },
+          {
+            "value": "3d/characters/animals",
+            "state": "idle"
+          },
+          {
+            "value": "3d/characters/humanoids/fantasy",
+            "state": "idle"
+          },
+          {
+            "value": "3d/environments/urban",
+            "state": "idle"
+          },
+          {
+            "value": "3d/environments/fantasy",
+            "state": "idle"
+          },
+          {
+            "value": "3d/environments/sci-fi",
+            "state": "idle"
+          },
+          {
+            "value": "3d/environments/landscapes",
+            "state": "idle"
+          },
+          {
+            "value": "3d/props/weapons",
+            "state": "idle"
+          },
+          {
+            "value": "3d/props/furniture",
+            "state": "idle"
+          },
+          {
+            "value": "3d/props/interior",
+            "state": "idle"
+          },
+          {
+            "value": "3d/props/exterior",
+            "state": "idle"
+          },
+          {
+            "value": "3d/props/guns",
             "state": "idle"
           },
           {
@@ -62,11 +94,43 @@
             "state": "idle"
           },
           {
-            "value": "audio/music/orchestral",
+            "value": "3d/vehicles/space",
+            "state": "idle"
+          },
+          {
+            "value": "3d/vehicles/air",
+            "state": "idle"
+          },
+          {
+            "value": "2d/gui/icons",
+            "state": "idle"
+          },
+          {
+            "value": "2d/textures-materials/sky",
+            "state": "idle"
+          },
+          {
+            "value": "2d/textures-materials/nature",
+            "state": "idle"
+          },
+          {
+            "value": "2d/textures-materials/floors",
+            "state": "idle"
+          },
+          {
+            "value": "vfx/particles/spells",
+            "state": "idle"
+          },
+          {
+            "value": "vfx/shaders/fullscreen-camera-effects",
             "state": "idle"
           },
           {
             "value": "vfx/particles/fire-explosions",
+            "state": "idle"
+          },
+          {
+            "value": "vfx/particles/environment",
             "state": "idle"
           }
         ]

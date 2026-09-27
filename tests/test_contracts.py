@@ -225,7 +225,7 @@ REQUIRED_CONSTANTS: dict[str, object] = {
     "ENDPOINT_CONTRACT_VERSION": "1.0.0",
     "IDENTITY_MAPPING_RULE_VERSION": "1.0.1",
     "SAMPLING_RULE_VERSION": "1.0.0",
-    "MAX_DISCOVERY_RESULTS_PER_CATEGORY": 2000,
+    "MAX_DISCOVERY_RESULTS_PER_CATEGORY": 9000,
     "PAGE_SIZE": 96,
     "MIN_CATEGORIES_PER_RUN": 8,
     "STRONG_REFERENCE_CATEGORY_COUNT": 21,
@@ -423,7 +423,7 @@ def test_coveo_endpoint_contract() -> None:
     assert (
         config.max_discovery_results_per_category
         == models.MAX_DISCOVERY_RESULTS_PER_CATEGORY
-        == 2000
+        == 9000
     )
     assert config.page_size == models.PAGE_SIZE == 96
     with pytest.raises(ValueError):

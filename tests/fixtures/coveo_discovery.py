@@ -153,12 +153,12 @@ TEMPLATE_HEADER_FIELDS: tuple[str, ...] = (
     "endpoint",
 )
 
-#: The category under discovery in most tests: one of the eight committed Q4
-#: categories (chunk-14 plan §9), so the regenerated template facet carries it
-#: and the builder marks exactly it ``selected``.
+#: The category under discovery in most tests: the chunk-22 committed default
+#: selection's ``3d/characters/humanoids``, so the regenerated template facet
+#: carries it and the builder marks exactly it ``selected``.
 COVEO_FIXTURE_CATEGORY = "3d/characters/humanoids"
 
-#: A second committed Q4 category, used for the multi-category isolation test.
+#: A second committed chunk-22 category, used for the multi-category isolation test.
 COVEO_FIXTURE_CATEGORY_OTHER = "vfx/particles/fire-explosions"
 
 #: The taxonomy payload every discovery test validates against.

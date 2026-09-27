@@ -418,7 +418,7 @@ def category_set(count: int) -> tuple[str, ...]:
 
 
 def compliant_category_paths() -> tuple[str, ...]:
-    """Return the config fixture's default eight canonical category paths."""
+    """Return the config fixture's default twenty-four canonical category paths."""
     return tuple(config_fixtures.DEFAULT_CATEGORIES)
 
 

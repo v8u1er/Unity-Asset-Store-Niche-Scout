@@ -24,7 +24,7 @@ Golden facts asserted by ``tests/test_cli.py`` (hand-derived, no clock):
 
 - A CLI override wins over both TOML and the in-code default:
   ``--max-discovery-results-per-category 500`` over TOML ``1500`` and default
-  ``2000`` resolves to ``500`` with ``source == "cli"``.
+  ``9000`` resolves to ``500`` with ``source == "cli"``.
 - A TOML value wins over the default when the key is absent from ``cli_args``:
   TOML ``min_age_days_for_rate = 45`` resolves to ``45`` with
   ``source == "toml"``.
@@ -91,7 +91,7 @@ DASHBOARD_TOML_BODY: str = 'db_path = "runtime/dashboard.sqlite3"'
 DEFAULT_RECENT_WINDOW_DAYS = 365
 
 #: The golden CLI override table (plan §9): value 500 over TOML 1500 over
-#: in-code default 2000.
+#: in-code default 9000.
 CLI_OVERRIDE_ARGV: tuple[str, ...] = ("--max-discovery-results-per-category", "500")
 CLI_OVERRIDE_EXPECTED = 500
 

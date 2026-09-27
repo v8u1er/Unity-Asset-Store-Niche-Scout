@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
-  "captured_at_utc": "2026-09-23T07:21:37Z",
+  "captured_at_utc": "2026-09-27T06:43:41Z",
   "source_url": "https://assetstore.unity.com/categories",
-  "template_sha256": "a6bf5a2a3ea9a966f490f447c44a68174f7763aecde10524caffe09401fa1229",
+  "template_sha256": "9dee9a6cd88cd679fff342a4978661dfc59da91fa6435dab95afa1c187c641ed",
   "canonical_category_paths": [
     "2d/characters",
     "2d/environments",
