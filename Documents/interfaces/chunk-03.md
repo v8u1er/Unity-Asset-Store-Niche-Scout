@@ -169,9 +169,26 @@ class CategoryPageOutcome:          # what one written page contributed, as pers
     duplicates: int = 0
 
 class CoveoDiscoveryError(RuntimeError): ...        # base
-class CoveoRequestFailed(CoveoDiscoveryError): ...  # retries exhausted / permanent failure
+class CoveoTransportFailureClass(str, Enum):
+    TRANSPORT_FAILURE = "transport_failure"        # URLError / OSError: no HTTP response
+    HTTP_TRANSIENT = "http_transient"              # 408/425/429 + 5xx, budget exhausted
+    HTTP_PERMANENT = "http_permanent"              # any other non-200 status
+class CoveoRequestFailed(CoveoDiscoveryError):     # retries exhausted / permanent failure
+    attempts: int                                  # attempts actually issued (>= 1)
+    failure_class: CoveoTransportFailureClass      # this run's terminal cause class
 class CoveoTaxonomyInvalid(CoveoDiscoveryError): ... # pre-network abort
 ```
+
+**Chunk 23 additive correction (2026-09-28, operator-authorized).** `CoveoRequestFailed`
+gains two read-only attributes, `attempts: int` (the number of attempts the adapter
+actually issued for that page, `>= 1`) and `failure_class: CoveoTransportFailureClass`
+(one of `transport_failure` / `http_transient` / `http_permanent`). Both are set at every
+`raise` site in `fetch_category_page`. The class is a **Coveo-local** enum with exactly
+those three values; it is **not** `collector_graphql.GraphQLFailureClass` and no
+GraphQL name is imported. `CoveoTransportFailureClass` is added to the module `__all__`.
+The `fetch_category_page` and `discover_category` signatures are **unchanged**. The
+message of a raised `CoveoRequestFailed` still carries no credential, header value,
+cookie, URL, response body, or `str(exc)` text.
 
 `CategoryDiscoveryResult.conditions` keeps **every** applicable condition
 visible even though exactly one is selected as `discovery_status`;
@@ -309,7 +326,7 @@ class CoveoObservationSink:
   persisted count, and the requested page size is always the full `page_size`
   (never a remainder). Truncation, request failure, and page failure are
   recorded conditions.
-- **Failures are never zero assets.** A failed request or a structurally failed
+- **Never zero assets.** A failed request or a structurally failed
   page yields no records, is recorded as `request_failed` / `page_failed`, and
   is never read as a zero-breadth category. A zero-result category is
   `complete` only when the response structure validated and the filter verdict
@@ -320,6 +337,19 @@ class CoveoObservationSink:
   failure (any other non-200 status) is raised immediately and never retried.
   The minimum request interval is applied once per logical page request,
   through the injected `sleeper`; the first request of a run is not delayed.
+- **Chunk 23 additive correction (2026-09-28, operator-authorized).** A
+  **transport-layer** failure — `urllib.error.URLError` or `OSError` raised by
+  the injected transport, i.e. a connection error or socket timeout with no HTTP
+  response — is **transient** and is retried under the **same** bounded budget
+  (`COVEO_MAX_RETRIES` additional attempts) and the **same** backoff schedule
+  (`COVEO_BACKOFF_BASE_SECONDS * 2 ** (attempts - 1)`; `Retry-After` cannot
+  apply because there is no response). It is no longer raised immediately.
+  Permanence and the bound are unchanged: auth/CSRF/malformed/authorization
+  failures and any other non-transient status are never retried, and the total
+  attempts for one logical page never exceed `COVEO_MAX_RETRIES + 1`. When the
+  budget is exhausted by a transport failure the existing terminal
+  `CoveoRequestFailed` is raised, now carrying `attempts` and
+  `failure_class = transport_failure`.
 - **Ordinals and duplicates.** `discovery_ordinal` is assigned once per
   emitted record (monotonic, zero-based, per run and category, in emission
   order). When a record whose canonicalized identity was already seen earlier
@@ -341,6 +371,16 @@ class CoveoObservationSink:
 - **Redaction.** `request_metadata_json`, `error_summary_json`, logs, and
   exception messages never contain a bearer token, CSRF token, cookie,
   `Authorization` header value, or raw response body.
+- **Chunk 23 additive note (2026-09-28, operator-authorized).** The terminal failure
+  cause is now durable: `_finalize_result` writes the redacted
+  `CategoryDiscoveryResult.issues` cause on the category's `category_scores` row via
+  `set_category_status(..., discovery_failure_cause_json=<canonical JSON>)` inside the
+  same category transaction (see `interfaces/chunk-02.md` §2.7). The value carries only
+  `failure_class` (`transport_failure` / `http_transient` / `http_permanent`),
+  `http_status` (or `null`), `page_index`, and `attempt_count`; never a credential,
+  header value, cookie, URL, response body, or `str(exc)`. The failure-path limitation
+  strings (`category <repr>: <field>`) and the adapter's terminal statuses are
+  unchanged.
 - **Traceability.** Every analytical test in `tests/test_collector.py` carries
   a `@pytest.mark.lreq` marker and a `tests/traceability.json` entry.
   `test_module_imports_without_side_effects` and

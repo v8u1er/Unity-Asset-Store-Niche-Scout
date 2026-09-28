@@ -59,7 +59,7 @@ no index, and no constant**, and modifies no frozen Chunk 0 name.
 ### 2.1 Constants / containers
 
 ```python
-SCHEMA_VERSION = "1.0.0"                        # unchanged, frozen by Chunk 0
+SCHEMA_VERSION = "1.1.0"                        # Chunk 23 additive correction (was "1.0.0")
 
 DDL_STATEMENTS: tuple[str, ...]                 # 5 CREATE TABLE + 1 CREATE INDEX
 CREATE_TABLE_STATEMENTS: dict[str, str]         # table name -> CREATE TABLE string
@@ -67,6 +67,18 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]]       # table name -> column names, in
 TABLE_PRIMARY_KEYS: dict[str, tuple[str, ...]]  # table name -> primary-key columns
 TABLE_INDEXES: dict[str, str]                   # index name -> CREATE INDEX string
 ```
+
+**Chunk 23 additive correction (2026-09-28, operator-authorized).** `SCHEMA_VERSION` is
+bumped `"1.0.0"` → `"1.1.0"` and `category_scores` gains exactly one nullable column,
+`discovery_failure_cause_json TEXT`, appended last in the DDL and in
+`models.CategoryScoreRecord` (so `TABLE_COLUMNS["category_scores"] ==
+models.MANDATORY_ROW_FIELDS["category_scores"]` still holds). It carries the redacted,
+canonical-JSON discovery failure cause (`{"attempt_count": int, "failure_class": str,
+"http_status": int | null, "page_index": int}`, or `NULL` when there is no recorded
+cause). Accepted consequence: an existing `"1.0.0"` database raises `SchemaVersionError`
+on open and is **not** migrated and **not** altered; the DDL is applied only as
+`CREATE ... IF NOT EXISTS`, so a stale table is never rewritten. No other table, column,
+index, constant, or protocol signature changes.
 
 `TABLE_INDEXES` is `dict[str, str]` in the implementation (one index,
 `idx_raw_discovery_observations_run_category_ordinal`). The Chunk 0 interface
@@ -180,6 +192,11 @@ def initialize_schema(self, *, check_version: bool = True) -> str: ...
   `SCHEMA_VERSION`; it never migrates silently and never deletes data.
 - Raises `DatabaseError` when `foreign_keys` is not `1`.
 - No `ALTER TABLE`, no column addition, no destructive migration.
+- **Chunk 23 exception (2026-09-28, operator-authorized).** The one column addition
+  recorded in §2.1 (`category_scores.discovery_failure_cause_json`) IS the DDL change
+  authorized for this repository; it ships as part of `SCHEMA_VERSION = "1.1.0"`. This
+  paragraph is the single authorized deviation from the no-column-addition rule above,
+  and it does not relax that rule for any other column, table, or index.
 
 ### 2.5 `SqliteRepository` — pragmas (applied on every connection, in this order)
 
@@ -263,7 +280,8 @@ def update_run_preflight(
 
 # Category status
 def set_category_status(self, run_id: str, category: str, discovery_status: str,
-                        *, computed_at_utc: Optional[datetime] = None) -> None: ...
+                        *, computed_at_utc: Optional[datetime] = None,
+                        discovery_failure_cause_json: Optional[str] = None) -> None: ...
 
 # Raw discovery observations
 def insert_raw_discovery_observations(
@@ -303,6 +321,15 @@ def upsert_category_scores(self, scores: Sequence[CategoryScoreRecord]) -> int: 
   defaults the DDL requires; every scoring-phase column stays at its pre-scoring
   default for `upsert_category_scores` to finalize later. It leaves every other
   `(run_id, category)` row untouched.
+  **Chunk 23 additive correction (2026-09-28, operator-authorized).**
+  `discovery_failure_cause_json` is a new optional keyword-only parameter. When it is
+  `None` — the default, and the only value the scoring-phase `upsert_category_scores`
+  ever sees — the stored column is **left unchanged** by the conflict path, so
+  finalizing a scored row cannot null a cause written earlier. When it is a string, the
+  value is validated as canonical JSON text (`json.dumps(..., sort_keys=True,
+  separators=(",", ":"))`) and written on both the insert and the conflict path. The
+  value is stored exactly as given (`*_json` codec, §2.9) and is never re-serialized;
+  `NULL` means "no recorded cause" and is never `""`.
   **`computed_at_utc` is required.** `CategoryScoreRecord.computed_at_utc` is a
   non-optional `datetime` and this module never reads the system clock, so a
   `None` raises `InvalidRecordValueError` and **writes nothing**. A conflicting
@@ -442,7 +469,11 @@ tables; the `upsert_category_scores` conflict path binds the full column set.
   `TABLE_COLUMNS["category_scores"]` exactly.
 - **No schema invention** — no new table (other than the private
   `schema_metadata`), no new column, no `ALTER TABLE`, no index beyond the
-  frozen one.
+  frozen one. **Chunk 23 exception (2026-09-28, operator-authorized):**
+  `category_scores.discovery_failure_cause_json` (§2.1) is the one authorized column,
+  and it is carried by `models.CategoryScoreRecord` and
+  `models.MANDATORY_ROW_FIELDS["category_scores"]`; no other column, table, index, or
+  `ALTER TABLE` is introduced.
 
 ---
 
@@ -467,7 +498,10 @@ tables; the `upsert_category_scores` conflict path binds the full column set.
   persisted column; it is carried by the existing
   `category_scores.discovery_status`, `warnings_json`, `evidence_grade`, and
   `rankability_status` (dependency map §6.5). A standalone `category_status`
-  column would be a documented schema change; the frozen DDL has none.
+  column would be a documented schema change; the frozen DDL has none. **Chunk 23
+  exception (2026-09-28, operator-authorized):** `discovery_failure_cause_json` is a
+  redacted *cause* field, not a status enum and not a `category_status` column; the
+  status stays carried by the four existing fields.
 - **No end-to-end acceptance verification** — Chunk 13 owns LREQ-TST-080/090.
 
 ---
@@ -494,6 +528,13 @@ references — `LREQ-TST-040` (GraphQL protocol, `test_collector.py`/
 attaching them to a persistence test would be a fabricated mapping
 (plan §12 Q6). Full closure of `LREQ-GQL-080`/`LREQ-SMP-080`'s required-test
 sets happens when those chunks land.
+
+**Chunk 23 additive amendment (2026-09-28, operator-authorized).**
+`SCHEMA_VERSION` is `"1.1.0"` (§2.1); `category_scores` has one additional nullable
+column, `discovery_failure_cause_json` (§2.1, §2.4, §2.7); `set_category_status` gained
+the keyword-only `discovery_failure_cause_json` parameter (§2.7); and
+`models.CategoryScoreRecord` / `models.MANDATORY_ROW_FIELDS["category_scores"]` gain the
+matching field. No other frozen name changed and no downstream chunk is re-scoped.
 
 ---
 
