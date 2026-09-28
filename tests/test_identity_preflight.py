@@ -123,8 +123,8 @@ def test_select_preflight_identities_two_assets_five_categories():
     assert len(selection.identities) == 10
     # LREQ-SMP-060: within a census stratum every member is selected but ranked
     # by (selection_digest, asset_identity_key); the digest covers
-    # rule_version+category+key, not the discovery ordinal, so the A and B pairs
-    # come back digest-first.
+    # rule_version+category+key, not the discovery ordinal, so the pairs come
+    # back digest-first (A and B reversed, C and D in ordinal order, E reversed).
     assert [identity.asset_identity_key for identity in selection.identities] == [
         "A2",
         "A1",
@@ -134,8 +134,8 @@ def test_select_preflight_identities_two_assets_five_categories():
         "C2",
         "D1",
         "D2",
-        "E1",
         "E2",
+        "E1",
     ]
     assert [identity.preflight_rank for identity in selection.identities] == list(
         range(1, 11)
@@ -230,7 +230,7 @@ def test_select_preflight_one_asset_category_not_counted():
     assert selection.category_shortfall == 4
     assert selection.asset_shortfall == 0
     keys = [identity.asset_identity_key for identity in selection.identities]
-    assert keys == [pf.A, pf.B]
+    assert keys == [pf.B, pf.A]
     assert pf.C not in keys
 
 
@@ -243,17 +243,17 @@ def test_select_preflight_overlap_dedups_identities():
     # {A, S} and Category/B samples {B, S}; the union is {A, S, B} -- three
     # unique identities, not the four category references.
     keys = [identity.asset_identity_key for identity in selection.identities]
-    assert keys == [pf.A, pf.SHARED, pf.B]
+    assert keys == [pf.SHARED, pf.A, pf.B]
     assert len(selection.identities) == 3
-    # First-seen order: the shared identity is claimed by Category/A (run order)
-    # and never re-added by Category/B.
+    # Category/A's digest-ranked members are (SHARED, A), so the shared identity
+    # is claimed first by Category/A (run order) and never re-added by Category/B.
     shared = next(
         identity
         for identity in selection.identities
         if identity.asset_identity_key == pf.SHARED
     )
     assert shared.source_category == pf.CATEGORY_A
-    assert shared.preflight_rank == 2
+    assert shared.preflight_rank == 1
 
 
 @pytest.mark.lreq("LREQ-ID-010")
@@ -607,8 +607,8 @@ def test_run_identity_preflight_uses_chunk5_adapter_per_unique_identity(tmp_path
         # each call asks for one distinct identity -- no repeats, no bulk.
         assert transport.call_count == 3
         assert transport.distinct_requested_identities == (
-            pf.A,
             pf.SHARED,
+            pf.A,
             pf.B,
         )
         assert len(outcome.observations) == 3
@@ -1275,7 +1275,7 @@ def test_run_identity_preflight_issues_no_third_or_bulk_request(tmp_path):
         # Plan §11 / gate line 722: the adapter is called once per unique
         # preflight identity -- no third request, no bulk enrichment request.
         assert transport.call_count == 2
-        assert transport.distinct_requested_identities == (pf.A, pf.B)
+        assert transport.distinct_requested_identities == (pf.B, pf.A)
         for call in transport.calls:
             assert len(call.operations) == 2
     finally:
@@ -1478,7 +1478,7 @@ def test_preflight_selected_mode_is_persisted_and_reused_without_a_second_reques
             identity.asset_identity_key
             for identity in _selection(run, policy=pf.small_policy()).identities
         )
-        assert selected_keys == (pf.A, pf.B)
+        assert selected_keys == (pf.B, pf.A)
         assert len(transport.responses) == transport.call_count
         assert transport.call_count == len(selected_keys)
         assert transport.distinct_requested_identities == selected_keys
@@ -1547,7 +1547,7 @@ def test_preflight_passes_when_returned_product_id_differs(tmp_path):
             identity.asset_identity_key
             for identity in _selection(run, policy=pf.small_policy()).identities
         )
-        assert selected_keys == (pf.A, pf.B)
+        assert selected_keys == (pf.B, pf.A)
         assert transport.call_count == len(selected_keys)
 
         assert outcome.status is IdentityPreflightStatus.PASSED
