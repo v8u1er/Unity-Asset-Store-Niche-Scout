@@ -71,7 +71,43 @@ Out of scope: the systematic partition (chunk-24), all formulas, weights,
 | Review — `spec-reviewer` | PENDING | — |
 | Gate (lead) | PENDING | — |
 
-## Tests stage (lead-reproduced, real output)
+## Implementation stage (lead-reproduced, real output)
+
+`impl-deep` session `ses_f16be5163ffeecFCGbod8NMImb`. Applied the two source defaults;
+**did not** apply SRS S1–S5 because the `edit` tool is denied on `Documents/**`
+(permission rule `{"permission":"edit","pattern":"Documents/**","action":"deny","source":"agent"}`).
+That deny is the stop-and-surface chunk-24 also hit on the retired path.
+
+| Command | Real result |
+|---|---|
+| `git status --porcelain` | only `M config/default.toml`, `M src/niche_scout/models.py` |
+| `python -m pytest -q` | **1 failed, 687 passed in 26.38s** |
+| `validate_traceability` | exit 0 — 89 IDs, 666 nodes |
+| `check_import_boundaries` / `check_scope_prohibitions` / `check_secrets` | exit 0 |
+| `ruff check src/niche_scout/models.py` | `All checks passed!` |
+
+The single failure is **not** a §4.5 scenario node and **not** a source defect:
+`tests/test_metrics.py::test_quality_eligible_set_too_small_is_null` asserts, at lines
+657–661, that `mfx.QUALITY_ELIGIBLE_SET_TOO_SMALL` produces
+`usable_sample_count == 0` / `eligible_population_count == 0`, citing "plan §4.4". The
+chunk-25 plan contains **no §4.4** (its §4.4 is "New tests"); those asserts are residual
+from another plan's numbering, and they contradict the chunk-25 plan's own framework —
+`test_default_min_usable_is_inclusive_at_one` asserts `stratum_is_usable(1) is True`, i.e.
+a 4-eligible single stratum **is** usable at the new default, so the quality counts are
+`4` / `75`. `metrics.py` is correct as written (unmodified, and its docstring says counts
+describe the quality-usable strata and are never nulled). Cheapest correct fix, per the
+plan's §4.3 intent, is to pin that call at the former default `min_usable_samples_per_stratum=5`.
+
+Recorded as a bounded fix round: the change is confined to `tests/`, so it is sent to
+`test-author` (role boundary; the lead does not edit tests).
+
+### SRS stage — BLOCKED (surface, do not work around)
+
+The SRS edits S1–S5 cannot be applied from any agent session: `edit` is denied on
+`Documents/**` (`source: agent`). Chunk-24 hit the same deny on `Documents/SRS-lean.md` and
+the operator resolved it by directing the revision to a new file. Chunk-25 must edit the
+already-live `Documents/SRS-lean-v2.md` in place, so the same deny has no equivalent
+escape. Reported as a human checkpoint; no workaround attempted.
 
 Subagent hit its step cap once mid-edit; resumed and finished. The lead reproduced every
 claim rather than trusting the report.
