@@ -253,3 +253,51 @@ strata`, no `floor(h*N/SAMPLE_STRATA)+1`, no `stratum boundaries`, and no
 **Follow-up required when `SRS-lean.md` is retired:** the validator's `SRS_PATH` and the
 `AGENTS.md` source-of-truth pointer still name `SRS-lean.md`; both must be re-pointed to
 `SRS-lean-v2.md` or the validator will fail to find Appendix B.
+
+## Review (2026-09-28)
+
+`spec-reviewer` session `ses_f17f4605dffennVv499L1zJKXE`: **VERDICT: PASS**, no Blocker, no
+Major. Four Minors, all recorded and none triggering a fix round:
+
+1. `sampling.py`/`test_sampling.py` formatting deviations (`ruff format --check` would
+   reformat); the chunk lines are otherwise ruff-clean.
+2. `database.py` 6 E501 — pre-existing (byte-identical count at the tests commit), not
+   chunk-24 lines.
+3. `test_identity_preflight.py` re-baseline reviewed as a genuine consequence of the
+   version change, not a weakened assertion (structural assertions — covered categories and
+   counts — are untouched; only within-category order changed).
+4. `FROZEN_OFFSET_LITERALS` self-cross-checked against the hashlib transcription.
+
+Reviewer unverified items closed by the lead:
+
+- Independent offset capture re-run with the recorded one-liner: `Textures/Materials → 0`,
+  `3D/Characters → 2`, `2d/gui/icons → 1`, `vfx/particles/spells → 0` — matches the fixture.
+- Digest literal re-run: `sha256(b"2.0.0\x003D/Characters\x0012345") =
+  7abf5094a61e4615af5d369e0c50699f44c60d43d7e75f3654df33a27bc5049c`.
+- `git diff bcbaae2..chunk-24 -- tests/` shows only `tests/test_identity_preflight.py`
+  (93 diff lines) changed after the tests commit; `tests/test_identity.py` was not touched.
+
+## Gate
+
+| DoD bullet | Evidence | Status |
+|---|---|---|
+| Systematic partition exact (`LREQ-SMP-050`) | reviewer §1; `test_strata_are_a_disjoint_cover_of_the_ordinal_axis[101/104/105/200/1000]`, membership vectors at 101/104/offset-shift | PASS |
+| Census `(0,1)` and zero-population `sample_fraction is None` | `test_census_geometry_is_offset_zero_stride_one`, `test_zero_population_fraction_is_null_not_zero` | PASS |
+| Repeated selection identical; version change changes offset+digest; no RNG/clock | determinism tests; purity via `check_import_boundaries` exit 0 | PASS |
+| `LREQ-SMP-070` structural early/middle/late | `test_early_middle_late_positions_represented`, `test_sample_is_not_first_page_prefix` | PASS |
+| `sample_fraction` distinct from stratum eligibility coverage | `test_sample_fraction_distinct_from_stratum_aggregates` | PASS |
+| `(offset, stride)` survives SQLite round trip; ten-key JSON | `test_stratum_statistics_json_matches_frozen_schema`, `..._round_trips_n_h_and_geometry`, `test_persisted_values_verify_against_pure_result` | PASS |
+| `SCHEMA_VERSION == "1.2.0"`; `SAMPLING_RULE_VERSION == "2.0.0"` | `test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0`, `test_default_constants_are_not_configurable` | PASS |
+| Purity boundary unchanged | `check_import_boundaries` exit 0 | PASS |
+| Every analytical test marked and mapped | `validate_traceability` exit 0 (665 nodes) | PASS |
+| Full suite + validators | `pytest` 687 passed; four validators exit 0 | PASS |
+| Chunk-25 boundary held (`MIN_USABLE`, coverage, scoring, config untouched) | reviewer §6; `config/default.toml:22` still 5; `metrics.py`/`scoring.py` not in the diff | PASS |
+| SRS edits S1–S8 applied | **deviation:** applied to the new `Documents/SRS-lean-v2.md` (Lean 1.0.2) per operator direction, not to `SRS-lean.md`; `SRS-lean.md` unchanged, operator retires it | PASS (with recorded deviation) |
+| Interface deltas recorded | `Documents/interfaces/chunk-24.md` plus marked revision notes in `chunk-4A/4B/11/00.md` | PASS |
+| Ruff clean on changed files | 4 source files clean; `database.py` 6 pre-existing E501 (byte-identical at `bcbaae2`); 2 formatting Minors | PARTIAL (pre-existing/deferred) |
+
+**GATE: PASSED** on every agent-verifiable bullet. Two recorded caveats, not silently
+resolved: the ruff bullet is met only as "no new lint" (pre-existing `database.py` E501 and
+two formatting Minors deferred), and the SRS edits live in `SRS-lean-v2.md` rather than
+`SRS-lean.md` per explicit operator direction, leaving the `SRS_PATH`/`AGENTS.md` pointer
+update as the operator's retirement step.
