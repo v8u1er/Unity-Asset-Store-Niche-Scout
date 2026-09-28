@@ -189,3 +189,51 @@ partially migrated suite.
 Nothing was committed for this stage: the tests-first commit requires a suite whose failures
 are only missing-implementation failures **and** a validator-clean traceability matrix, which
 is not yet true. Working tree is therefore dirty and chunk-24 is paused.
+
+## Tests stage — COMPLETED (2026-09-28)
+
+The resumed `test-author` hit its step cap a second time, leaving two `tests/traceability.json`
+keys unrenamed. The lead applied the atomic key rename
+(`..._version_is_1_1_0` → `..._version_is_1_2_0`;
+`..._n_h_and_boundaries` → `..._n_h_and_geometry`). Committed `bcbaae2` (`chunk-24: tests`,
+13 files). Validator now exits 0.
+
+## Implementation stage (2026-09-28)
+
+First `impl-deep` dispatch (`ses_f1825c01fffePCcf6Tw5dA2I3G`) returned a malformed end-of-turn
+payload with no work performed. Re-dispatched; it edited the five source files and stopped
+before verification/handoff. Lead reviewed the diff and ran the suite. 7 failures in
+`tests/test_identity_preflight.py` were caused by the legitimate sampling-rule change:
+`SAMPLING_RULE_VERSION` `1.0.0`→`2.0.0` changes every digest and therefore the within-category
+candidate order. The lead re-baselined those expected orderings to the measured values
+(digest-stable across runs and groups). Commits: `bb9d271` (`chunk-24: implementation`),
+`d7d9096` (`chunk-24: tests (preflight order re-baseline)`).
+
+### Post-implementation verification (lead, real output)
+
+| Command | Real result |
+|---|---|
+| `python -m pytest -q` | `687 passed in 23.94s` |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 required/defined LREQ IDs, 665 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted) |
+| `python -m niche_scout.tools.check_import_boundaries` | exit 0 — valid for `metrics.py`, `scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | exit 0 — 6 tokens |
+| `python -m niche_scout.tools.check_secrets` | exit 0 |
+| `ruff check` changed source | `sampling.py`/`models.py`/`report.py`/`pipeline.py`: 0 errors; `database.py`: 6 E501, pre-existing (byte-identical count and lines at `bcbaae2`) |
+
+## Documentation/contract stage — BLOCKED (2026-09-28)
+
+The plan's §4 SRS edits (S1–S8) and §5 interface deltas were **not** applied. Both the
+`impl-deep` session and the lead are denied `edit` on `Documents/SRS-lean.md` (global
+permission rule). The lead wrote the new `Documents/interfaces/chunk-24.md` (where writes are
+permitted). Consequences recorded, not silently closed:
+
+- `Documents/SRS-lean.md` still states "four *contiguous* ordinal strata" (`LREQ-SMP-050`),
+  the floor-boundary formula, "stratum boundaries" (`LREQ-SMP-080`), the old
+  `sample_members` field list (§6.3), and has no `Lean 1.0.2` revision row. The implemented
+  code diverges from that text.
+- `Documents/interfaces/chunk-04A.md`, `chunk-4B.md`, `chunk-11.md`, `chunk-00.md` still carry
+  the interval representation; `chunk-24.md` now records the authoritative delta.
+- The `build_strata` implementation is O(N) per stratum; acceptable, noted for performance.
+
+The SRS and interface file edits require a human (or a session whose permissions include
+`Documents/SRS-lean.md`). This blocks a `GATE: PASSED`.
