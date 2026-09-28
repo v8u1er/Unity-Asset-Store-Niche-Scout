@@ -1844,9 +1844,7 @@ class SqliteRepository:
         # survives the scoring finalize (Chunk 23, LREQ-EXT-090). A supplied string
         # still advances it on the conflict path.
         preserve_when_absent = (
-            ("discovery_failure_cause_json",)
-            if table == "category_scores"
-            else ()
+            ("discovery_failure_cause_json",) if table == "category_scores" else ()
         )
         update_columns = tuple(
             column

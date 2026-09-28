@@ -975,14 +975,17 @@ def test_repository_protocol_and_schema_specification(
 
 
 @pytest.mark.lreq("LREQ-RPT-020")
-def test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0() -> None:
+def test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0() -> (
+    None
+):
     """The Chunk 23 column is the last column and the schema version is 1.1.0.
 
     Hand-derived from ``interfaces/chunk-02.md`` §2.1: ``SCHEMA_VERSION`` is
     ``"1.1.0"`` and ``category_scores`` gains exactly one nullable column,
     ``discovery_failure_cause_json TEXT``, appended last so the frozen parity
-    ``TABLE_COLUMNS["category_scores"] == models.MANDATORY_ROW_FIELDS["category_scores"]``
-    still holds and it ships in the ``CREATE TABLE`` text.
+    ``TABLE_COLUMNS["category_scores"] ==
+    models.MANDATORY_ROW_FIELDS["category_scores"]`` still holds and it ships
+    in the ``CREATE TABLE`` text.
     """
     from niche_scout.database import SCHEMA_VERSION
 

@@ -2219,7 +2219,8 @@ def test_category_failure_cause_column_round_trips_without_zero_substitution(
             computed_at_utc=_iso(6),
         )
         stored = {
-            row.category: row for row in repository.get_category_scores(run_record.run_id)
+            row.category: row
+            for row in repository.get_category_scores(run_record.run_id)
         }
         assert stored[category].discovery_failure_cause_json == cause, (
             "*_json columns are stored exactly as given, never re-serialized"

@@ -1064,9 +1064,7 @@ def fetch_category_page(
         # reaching here with one armed means the transient budget was consumed by
         # an exception rather than a response; do not sleep for nothing.
         pending_delay = 0.0
-    failure_class = (
-        last_failure_class or CoveoTransportFailureClass.TRANSPORT_FAILURE
-    )
+    failure_class = last_failure_class or CoveoTransportFailureClass.TRANSPORT_FAILURE
     if last_status is None:
         detail = f"the transport layer failed; it is a {failure_class.value}"
     else:
