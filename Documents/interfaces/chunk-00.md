@@ -506,3 +506,15 @@ in sync with `@pytest.mark.lreq` markers.
 - No canonical population construction or SHA-256 sample selection — Chunk 4A.
 - No metric/scoring function bodies — Chunks 7A/7B, 8, 9A/9B.
 - No pipeline orchestration, report rendering, or CLI parsing — Chunks 10, 11, 12.
+
+## 11. Chunk 24 revision — sampling version, stride, and schema (2026-09-28)
+
+Operator-authorized remediation (chunk-24; authoritative delta:
+`Documents/interfaces/chunk-24.md`).
+
+- `SAMPLING_RULE_VERSION` is `"2.0.0"` (was `"1.0.0"`); the sampling-rule version is
+  an input to the per-category stratum offset.
+- `SAMPLE_STRATA` (4) is the systematic ordinal-stratum **stride**, not a count of
+  contiguous blocks.
+- `SCHEMA_VERSION` is `"1.2.0"` (was `"1.1.0"`); `sample_members` carries
+  `stratum_offset`/`stratum_stride` in place of the ordinal interval columns.

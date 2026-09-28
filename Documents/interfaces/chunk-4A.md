@@ -372,3 +372,26 @@ live module and the committed tests (`Documents/runs/chunk-4A.md` lines 79–102
 
 `sampling.py:19-31` imports only `hashlib`, `collections.abc`, `dataclasses`,
 and `niche_scout.models`; the module is pure.
+
+## 4A-2. Chunk 24 revision — systematic (interleaved) strata (2026-09-28)
+
+**This section supersedes the stratum geometry above.** Operator-authorized remediation
+(chunk-24; see `Documents/interfaces/chunk-24.md` and `Documents/runs/chunk-24.md`).
+
+- `SamplingStratum.start_ordinal`/`end_ordinal` are **replaced** by
+  `stratum_offset`/`stratum_stride`. `SampledMember.stratum_start_ordinal`/
+  `stratum_end_ordinal` are replaced by `stratum_offset`/`stratum_stride`. The audit
+  columns mirror the new names (`SCHEMA_VERSION` `1.2.0`).
+- A large-category stratum is the systematic set `{i in 1..N :
+  (i - 1 + stratum_offset) mod stratum_stride == stratum_index}` with
+  `stratum_stride = SAMPLE_STRATA` and a deterministic per-category `stratum_offset`
+  (`LREQ-SMP-050`). A census stratum is encoded `(offset=0, stride=1)`.
+- New pure functions: `category_stratum_offset(category, *,
+  sampling_rule_version=SAMPLING_RULE_VERSION) -> int` and
+  `stratum_member_ordinals(stratum, population_size) -> tuple[int, ...]`.
+- `build_strata` gains the keyword `sampling_rule_version: str =
+  SAMPLING_RULE_VERSION`; the offset is always reduced `mod SAMPLE_STRATA`.
+- `SAMPLING_RULE_VERSION` is `"2.0.0"` (the rule version is an input to the offset).
+  Within-stratum selection (`LREQ-SMP-060`), `select_category_sample`,
+  `select_run_sample`, digest, overlap, and canonical-population behavior are
+  unchanged.

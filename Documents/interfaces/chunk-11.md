@@ -206,3 +206,15 @@ def render_dashboard_html(repository: "SqliteRepository", run_id: str) -> str:
   command and `write_run_report(...)` for `run`; `RunNotFoundError` for selection
   failure. Chunk 12 owns run selection; Chunk 11 added no repository method.
 - Every displayed value is persisted-only; nothing in the report is recomputed.
+
+## 9. Chunk 24 revision — stratum columns in the report (2026-09-28)
+
+**This section supersedes the stratum report fields above.** Operator-authorized
+remediation (chunk-24; see `Documents/interfaces/chunk-24.md`).
+
+- `StratumReportRow` carries `stratum_offset`/`stratum_stride` instead of
+  `stratum_start_ordinal`/`stratum_end_ordinal`, parsed from the renamed
+  `stratum_statistics_json` keys.
+- HTML/text rendering shows the stratum's offset and stride in place of the
+  ordinal interval; the "Sample strata" table otherwise renders persisted values
+  verbatim.

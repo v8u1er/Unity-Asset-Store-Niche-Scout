@@ -339,3 +339,17 @@ overlap computations.
 `sampling.py` remains pure: the 4B block imports only names already present in
 the module (`Mapping`, `dataclass`, `RunSamplingResult`) and performs no I/O, no
 clock read, and no RNG. `database.py` remains the only I/O home for this chunk.
+
+## 5B. Chunk 24 revision — stratum geometry keys (2026-09-28)
+
+**This section supersedes the stratum JSON keys above.** Operator-authorized
+remediation (chunk-24; see `Documents/interfaces/chunk-24.md`).
+
+- The frozen `stratum_statistics_json` ten-key set becomes:
+  `N_h, eligibility_rule, n_h, stratum_index, stratum_offset, stratum_stride,
+  u_demand_h, u_quality_h, u_recent_h, usable_status`.
+  `stratum_start_ordinal`/`stratum_end_ordinal` are removed from the per-stratum
+  objects and from `sample_members`.
+- `SCHEMA_VERSION` is `1.2.0`; `serialize_stratum_statistics`/
+  `parse_stratum_statistics` validate the renamed key set. `N_h`/`n_h` semantics
+  are unchanged, and an empty population still serializes to `"[]"`.

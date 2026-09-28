@@ -237,3 +237,19 @@ permitted). Consequences recorded, not silently closed:
 
 The SRS and interface file edits require a human (or a session whose permissions include
 `Documents/SRS-lean.md`). This blocks a `GATE: PASSED`.
+
+### Resolution (2026-09-28) — `Documents/SRS-lean-v2.md`
+
+The `edit` tool is denied on `Documents/SRS-lean.md`; the operator directed the revision to a
+new file instead. The lead built `Documents/SRS-lean-v2.md` as a byte-exact copy of
+`SRS-lean.md` with edits S1–S7 plus a `Lean 1.0.2` revision row and a supersession note
+(`S8`); header `Version` → `Lean 1.0.2`. Verified: `difflib.unified_diff` between the two
+files shows only the intended hunks; the v2 text contains no `four contiguous ordinal
+strata`, no `floor(h*N/SAMPLE_STRATA)+1`, no `stratum boundaries`, and no
+`stratum_start_ordinal`/`stratum_end_ordinal`; `validate_traceability` parses v2 with the same
+89 defined / 89 required IDs. `SRS-lean.md` was not modified; the operator will retire it to
+`Documents/retired-documents/`.
+
+**Follow-up required when `SRS-lean.md` is retired:** the validator's `SRS_PATH` and the
+`AGENTS.md` source-of-truth pointer still name `SRS-lean.md`; both must be re-pointed to
+`SRS-lean-v2.md` or the validator will fail to find Appendix B.
