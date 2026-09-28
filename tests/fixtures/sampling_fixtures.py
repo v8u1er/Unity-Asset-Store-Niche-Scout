@@ -8,6 +8,10 @@ Sources:
 - Documents/plans/chunk-4A-canonical-populations-and-deterministic-sampling.md
   §5 (interface contract), §5.2 (input contract), §9.2 (golden vectors),
   §9.5 (fixture inventory).
+- Documents/plans/chunk-24-systematic-strata.md §2 (systematic partition and
+  A3 offset), §6 (typed pure contract), §8.2 (offset capture and membership
+  vectors). The contiguous-boundary vectors of chunk 4A are retired; the
+  membership vectors below are the chunk-24 golden vectors.
 
 No credentials, no network, no clock reads, no file I/O.
 """
@@ -241,46 +245,125 @@ def malformed_identity_values() -> tuple:
 
 
 # --------------------------------------------------------------------------
-# Pure helpers that restate SRS formulas for expected-value derivation. They
-# are independent transcriptions used in test comments and cross-checks; the
-# frozen literals are the assertions' source of truth where the SRS pins one.
+# Systematic-partition helpers and golden membership vectors
+# (plan chunk-24 §2 and §8.2; supersedes the chunk-4A contiguous boundaries).
+#
+# The helpers restate the plan chunk-24 §2 formulas independently of
+# ``niche_scout.sampling``; a defect in the module under test cannot hide
+# behind them. The frozen tuples below are hand-derived from the formula and
+# are the assertions' source of truth.
 # --------------------------------------------------------------------------
 
+#: The ``SAMPLING_RULE_VERSION`` value frozen by chunk-24 (plan §3.1, OQ-2).
+#: It is an input to the offset digest, so every offset depends on it.
+OFFSET_RULE_VERSION = "2.0.0"
 
-def expected_stratum_boundaries(n: int) -> tuple:
-    """Return the SRS §5.1 LREQ-SMP-050 boundaries for population size ``n``.
+#: Independent A3 capture command (plan §8.2) for the concrete
+#: ``(sampling_rule_version, category)`` pair below. Run it from the
+#: repository root; ``chr(0)`` is the NUL delimiter and the digest's first
+#: eight bytes are read big-endian, then reduced mod SAMPLE_STRATA.
+#: The one-line form (copy verbatim):
+#: python -c "import hashlib; v='2.0.0'; c='Textures/Materials'; print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8], 'big') % 4)"
+STRATUM_OFFSET_CAPTURE_COMMAND: str = (
+    "python -c \"import hashlib; v='2.0.0'; c='Textures/Materials'; "
+    "print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8], 'big') % 4)\""
+)
 
-    Large (``n > 100``): ``start = floor(h*n/4) + 1``,
-    ``end = floor((h+1)*n/4)`` for ``h`` in ``0..3``; the final stratum receives
-    the remainder. Census (``0 < n <= 100``): one stratum ``(1, n)``.
-    ``n == 0``: empty tuple (no stratum exists).
+#: Frozen A3 offset literals captured by the LEAD with the exact command above
+#: (same payload, ``c`` = the category shown). Recorded from the independent
+#: one-liner, never from the module under test:
+#:   Textures/Materials   -> 0   (STRATUM_OFFSET_CAPTURE_COMMAND)
+#:   3D/Characters        -> 2
+#:   2d/gui/icons         -> 1
+#:   vfx/particles/spells -> 0
+FROZEN_OFFSET_LITERALS: tuple[tuple[str, int], ...] = (
+    ("Textures/Materials", 0),
+    ("3D/Characters", 2),
+    ("2d/gui/icons", 1),
+    ("vfx/particles/spells", 0),
+)
+
+#: The captured offset for the large fixture category (plan §8.2 concrete
+#: value), asserted as a literal by the tests, not recomputed by the module.
+EXPECTED_OFFSET_LARGE_CATEGORY = 0
+
+
+def expected_stratum_offset(sampling_rule_version: str, category: str) -> int:
+    """Restate the plan chunk-24 §2.2 (A3) offset independently.
+
+    ``offset = int.from_bytes(sha256(utf8(version + NUL + category)).digest()
+    [:8], "big") % SAMPLE_STRATA`` -- hashlib only; ``niche_scout.sampling`` is
+    never imported here. The payload is exactly two values (version, category);
+    the category bytes are used verbatim as UTF-8 with no casing step.
     """
-    if n <= 0:
-        return ()
-    if n <= CENSUS_POPULATION_THRESHOLD:
-        return ((1, n),)
+    payload = (sampling_rule_version + "\x00" + category).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") % SAMPLE_STRATA
+
+
+#: Categories used to prove that distinct categories can land in different
+#: strata: the four captured-literal categories plus 24 generated names, so
+#: distinct categories are known to differ (see FROZEN_OFFSET_LITERALS:
+#: 0/2/1/0 are not all equal).
+OFFSET_VARIATION_CATEGORIES: tuple[str, ...] = (
+    CATEGORY,
+    LARGE_CATEGORY,
+    "2d/gui/icons",
+    "vfx/particles/spells",
+    *(f"Offset/Variation-{index:02d}" for index in range(24)),
+)
+
+
+def expected_stratum_member_ordinals(
+    population_size: int,
+    stratum_index: int,
+    *,
+    offset: int,
+    stride: int = SAMPLE_STRATA,
+) -> tuple[int, ...]:
+    """Restate plan chunk-24 §2.1: ascending ``i`` in 1..N with
+    ``(i - 1 + offset) % stride == stratum_index`` (the census encoding is
+    ``stride == 1``)."""
     return tuple(
-        ((h * n) // SAMPLE_STRATA + 1, ((h + 1) * n) // SAMPLE_STRATA)
-        for h in range(SAMPLE_STRATA)
+        ordinal
+        for ordinal in range(1, population_size + 1)
+        if (ordinal - 1 + offset) % stride == stratum_index
     )
 
 
-#: Frozen stratum boundaries, hand-derived from the SRS §5.1 LREQ-SMP-050 floor
-#: formula and asserted as literals so a defect in :func:`expected_stratum_boundaries`
-#: cannot hide behind itself. Derivation (``start = floor(h*N/4)+1``,
-#: ``end = floor((h+1)*N/4)``, final stratum takes the remainder):
-#:   N = 101: floor(101/4)=25  -> 1..25;  floor(202/4)=50  -> 26..50;
-#:            floor(303/4)=75  -> 51..75; floor(404/4)=101 -> 76..101
-#:   N = 105: floor(105/4)=26  -> 1..26;  floor(210/4)=52  -> 27..52;
-#:            floor(315/4)=78  -> 53..78; floor(420/4)=105 -> 79..105
-#:   N = 200: floor(200/4)=50  -> 1..50;  floor(400/4)=100 -> 51..100;
-#:            floor(600/4)=150 -> 101..150; floor(800/4)=200 -> 151..200
-#:   census N = 24: one stratum 1..24; N = 1: one stratum 1..1.
-EXPECTED_STRATA_N101: tuple = ((1, 25), (26, 50), (51, 75), (76, 101))
-EXPECTED_STRATA_N105: tuple = ((1, 26), (27, 52), (53, 78), (79, 105))
-EXPECTED_STRATA_N200: tuple = ((1, 50), (51, 100), (101, 150), (151, 200))
-EXPECTED_STRATA_N24: tuple = ((1, 24),)
-EXPECTED_STRATA_N1: tuple = ((1, 1),)
+#: N = 101, offset = 0, stride = 4. Hand derivation (plan §2.1): stratum h
+#: holds i with (i - 1) % 4 == h, i.e. i % 4 == h + 1:
+#:   h=0: 1,5,...,101 -> ((101 - 1) / 4) + 1 = 26 members
+#:   h=1: 2,6,...,98  -> 25
+#:   h=2: 3,7,...,99  -> 25
+#:   h=3: 4,8,...,100 -> 25
+#: Total 26 + 25 + 25 + 25 = 101: a disjoint cover of 1..101.
+EXPECTED_MEMBER_ORDINALS_N101_OFFSET0: tuple[tuple[int, ...], ...] = (
+    tuple(range(1, 102, 4)),
+    tuple(range(2, 99, 4)),
+    tuple(range(3, 100, 4)),
+    tuple(range(4, 101, 4)),
+)
+
+#: N = 104, offset = 0, stride = 4. Hand derivation: 104 = 4 * 26 exactly, so
+#: each residue class i % 4 holds 26 ordinals:
+#: 1,5,...,101; 2,6,...,102; 3,7,...,103; 4,8,...,104.
+EXPECTED_MEMBER_ORDINALS_N104_OFFSET0: tuple[tuple[int, ...], ...] = (
+    tuple(range(1, 105, 4)),
+    tuple(range(2, 106, 4)),
+    tuple(range(3, 107, 4)),
+    tuple(range(4, 108, 4)),
+)
+
+#: N = 101, offset = 1, stride = 4. Hand derivation: stratum h holds i with
+#: (i - 1 + 1) % 4 == h, i.e. i % 4 == h for h in 1..3 and i % 4 == 0 for h=0:
+#:   h=0: 4,8,...,100 -> 25;  h=1: 1,5,...,101 -> 26;
+#:   h=2: 2,6,...,98  -> 25;  h=3: 3,7,...,99  -> 25.
+EXPECTED_MEMBER_ORDINALS_N101_OFFSET1: tuple[tuple[int, ...], ...] = (
+    tuple(range(4, 101, 4)),
+    tuple(range(1, 102, 4)),
+    tuple(range(2, 99, 4)),
+    tuple(range(3, 100, 4)),
+)
 
 
 def expected_digest(rule_version: str, category: str, asset_identity_key: str) -> str:

@@ -378,7 +378,7 @@
   "tests/test_contracts.py::test_census_model_contract": [
     "LREQ-SMP-040"
   ],
-  "tests/test_contracts.py::test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0": [
+  "tests/test_contracts.py::test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0": [
     "LREQ-RPT-020"
   ],
   "tests/test_contracts.py::test_config_precedence_contract": [
@@ -1410,6 +1410,10 @@
     "LREQ-SMP-040",
     "LREQ-TST-020"
   ],
+  "tests/test_sampling.py::test_census_geometry_is_offset_zero_stride_one": [
+    "LREQ-SMP-040",
+    "LREQ-TST-020"
+  ],
   "tests/test_sampling.py::test_census_sample_fraction_is_exactly_one": [
     "LREQ-SMP-040"
   ],
@@ -1436,12 +1440,47 @@
   "tests/test_sampling.py::test_first_valid_ordinal_retained_for_repeat": [
     "LREQ-SMP-020"
   ],
-  "tests/test_sampling.py::test_four_strata_boundaries_at_101": [
+  "tests/test_sampling.py::test_build_strata_offset_is_always_reduced_mod_sample_strata": [
+    "LREQ-SMP-050",
+    "LREQ-SMP-030"
+  ],
+  "tests/test_sampling.py::test_build_strata_rejects_non_positive_parameters": [
+    "LREQ-SMP-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_sampling.py::test_category_stratum_offset_matches_independent_formula_and_range": [
+    "LREQ-SMP-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_sampling.py::test_category_stratum_offset_rejects_malformed_category": [
+    "LREQ-SMP-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_sampling.py::test_sampling_systematic_surface_has_docstrings_and_frozen_fields": [
+    "LREQ-NFR-040"
+  ],
+  "tests/test_sampling.py::test_stratum_member_ordinals_zero_population_and_negative_size": [
+    "LREQ-SMP-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_sampling.py::test_stratum_member_ordinals_systematic_vector_at_101_offset_zero": [
     "LREQ-SMP-050",
     "LREQ-TST-020"
   ],
-  "tests/test_sampling.py::test_four_strata_boundaries_at_200": [
+  "tests/test_sampling.py::test_stratum_member_ordinals_systematic_vector_at_104_offset_zero": [
+    "LREQ-SMP-050",
+    "LREQ-TST-020"
+  ],
+  "tests/test_sampling.py::test_stratum_member_ordinals_shifted_offset_at_101": [
     "LREQ-SMP-050"
+  ],
+  "tests/test_sampling.py::test_systematic_partition_with_live_category_offset_at_101": [
+    "LREQ-SMP-050",
+    "LREQ-TST-020"
+  ],
+  "tests/test_sampling.py::test_strata_are_a_disjoint_cover_of_the_ordinal_axis": [
+    "LREQ-SMP-050",
+    "LREQ-TST-020"
   ],
   "tests/test_sampling.py::test_large_category_targets_25_per_stratum": [
     "LREQ-SMP-050"
@@ -1485,9 +1524,6 @@
   ],
   "tests/test_sampling.py::test_shared_identity_appears_in_both_categories": [
     "LREQ-SMP-010"
-  ],
-  "tests/test_sampling.py::test_strata_are_contiguous_and_cover_population": [
-    "LREQ-SMP-050"
   ],
   "tests/test_sampling.py::test_unresolved_and_conflict_excluded": [
     "LREQ-SMP-010"
@@ -1570,7 +1606,7 @@
   "tests/test_sampling_persistence.py::test_stratum_statistics_json_matches_frozen_schema": [
     "LREQ-SMP-080"
   ],
-  "tests/test_sampling_persistence.py::test_stratum_statistics_json_round_trips_n_h_and_boundaries": [
+  "tests/test_sampling_persistence.py::test_stratum_statistics_json_round_trips_n_h_and_geometry": [
     "LREQ-SMP-080"
   ],
   "tests/test_sampling_persistence.py::test_unique_enrichment_count_is_not_written_by_4b": [

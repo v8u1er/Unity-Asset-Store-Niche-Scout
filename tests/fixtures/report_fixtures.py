@@ -59,8 +59,8 @@ CATEGORY_PRIMARY = CATEGORY_ALPHA
 def _stratum_object(
     *,
     index: int,
-    start: int,
-    end: int,
+    offset: int,
+    stride: int,
     population: int,
     selected: int,
     demand: int | None,
@@ -69,11 +69,16 @@ def _stratum_object(
     status: str,
     rule: str | None,
 ) -> dict[str, object]:
-    """Return one ten-key stratum object in the frozen Chunk 4B schema."""
+    """Return one ten-key stratum object in the frozen Chunk 4B schema.
+
+    The chunk-24 geometry keys are ``stratum_offset``/``stratum_stride``; both
+    strata below belong to one large category, so they share the same offset
+    and stride (plan §2.1: one offset per category, stride = SAMPLE_STRATA).
+    """
     return {
         "stratum_index": index,
-        "stratum_start_ordinal": start,
-        "stratum_end_ordinal": end,
+        "stratum_offset": offset,
+        "stratum_stride": stride,
         "N_h": population,
         "n_h": selected,
         "u_demand_h": demand,
@@ -88,8 +93,8 @@ STRATUM_STATISTICS_JSON: str = json.dumps(
     [
         _stratum_object(
             index=0,
-            start=1,
-            end=25,
+            offset=0,
+            stride=4,
             population=25,
             selected=25,
             demand=23,
@@ -100,8 +105,8 @@ STRATUM_STATISTICS_JSON: str = json.dumps(
         ),
         _stratum_object(
             index=1,
-            start=26,
-            end=50,
+            offset=0,
+            stride=4,
             population=25,
             selected=25,
             demand=22,
@@ -119,8 +124,8 @@ PENDING_STRATUM_STATISTICS_JSON: str = json.dumps(
     [
         _stratum_object(
             index=0,
-            start=1,
-            end=25,
+            offset=0,
+            stride=4,
             population=25,
             selected=25,
             demand=None,
@@ -270,7 +275,7 @@ def run_record(
         "taxonomy_sha256": "1" * 64,
         "endpoint_contract_version": "1.0.0",
         "identity_mapping_rule_version": "1.0.1",
-        "sampling_rule_version": "1.0.0",
+        "sampling_rule_version": "2.0.0",
         "page_view_semantics_status": "unvalidated",
         "graphql_operation_correlation_mode": "explicit_key",
         "identity_preflight_status": "passed",

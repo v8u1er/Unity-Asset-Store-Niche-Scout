@@ -1,10 +1,13 @@
 """Analytical tests for chunk 4A — canonical populations and deterministic sampling.
 
-Source of truth: ``Documents/SRS-lean.md`` §5.1 (sampling policy) and the frozen
+Source of truth: ``Documents/SRS-lean.md`` §5.1 (sampling policy), the frozen
 plan ``Documents/plans/chunk-4A-canonical-populations-and-deterministic-sampling.md``
-(§5 interface contract, §9 test plan). Expected values are derived from the SRS
-formulas and stated with their derivation; the SRS-pinned digest literal in
-Fixture F is the implementation's cross-check.
+(§5 interface contract, §9 test plan), and the frozen remediation plan
+``Documents/plans/chunk-24-systematic-strata.md`` (§2 systematic partition and
+A3 offset, §6 typed pure contract, §7 affected nodes, §8 golden vectors).
+Expected values are derived from the SRS/plan formulas and stated with their
+derivation; the SRS-pinned digest literal in Fixture F is the implementation's
+cross-check.
 
 Every analytical test carries ``@pytest.mark.lreq`` and has a
 ``tests/traceability.json`` entry. ``test_sampling_module_imports_are_pure`` is
@@ -339,29 +342,179 @@ def test_census_sample_fraction_is_exactly_one():
         assert result.sample_fraction == 1.0
 
 
+@pytest.mark.lreq("LREQ-SMP-040")
+@pytest.mark.lreq("LREQ-TST-020")
+def test_census_geometry_is_offset_zero_stride_one():
+    """Census: one stratum, index 0, offset 0, stride 1, ordinals ``1..N``.
+
+    Plan chunk-24 §2.3/OQ-1 freezes the census encoding
+    ``(stratum_offset, stratum_stride) = (0, 1)`` -- the only stride under
+    ``(i - 1 + 0) mod stride == 0`` that reproduces all ordinals. Hand checks:
+    N = 0 -> no stratum at all; N = 1 -> the single ordinal 1; N = 99 ->
+    1..99; N = 100 -> the last census population, 1..100.
+    """
+    assert sampling.select_category_sample((), category=fx.CATEGORY).strata == ()
+
+    for n in (1, 99, 100):
+        result = sampling.select_category_sample(
+            build_records(fx.population_records(n)), category=fx.CATEGORY
+        )
+        assert len(result.strata) == 1
+        stratum = result.strata[0]
+        assert (
+            stratum.stratum_index,
+            stratum.stratum_offset,
+            stratum.stratum_stride,
+        ) == (0, 0, 1)
+        assert stratum.population_count == stratum.selected_count == n
+        assert stratum.is_reduced is (n < SAMPLE_PER_STRATUM)
+        assert sampling.stratum_member_ordinals(stratum, n) == tuple(range(1, n + 1))
+        for member in result.members:
+            assert member.stratum_offset == 0
+            assert member.stratum_stride == 1
+
+
 # --------------------------------------------------------------------------
-# Stratum geometry (LREQ-SMP-050)
+# Systematic (interleaved) partition geometry (LREQ-SMP-050; chunk-24 §2)
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.lreq("LREQ-SMP-050")
 @pytest.mark.lreq("LREQ-TST-020")
-def test_four_strata_boundaries_at_101():
-    """Fixture B: N = 101 divides into 1..25, 26..50, 51..75, 76..101.
+def test_stratum_member_ordinals_systematic_vector_at_101_offset_zero():
+    """Fixture K: N = 101, offset 0 -> interleaved sets 26/25/25/25.
 
-    Derivation (SRS §5.1 LREQ-SMP-050, ``start = floor(h*N/4)+1``,
-    ``end = floor((h+1)*N/4)``, final stratum takes the remainder):
-        h=0: floor(0/4)+1 = 1      .. floor(101/4)   = 25 (25.25 -> 25)
-        h=1: floor(101/4)+1 = 26   .. floor(202/4)   = 50 (50.5 -> 50)
-        h=2: floor(202/4)+1 = 51   .. floor(303/4)   = 75 (75.75 -> 75)
-        h=3: floor(303/4)+1 = 76   .. floor(404/4)   = 101
-    Each non-reduced stratum selects 25; the final stratum has 26 assets, so 100
-    of 101 are selected: ``sample_fraction == 100/101``, which is < 1.0.
+    Derivation (plan chunk-24 §2.1): stratum h holds the ascending i in 1..101
+    with ``(i - 1 + offset) % stride == h``; at offset 0 that is
+    ``i % 4 == h + 1``:
+        h=0: 1,5,...,101 -> ((101 - 1) / 4) + 1 = 26 members
+        h=1: 2,6,...,98  -> 25
+        h=2: 3,7,...,99  -> 25
+        h=3: 4,8,...,100 -> 25
+    Total 26 + 25 + 25 + 25 = 101: a disjoint cover of 1..101, never four
+    contiguous bands.
     """
-    # Frozen literal (fixtures) plus the independent SRS-formula restatement.
-    assert fx.EXPECTED_STRATA_N101 == ((1, 25), (26, 50), (51, 75), (76, 101))
-    assert fx.expected_stratum_boundaries(101) == fx.EXPECTED_STRATA_N101
+    expected = fx.EXPECTED_MEMBER_ORDINALS_N101_OFFSET0
+    # Frozen-literal sanity checks: hand-derived counts and endpoints.
+    assert (len(expected[0]), expected[0][0], expected[0][-1]) == (26, 1, 101)
+    assert (len(expected[1]), expected[1][0], expected[1][-1]) == (25, 2, 98)
+    assert (len(expected[2]), expected[2][0], expected[2][-1]) == (25, 3, 99)
+    assert (len(expected[3]), expected[3][0], expected[3][-1]) == (25, 4, 100)
+    assert fx.expected_stratum_member_ordinals(101, 0, offset=0) == expected[0]
 
+    rebuilt: list[int] = []
+    for stratum_index, wanted in enumerate(expected):
+        stratum = sampling.SamplingStratum(
+            stratum_index=stratum_index,
+            stratum_offset=0,
+            stratum_stride=SAMPLE_STRATA,
+            population_count=len(wanted),
+            selected_count=min(SAMPLE_PER_STRATUM, len(wanted)),
+            target_count=SAMPLE_PER_STRATUM,
+            is_reduced=len(wanted) < SAMPLE_PER_STRATUM,
+        )
+        ordinals = sampling.stratum_member_ordinals(stratum, 101)
+        assert ordinals == wanted
+        rebuilt.extend(ordinals)
+    assert sorted(rebuilt) == list(range(1, 102))
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-020")
+def test_stratum_member_ordinals_systematic_vector_at_104_offset_zero():
+    """N = 104, offset 0 -> four 26-member strata (plan §8 hand vector).
+
+    Derivation: 104 = 4 * 26 exactly, so each residue class ``i % 4`` holds 26
+    ordinals: 1,5,..,101; 2,6,..,102; 3,7,..,103; 4,8,..,104.
+    """
+    expected = fx.EXPECTED_MEMBER_ORDINALS_N104_OFFSET0
+    assert tuple(len(group) for group in expected) == (26, 26, 26, 26)
+    for stratum_index, wanted in enumerate(expected):
+        stratum = sampling.SamplingStratum(
+            stratum_index=stratum_index,
+            stratum_offset=0,
+            stratum_stride=SAMPLE_STRATA,
+            population_count=26,
+            selected_count=SAMPLE_PER_STRATUM,
+            target_count=SAMPLE_PER_STRATUM,
+            is_reduced=False,
+        )
+        assert sampling.stratum_member_ordinals(stratum, 104) == wanted
+    assert fx.expected_stratum_member_ordinals(104, 0, offset=0) == expected[0]
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+def test_stratum_member_ordinals_shifted_offset_at_101():
+    """N = 101, offset 1: the remainder moves to the stratum holding ordinal 1.
+
+    Hand derivation (plan §2.1): stratum h holds i with
+    ``(i - 1 + 1) % 4 == h``, i.e. ``i % 4 == h`` for h in 1..3 and
+    ``i % 4 == 0`` for h = 0:
+        h=0: 4,8,...,100 -> 25;  h=1: 1,5,...,101 -> 26;
+        h=2: 2,6,...,98  -> 25;  h=3: 3,7,...,99  -> 25.
+    The offset shifts membership; it never reorders the ordinals.
+    """
+    expected = fx.EXPECTED_MEMBER_ORDINALS_N101_OFFSET1
+    assert tuple(len(group) for group in expected) == (25, 26, 25, 25)
+    for stratum_index, wanted in enumerate(expected):
+        stratum = sampling.SamplingStratum(
+            stratum_index=stratum_index,
+            stratum_offset=1,
+            stratum_stride=SAMPLE_STRATA,
+            population_count=len(wanted),
+            selected_count=min(SAMPLE_PER_STRATUM, len(wanted)),
+            target_count=SAMPLE_PER_STRATUM,
+            is_reduced=len(wanted) < SAMPLE_PER_STRATUM,
+        )
+        assert sampling.stratum_member_ordinals(stratum, 101) == wanted
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_stratum_member_ordinals_zero_population_and_negative_size():
+    """Zero population -> (); a negative population size raises ``ValueError``.
+
+    Plan §6 contract: ``population_size == 0 -> ()`` and
+    ``population_size < 0 -> ValueError``. Missing input is the empty tuple, an
+    invalid one raises; neither is silently coerced.
+    """
+    census = sampling.SamplingStratum(
+        stratum_index=0,
+        stratum_offset=0,
+        stratum_stride=1,
+        population_count=0,
+        selected_count=0,
+        target_count=0,
+        is_reduced=True,
+    )
+    assert sampling.stratum_member_ordinals(census, 0) == ()
+
+    large = sampling.SamplingStratum(
+        stratum_index=0,
+        stratum_offset=0,
+        stratum_stride=SAMPLE_STRATA,
+        population_count=0,
+        selected_count=0,
+        target_count=SAMPLE_PER_STRATUM,
+        is_reduced=True,
+    )
+    assert sampling.stratum_member_ordinals(large, 0) == ()
+    with pytest.raises(ValueError):
+        sampling.stratum_member_ordinals(large, -1)
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-020")
+def test_systematic_partition_with_live_category_offset_at_101():
+    """The N = 101 fixture partitions by the live category offset (A3).
+
+    Plan §2.1/§2.2: ``stratum_index(i) = (i - 1 + offset) mod 4`` with the
+    offset from the independently transcribed digest. Hand derivation:
+    101 = 4 * 25 + 1, so the stratum holding ordinals 1 and 101 has 26 members
+    and the other three have 25; every stratum selects min(25, N_h) = 25, so
+    100 of 101 assets are selected and ``sample_fraction == 100/101``.
+    """
+    offset = fx.expected_stratum_offset(fx.OFFSET_RULE_VERSION, fx.LARGE_CATEGORY)
     result = sampling.select_category_sample(
         build_records(fx.large_101_records()), category=fx.LARGE_CATEGORY
     )
@@ -370,16 +523,33 @@ def test_four_strata_boundaries_at_101():
     assert result.sampling_basis == "deterministic_stratified_sample"
 
     observed = tuple(
-        (s.stratum_index, s.start_ordinal, s.end_ordinal, s.population_count)
-        for s in result.strata
+        (
+            stratum.stratum_index,
+            stratum.stratum_offset,
+            stratum.stratum_stride,
+            stratum.population_count,
+            stratum.selected_count,
+            stratum.is_reduced,
+        )
+        for stratum in result.strata
     )
-    assert observed == (
-        (0, 1, 25, 25),
-        (1, 26, 50, 25),
-        (2, 51, 75, 25),
-        (3, 76, 101, 26),
+    expected = tuple(
+        (
+            h,
+            offset,
+            SAMPLE_STRATA,
+            26 if h == offset else 25,
+            SAMPLE_PER_STRATUM,
+            False,
+        )
+        for h in range(SAMPLE_STRATA)
     )
+    assert observed == expected
 
+    # Every member carries its stratum's (offset, stride) geometry unchanged.
+    for member in result.members:
+        assert member.stratum_offset == offset
+        assert member.stratum_stride == SAMPLE_STRATA
     assert len(result.members) == 100
     assert result.enriched_sample_count == 100
     assert result.discovered_population_count == 101
@@ -388,64 +558,59 @@ def test_four_strata_boundaries_at_101():
 
 
 @pytest.mark.lreq("LREQ-SMP-050")
-def test_four_strata_boundaries_at_200():
-    """Fixture C: N = 200 gives four equal 50-asset strata; each selects 25.
+@pytest.mark.lreq("LREQ-TST-020")
+@pytest.mark.parametrize("n", [101, 104, 105, 200, 1000])
+def test_strata_are_a_disjoint_cover_of_the_ordinal_axis(n):
+    """Every ordinal maps to exactly one stratum; the union is ``1..N``.
 
-    Derivation: h=0..3 -> start in {1, 51, 101, 151}, end in {50, 100, 150, 200};
-    no remainder. ``sample_fraction == 100/200 == 0.5``.
-    """
-    assert fx.EXPECTED_STRATA_N200 == ((1, 50), (51, 100), (101, 150), (151, 200))
-    assert fx.expected_stratum_boundaries(200) == fx.EXPECTED_STRATA_N200
-
-    result = sampling.select_category_sample(
-        build_records(fx.large_200_records()), category=fx.LARGE_CATEGORY
-    )
-    observed = tuple(
-        (
-            s.stratum_index,
-            s.start_ordinal,
-            s.end_ordinal,
-            s.population_count,
-            s.selected_count,
-        )
-        for s in result.strata
-    )
-    assert observed == (
-        (0, 1, 50, 50, 25),
-        (1, 51, 100, 50, 25),
-        (2, 101, 150, 50, 25),
-        (3, 151, 200, 50, 25),
-    )
-    assert len(result.members) == 100
-    assert result.sample_fraction == pytest.approx(0.5, abs=1e-9)
-
-
-@pytest.mark.lreq("LREQ-SMP-050")
-@pytest.mark.parametrize("n", [101, 105, 200, 1000])
-def test_strata_are_contiguous_and_cover_population(n):
-    """Strata have no gap and no overlap and their union is exactly ``1..N``.
-
-    SRS §5.1 LREQ-SMP-050 "contiguous ordinal strata"; the union check is
-    boundary-rule independent and holds for the census single stratum too.
+    Plan §2.1: "Every ``i`` maps to exactly one ``h``; the partition is a
+    disjoint cover of ``1..N``." Size distribution is the quotient/remainder
+    distribution of N over ``SAMPLE_STRATA``; because N >= 101 every stratum has
+    at least 25 members, so ``is_reduced`` is False for every stratum and
+    LREQ-SMP-090 reduction is unreachable on this branch. Hand-checked sizes:
+        N = 101 -> {25, 26}   N = 104 -> {26}   N = 105 -> {26, 27}
+        N = 200 -> {50}       N = 1000 -> {250}
     """
     result = sampling.select_category_sample(
         build_records(fx.population_records(n)), category=fx.LARGE_CATEGORY
     )
-    strata = result.strata
-    assert strata, "a non-empty population must produce at least one stratum"
-    assert strata[0].start_ordinal == 1
-    assert strata[-1].end_ordinal == n
-    for previous, current in zip(strata, strata[1:]):
-        assert current.start_ordinal == previous.end_ordinal + 1
-    covered = [
-        ordinal for s in strata for ordinal in range(s.start_ordinal, s.end_ordinal + 1)
-    ]
-    assert covered == list(range(1, n + 1))
+    offset = fx.expected_stratum_offset(fx.OFFSET_RULE_VERSION, fx.LARGE_CATEGORY)
+    assert len(result.strata) == SAMPLE_STRATA
+    union: list[int] = []
+    for stratum in result.strata:
+        ordinals = sampling.stratum_member_ordinals(stratum, n)
+        assert list(ordinals) == sorted(ordinals)
+        assert len(set(ordinals)) == len(ordinals)
+        assert all(
+            (i - 1 + offset) % SAMPLE_STRATA == stratum.stratum_index
+            for i in ordinals
+        )
+        assert (stratum.stratum_offset, stratum.stratum_stride) == (
+            offset,
+            SAMPLE_STRATA,
+        )
+        assert stratum.population_count == len(ordinals)
+        assert stratum.is_reduced is False
+        assert stratum.target_count == SAMPLE_PER_STRATUM
+        assert stratum.selected_count == SAMPLE_PER_STRATUM
+        union.extend(ordinals)
+    assert sorted(union) == list(range(1, n + 1))
+    sizes = {
+        len(sampling.stratum_member_ordinals(stratum, n))
+        for stratum in result.strata
+    }
+    assert sizes == {n // SAMPLE_STRATA, -(-n // SAMPLE_STRATA)}
+    assert len(result.members) == SAMPLE_STRATA * SAMPLE_PER_STRATUM == 100
 
 
 @pytest.mark.lreq("LREQ-SMP-050")
 def test_large_category_targets_25_per_stratum():
-    """Every non-reduced stratum selects exactly ``SAMPLE_PER_STRATUM`` (25)."""
+    """Every non-reduced stratum selects exactly ``SAMPLE_PER_STRATUM`` (25).
+
+    Plan §2.1: for N >= 101 every stratum has at least 25 members, so
+    ``is_reduced`` is False for every large-category stratum and each selects
+    the fixed 25.
+    """
     for n in (101, 105, 200, 1000):
         result = sampling.select_category_sample(
             build_records(fx.population_records(n)), category=fx.LARGE_CATEGORY
@@ -455,6 +620,212 @@ def test_large_category_targets_25_per_stratum():
             assert stratum.target_count == SAMPLE_PER_STRATUM == 25
             assert stratum.selected_count == SAMPLE_PER_STRATUM == 25
         assert len(result.members) == SAMPLE_STRATA * SAMPLE_PER_STRATUM == 100
+
+
+# --------------------------------------------------------------------------
+# Offset derivation (LREQ-SMP-050; plan §2.2, OQ-2/OQ-3)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_category_stratum_offset_matches_independent_formula_and_range():
+    """A3: offset = int.from_bytes(sha256(utf8(v + NUL + category))[:8]) % 4.
+
+    Plan §2.2/§8.2. Expected values come from the independent transcription in
+    ``fixtures.sampling_fixtures.expected_stratum_offset`` (hashlib only; the
+    module under test is not imported there). The capture command the plan
+    requires for the concrete literals is recorded verbatim in the fixture:
+
+        fx.STRATUM_OFFSET_CAPTURE_COMMAND
+
+    Hand-checkable properties asserted here: every value is in 0..3 (the
+    SAMPLE_STRATA range), repeated calls are identical, the default version is
+    the live models constant, and distinct categories do not all collapse to a
+    single bucket. The lead-captured literals in ``FROZEN_OFFSET_LITERALS``
+    (Textures/Materials -> 0, 3D/Characters -> 2, 2d/gui/icons -> 1,
+    vfx/particles/spells -> 0) are asserted directly against the module.
+    """
+    for category in fx.OFFSET_VARIATION_CATEGORIES:
+        actual = sampling.category_stratum_offset(
+            category, sampling_rule_version=fx.OFFSET_RULE_VERSION
+        )
+        assert 0 <= actual < SAMPLE_STRATA
+        assert actual == fx.expected_stratum_offset(fx.OFFSET_RULE_VERSION, category)
+        assert actual == sampling.category_stratum_offset(
+            category, sampling_rule_version=fx.OFFSET_RULE_VERSION
+        )
+
+    assert fx.OFFSET_RULE_VERSION == SAMPLING_RULE_VERSION == "2.0.0"
+
+    # Frozen literals captured by the lead with the recorded independent
+    # one-liner (plan §8.2); each is asserted directly, not only via the
+    # transcription.
+    for category, captured in fx.FROZEN_OFFSET_LITERALS:
+        assert captured == fx.expected_stratum_offset(fx.OFFSET_RULE_VERSION, category)
+        assert (
+            sampling.category_stratum_offset(
+                category, sampling_rule_version=fx.OFFSET_RULE_VERSION
+            )
+            == captured
+        )
+    assert (
+        sampling.category_stratum_offset(fx.LARGE_CATEGORY)
+        == fx.EXPECTED_OFFSET_LARGE_CATEGORY
+        == 0
+    )
+
+    observed = {
+        sampling.category_stratum_offset(
+            category, sampling_rule_version=fx.OFFSET_RULE_VERSION
+        )
+        for category in fx.OFFSET_VARIATION_CATEGORIES
+    }
+    assert len(observed) >= 2, (
+        "distinct categories must be able to land in different strata"
+    )
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_category_stratum_offset_rejects_malformed_category():
+    """A non-str or empty/whitespace-only category raises ``ValueError``.
+
+    Plan §6: the offset "Raises ValueError for a non-str or empty/whitespace-only
+    category"; an empty category is never a shared offset bucket.
+    """
+    for bad_category in (*fx.malformed_category_values(), None, 3, b"bytes", ["x"]):
+        with pytest.raises(ValueError):
+            sampling.category_stratum_offset(bad_category)
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-SMP-030")
+def test_build_strata_offset_is_always_reduced_mod_sample_strata():
+    """A non-default ``sample_strata`` changes the stride, not the offset modulus.
+
+    Plan §6 (OQ-3): the offset is always reduced ``mod SAMPLE_STRATA``; a
+    non-default ``sample_strata`` is a test-only override and never a production
+    path.
+    """
+    population = sampling.build_canonical_population(
+        build_records(fx.large_200_records()), category=fx.LARGE_CATEGORY
+    )
+    expected_offset = fx.expected_stratum_offset(
+        fx.OFFSET_RULE_VERSION, fx.LARGE_CATEGORY
+    )
+    strata = sampling.build_strata(
+        population,
+        sample_strata=2,
+        sampling_rule_version=fx.OFFSET_RULE_VERSION,
+    )
+    assert len(strata) == 2
+    union: list[int] = []
+    for stratum in strata:
+        assert stratum.stratum_stride == 2
+        assert stratum.stratum_offset == expected_offset
+        union.extend(sampling.stratum_member_ordinals(stratum, 200))
+    assert sorted(union) == list(range(1, 201))
+
+
+@pytest.mark.lreq("LREQ-SMP-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_build_strata_rejects_non_positive_parameters():
+    """``sample_strata < 1`` or ``per_stratum_target < 1`` raises ``ValueError``.
+
+    Plan §6 contract; the same test covers the empty population's valid zero
+    result (``build_strata(empty) == ()``).
+    """
+    population = sampling.build_canonical_population(
+        build_records(fx.large_101_records()), category=fx.LARGE_CATEGORY
+    )
+    for overrides in (
+        {"sample_strata": 0},
+        {"sample_strata": -1},
+        {"per_stratum_target": 0},
+        {"per_stratum_target": -1},
+    ):
+        with pytest.raises(ValueError):
+            sampling.build_strata(population, **overrides)
+
+    empty = sampling.build_canonical_population((), category=fx.CATEGORY)
+    assert sampling.build_strata(empty) == ()
+
+
+# --------------------------------------------------------------------------
+# Public surface contract (LREQ-NFR-040; plan §6)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-NFR-040")
+def test_sampling_systematic_surface_has_docstrings_and_frozen_fields():
+    """The plan §6 typed contract: docstrings and exact public field lists.
+
+    LREQ-NFR-040 requires type hints plus docstrings; the chunk-24 pure surface
+    must expose exactly the fields of plan §6 -- the interval fields are gone.
+    """
+    import dataclasses
+    import inspect
+
+    for function in (
+        sampling.category_stratum_offset,
+        sampling.stratum_member_ordinals,
+        sampling.build_strata,
+        sampling.select_stratum_members,
+    ):
+        assert function.__doc__, f"{function.__name__} must have a docstring"
+        assert function.__annotations__, f"{function.__name__} must be annotated"
+
+    offset_parameters = inspect.signature(sampling.category_stratum_offset).parameters
+    assert list(offset_parameters) == ["category", "sampling_rule_version"]
+
+    membership_parameters = inspect.signature(
+        sampling.stratum_member_ordinals
+    ).parameters
+    assert list(membership_parameters) == ["stratum", "population_size"]
+
+    build_parameters = inspect.signature(sampling.build_strata).parameters
+    assert list(build_parameters) == [
+        "population",
+        "sample_strata",
+        "per_stratum_target",
+        "census_threshold",
+        "sampling_rule_version",
+    ]
+
+    select_parameters = inspect.signature(sampling.select_stratum_members).parameters
+    assert list(select_parameters) == [
+        "population",
+        "stratum",
+        "sample_is_census",
+        "sampling_rule_version",
+    ]
+
+    stratum_fields = [
+        field.name for field in dataclasses.fields(sampling.SamplingStratum)
+    ]
+    assert stratum_fields == [
+        "stratum_index",
+        "stratum_offset",
+        "stratum_stride",
+        "population_count",
+        "selected_count",
+        "target_count",
+        "is_reduced",
+    ]
+    member_fields = [
+        field.name for field in dataclasses.fields(sampling.SampledMember)
+    ]
+    assert member_fields == [
+        "category",
+        "asset_identity_key",
+        "stratum_index",
+        "stratum_offset",
+        "stratum_stride",
+        "sample_rank_within_stratum",
+        "sample_is_census",
+        "selection_digest",
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -569,26 +940,30 @@ def test_duplicate_row_excluded_and_counted():
 def test_reduced_stratum_selects_all_and_reports_reduced_count():
     """Fixture D: a stratum below 25 selects all and reports the reduced count.
 
-    SRS §5.1 LREQ-SMP-090; the Q-3 ruling places the reachable case on a census
-    population with N < 25. N = 24 -> one stratum, target 24, reduced; N = 25 ->
-    target 25, not reduced; N = 1 -> target 1, reduced. N = 105 companion keeps
-    every stratum non-reduced at 25.
+    SRS §5.1 LREQ-SMP-090; plan chunk-24 §2.3 keeps the reduced rule and makes
+    it reachable only through the census branch (every large-category stratum
+    has at least 25 members because N >= 101). Census geometry is
+    ``(stratum_offset, stratum_stride) = (0, 1)``, so its member ordinals are
+    1..N. N = 24 -> one stratum, target 24, reduced; N = 25 -> target 25, not
+    reduced; N = 1 -> target 1, reduced. N = 105 companion: 105 = 4 * 26 + 1,
+    so the stratum holding ordinal 1 has 27 members and the other three 26;
+    all are >= 25, so none is reduced and each selects 25.
     """
     reduced_24 = sampling.select_category_sample(
         build_records(fx.census_24_records()), category=fx.CATEGORY
     )
-    assert fx.EXPECTED_STRATA_N24 == ((1, 24),)
     assert len(reduced_24.strata) == 1
     stratum = reduced_24.strata[0]
-    assert (stratum.stratum_index, stratum.start_ordinal, stratum.end_ordinal) == (
-        0,
-        1,
-        24,
-    )
+    assert (
+        stratum.stratum_index,
+        stratum.stratum_offset,
+        stratum.stratum_stride,
+    ) == (0, 0, 1)
     assert stratum.population_count == 24
     assert stratum.target_count == 24
     assert stratum.selected_count == 24
     assert stratum.is_reduced is True
+    assert sampling.stratum_member_ordinals(stratum, 24) == tuple(range(1, 25))
     assert len(reduced_24.members) == 24
     assert reduced_24.sample_fraction == pytest.approx(1.0, abs=1e-9)
     assert reduced_24.sample_is_census is True
@@ -603,62 +978,82 @@ def test_reduced_stratum_selects_all_and_reports_reduced_count():
     single = sampling.select_category_sample(
         build_records(fx.census_one_records()), category=fx.CATEGORY
     )
-    assert fx.EXPECTED_STRATA_N1 == ((1, 1),)
+    assert (single.strata[0].stratum_offset, single.strata[0].stratum_stride) == (0, 1)
     assert single.strata[0].target_count == 1
     assert single.strata[0].is_reduced is True
 
     large_105 = sampling.select_category_sample(
         build_records(fx.large_105_records()), category=fx.LARGE_CATEGORY
     )
-    assert fx.EXPECTED_STRATA_N105 == ((1, 26), (27, 52), (53, 78), (79, 105))
-    assert tuple((s.start_ordinal, s.end_ordinal) for s in large_105.strata) == (
-        (1, 26),
-        (27, 52),
-        (53, 78),
-        (79, 105),
-    )
+    offset = fx.expected_stratum_offset(fx.OFFSET_RULE_VERSION, fx.LARGE_CATEGORY)
+    sizes = [large_stratum.population_count for large_stratum in large_105.strata]
+    assert sorted(sizes) == [26, 26, 26, 27]
+    # Ordinals 1 and 105 share residue 1 -> they sit in stratum ``offset``.
+    assert sizes[offset] == 27
     for large_stratum in large_105.strata:
+        assert (
+            large_stratum.stratum_offset,
+            large_stratum.stratum_stride,
+        ) == (offset, SAMPLE_STRATA)
+        assert large_stratum.population_count == len(
+            sampling.stratum_member_ordinals(large_stratum, 105)
+        )
         assert large_stratum.is_reduced is False
         assert large_stratum.selected_count == 25
 
 
 # --------------------------------------------------------------------------
-# Position coverage (LREQ-SMP-070)
+# Position coverage (LREQ-SMP-070; plan chunk-24 §7.5 structural assertion)
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.lreq("LREQ-SMP-070")
 @pytest.mark.lreq("LREQ-TST-020")
-def test_early_middle_late_positions_represented():
-    """Fixture I: the N = 101 sample draws from all four ordinal ranges.
+@pytest.mark.parametrize("n", [101, 104, 200])
+def test_early_middle_late_positions_represented(n):
+    """Every stratum's membership intersects the early, middle, and late ranges.
 
-    SRS §5.1 LREQ-SMP-070. One selected key per stratum suffices; each member
-    carries its own stratum boundaries, so position is read off the member.
+    SRS §5.1 LREQ-SMP-070 requires early/middle/late discovery positions; plan
+    chunk-24 §7.5/OQ-6 freezes the assertion as STRUCTURAL: for each stratum,
+    its member ordinals must intersect the first, middle, and last third of the
+    1..N ordinal axis. No minimum span and no quantitative threshold is
+    asserted -- only intersection.
+
+    Derivation: contiguous members of a systematic stratum are exactly stride 4
+    apart, and each third spans at least 33 ordinals at these N, so every
+    stratum intersects every third regardless of the category offset. An
+    interleaved set cannot be confined to one contiguous band.
     """
-    result = sampling.select_category_sample(
-        build_records(fx.large_101_records()), category=fx.LARGE_CATEGORY
+    third = n // 3
+    windows = (
+        ("early", range(1, third + 1)),
+        ("middle", range(third + 1, 2 * third + 1)),
+        ("late", range(2 * third + 1, n + 1)),
     )
-    ordinals_by_key = {
-        item["asset_identity_key"]: i + 1
-        for i, item in enumerate(fx.large_101_records())
-    }
-    ranges = ((1, 25), (26, 50), (51, 75), (76, 101))
-    for low, high in ranges:
-        positions = [
-            ordinals_by_key[m.asset_identity_key]
-            for m in result.members
-            if low <= ordinals_by_key[m.asset_identity_key] <= high
-        ]
-        assert positions, f"no selected asset in ordinal range {low}..{high}"
+    result = sampling.select_category_sample(
+        build_records(fx.population_records(n)), category=fx.LARGE_CATEGORY
+    )
+    for stratum in result.strata:
+        ordinals = set(sampling.stratum_member_ordinals(stratum, n))
+        for label, window in windows:
+            assert ordinals & set(window), (
+                f"stratum {stratum.stratum_index} misses the {label} range at N={n}"
+            )
 
 
 @pytest.mark.lreq("LREQ-SMP-070")
 def test_sample_is_not_first_page_prefix():
-    """The selection is not the first 100 (or first ``PAGE_SIZE``) results.
+    """The N = 101 selection is not confined to a first-results prefix.
 
-    SRS §5.1 LREQ-SMP-070: selecting only the first page or first 100 results is
-    non-conforming. The selected ordinal set must contain at least one ordinal
-    beyond 100.
+    SRS §5.1 LREQ-SMP-070: selecting only the first page or the first 100
+    results is non-conforming. Hand derivation from the partition (plan §2.1):
+    with N = 101 the strata hold 26/25/25/25 and every stratum selects
+    min(25, N_h); the three 25-member strata select ALL their members. Ordinals
+    2, 3 and 4 have residues distinct from the offset residue, so they sit in
+    those full strata and are always selected -> min <= 4. Ordinals 98, 99 and
+    100 likewise sit in the three full strata -> max >= 100. The first page is
+    96 results and the selection has 100 members, so it cannot be first-page
+    only either.
     """
     records = fx.large_101_records()
     ordinals_by_key = {
@@ -669,7 +1064,8 @@ def test_sample_is_not_first_page_prefix():
     )
     selected_ordinals = {ordinals_by_key[m.asset_identity_key] for m in result.members}
     assert len(selected_ordinals) == 100
-    assert max(selected_ordinals) > 100
+    assert min(selected_ordinals) <= 4
+    assert max(selected_ordinals) >= 100
 
 
 # --------------------------------------------------------------------------
@@ -725,7 +1121,7 @@ def test_default_constants_are_not_configurable():
     )
     assert sampling.SAMPLE_STRATA == SAMPLE_STRATA
     assert sampling.SAMPLE_PER_STRATUM == SAMPLE_PER_STRATUM
-    assert sampling.SAMPLING_RULE_VERSION == SAMPLING_RULE_VERSION == "1.0.0"
+    assert sampling.SAMPLING_RULE_VERSION == SAMPLING_RULE_VERSION == "2.0.0"
     assert (
         sampling.CENSUS_POPULATION_THRESHOLD
         == ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
@@ -924,8 +1320,8 @@ def test_sample_fraction_distinct_from_stratum_aggregates():
             "category",
             "asset_identity_key",
             "stratum_index",
-            "stratum_start_ordinal",
-            "stratum_end_ordinal",
+            "stratum_offset",
+            "stratum_stride",
             "sample_rank_within_stratum",
             "sample_is_census",
             "selection_digest",

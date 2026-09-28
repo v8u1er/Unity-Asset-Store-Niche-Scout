@@ -545,13 +545,15 @@ def close_opened(open_repository: Any) -> None:
 # so ``sampling.build_strata`` returns the single census stratum and every member
 # carries ``stratum_index == 0`` with ``sample_is_census`` true. SRS §5
 # ``LREQ-SMP-050`` requires a category with MORE THAN 100 canonical assets to be
-# divided into four contiguous ordinal strata with ``SAMPLE_PER_STRATUM`` selected
+# divided into four systematic (interleaved) strata by
+# ``(i - 1 + offset) mod SAMPLE_STRATA`` with ``SAMPLE_PER_STRATUM`` selected
 # from each, and ``LREQ-TST-080`` requires the end-to-end fixture to exercise
 # exactly that.
 #
 # This scenario plants one large category with 120 canonical assets, a size that
-# divides evenly by the four fixed strata: stratum ``h`` (zero-based) holds
-# ordinals ``floor(h*120/4)+1 .. floor((h+1)*120/4)`` = 30 assets, the run selects
+# divides evenly by the four fixed strata: under the chunk-24 systematic rule
+# ``stratum_index(i) = (i - 1 + offset) mod 4`` each stratum holds exactly
+# ``120 / 4`` = 30 assets for every offset, the run selects
 # the fixed 25 from each stratum for 100 enriched identities, and the category's
 # ``sample_fraction`` is ``100/120`` -- a value strictly below the census ``1.0``
 # and never null. The seven remaining categories hold one canonical asset each and

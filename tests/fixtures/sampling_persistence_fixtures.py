@@ -7,6 +7,8 @@ Sources:
 - ``Documents/SRS-lean.md`` §6.5 (per-category overlap; stratum summary).
 - ``Documents/plans/chunk-4B-sample-persistence-overlap-and-sampling-summaries.md``
   §5 (interface contract), §9.2 (fixtures O1-O10).
+- ``Documents/plans/chunk-24-systematic-strata.md`` §2 (systematic partition),
+  §3.3 (renamed ``stratum_statistics_json`` keys), §8.1 (O8/O9 re-baseline).
 
 No credentials, no network, no clock reads, no file I/O, no ``sqlite3``.
 Datetimes are fixed aware-UTC literals, never ``now()``.
@@ -17,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 
+from fixtures.sampling_fixtures import expected_stratum_offset
 from niche_scout.models import (
     DiscoveryStatus,
     RunRecord,
@@ -32,7 +35,10 @@ from niche_scout.models import (
 SAMPLE_STRATA = 4
 SAMPLE_PER_STRATUM = 25
 CENSUS_POPULATION_THRESHOLD = 100
-SAMPLING_RULE_VERSION = "1.0.0"
+#: Chunk-24 frozen rule version (plan §3.1, OQ-2). It is an input to the A3
+#: offset digest and to every member's ``selection_digest``, so it must match
+#: ``niche_scout.models.SAMPLING_RULE_VERSION``.
+SAMPLING_RULE_VERSION = "2.0.0"
 
 # --------------------------------------------------------------------------
 # Category names and identity keys used by every overlap fixture.
@@ -261,16 +267,18 @@ def o6_expected_sample_fractions() -> dict[str, float]:
 
     Census ``N == 3``: every asset is selected, so the SRS §5.1 census rule
     gives exactly ``1.0``.
-    Large ``N == 101``: ``SAMPLE_PER_STRATUM == 25`` and the four strata
-    (``1..25``, ``26..50``, ``51..75``, ``76..101``) hold 25/25/25/26 assets. The
-    last stratum holds 26 but is not reduced (26 >= 25, LREQ-SMP-090) and
-    contributes 25, so ``enriched_sample_count == 25 + 25 + 25 + 25 == 100`` and
-    the fraction is exactly ``100 / 101``.
 
-    Lead correction 2026-09-20 by human ruling (a): the pre-ruling text said the
-    last stratum "is reduced and contributes all 26" and then wrote the total as
-    ``25 + 25 + 25 + 26 == 100``, which is arithmetically self-contradictory
-    (that sum is 101). The returned values below were already correct.
+    Large ``N == 101``: ``SAMPLE_PER_STRATUM == 25`` and the systematic
+    partition (plan chunk-24 §2.1) gives stratum sizes 26/25/25/25 -- the
+    stratum holding ordinals 1 and 101 has the remainder. Every stratum selects
+    ``min(25, N_h) == 25`` and none is reduced (25 >= 25, LREQ-SMP-090), so
+    ``enriched_sample_count == 25 + 25 + 25 + 25 == 100`` and the fraction is
+    exactly ``100 / 101``.
+
+    Chunk-24 re-baseline note: the pre-chunk-24 contiguous geometry wrote these
+    sizes as 25/25/25/26; the interleaved rule moves the remainder to the
+    stratum that holds ordinal 1. The selected total and fraction are unchanged
+    at N = 101 because every stratum is above the reduction threshold.
     """
     return {
         CENSUS_CATEGORY: 1.0,
@@ -302,48 +310,48 @@ def o7_categories() -> dict[str, tuple[dict, ...]]:
 
 
 # --------------------------------------------------------------------------
-# Fixture O8: per-stratum ``N_h``/``n_h`` and boundaries at ``N == 101``.
+# Fixture O8: per-stratum ``N_h``/``n_h`` and (offset, stride) at ``N == 101``.
 #
-# Derived from SRS §5.1 LREQ-SMP-050: ``start = floor(h*N/4) + 1``,
-# ``end = floor((h+1)*N/4)``, final stratum takes the boundary remainder.
-# LREQ-SMP-090 thresholds the reduced case at "fewer than 25 assets", so the
-# 26-asset final stratum is NOT reduced (26 >= SAMPLE_PER_STRATUM) and selects 25
-# (LREQ-SMP-050 "select 25 assets from each stratum"):
-#   h=0: floor(101/4)=25  -> 1..25   (N_h 25, n_h 25)
-#   h=1: floor(202/4)=50  -> 26..50  (N_h 25, n_h 25)
-#   h=2: floor(303/4)=75  -> 51..75  (N_h 25, n_h 25)
-#   h=3: floor(404/4)=101 -> 76..101 (N_h 26, n_h 25, not reduced)
+# Derived from plan chunk-24 §2.1 (systematic partition) at SAMPLE_STRATA = 4:
+# stratum h holds the ascending i in 1..101 with (i - 1 + offset) % 4 == h.
+# 101 = 4 * 25 + 1, so the stratum holding ordinal 1 (h = offset) holds 26
+# members (1, 5, ..., 101); the other three hold 25 each. Every stratum selects
+# min(SAMPLE_PER_STRATUM, N_h) = 25 and no stratum is reduced (N_h >= 25), so
+# the sample is 25 + 25 + 25 + 25 = 100 and the fraction is 100/101.
 #
-# Lead correction 2026-09-20 by human ruling (a) on the 4B fixture dispute:
-# the previous h=3 line read "(N_h 26, n_h 26, reduced)" and the table entry was
-# (3, 76, 101, 26, 26). That contradicted LREQ-SMP-050, LREQ-SMP-090's numeric
-# threshold, the frozen 4A interface and engine, the 4A tests, and this module's
-# own o6_expected_selected_counts() == 100. The 4A engine and 4B persistence are
-# correct; only this fixture literal was wrong. No source change.
+# The offset is the independent A3 transcription from
+# ``fixtures.sampling_fixtures`` (see its STRATUM_OFFSET_CAPTURE_COMMAND; the
+# captured large-category literal is 0 for Textures/Materials). Tuple shape:
+# ``(stratum_index, stratum_offset, stratum_stride, N_h, n_h)``.
 # --------------------------------------------------------------------------
 
-#: ``(stratum_index, start, end, N_h, n_h)`` for ``N == 101``.
-O8_EXPECTED_STRATA_N101: tuple[tuple[int, int, int, int, int], ...] = (
-    (0, 1, 25, 25, 25),
-    (1, 26, 50, 25, 25),
-    (2, 51, 75, 25, 25),
-    (3, 76, 101, 26, 25),
+_O8_OFFSET = expected_stratum_offset(SAMPLING_RULE_VERSION, LARGE_CATEGORY)
+
+O8_EXPECTED_STRATA_N101: tuple[tuple[int, int, int, int, int], ...] = tuple(
+    (
+        stratum_index,
+        _O8_OFFSET,
+        SAMPLE_STRATA,
+        26 if stratum_index == _O8_OFFSET else 25,
+        SAMPLE_PER_STRATUM,
+    )
+    for stratum_index in range(SAMPLE_STRATA)
 )
 
 
 # --------------------------------------------------------------------------
 # Fixture O9: the exact serialized ``stratum_statistics_json`` for a census
-# category of size 1. Byte-exact literal per plan §9.2 (keys sorted by
-# ``json.dumps(..., sort_keys=True, separators=(",", ":"))``).
+# category of size 1. Byte-exact literal per plan chunk-24 §8.1 (keys sorted by
+# ``json.dumps(..., sort_keys=True, separators=(",", ":"))``): the census
+# geometry is (stratum_offset=0, stratum_stride=1).
 # --------------------------------------------------------------------------
 
 CENSUS_ONE_KEYS: tuple[str, ...] = sequential_keys("one", 1)
 
 O9_STRATUM_STATISTICS_JSON: str = (
-    '[{"N_h":1,"eligibility_rule":null,"n_h":1,'
-    '"stratum_end_ordinal":1,"stratum_index":0,"stratum_start_ordinal":1,'
-    '"u_demand_h":null,"u_quality_h":null,"u_recent_h":null,'
-    '"usable_status":"pending"}]'
+    '[{"N_h":1,"eligibility_rule":null,"n_h":1,"stratum_index":0,'
+    '"stratum_offset":0,"stratum_stride":1,"u_demand_h":null,'
+    '"u_quality_h":null,"u_recent_h":null,"usable_status":"pending"}]'
 )
 
 #: The frozen ten-key per-stratum object schema, in ``sort_keys`` order.
@@ -351,9 +359,9 @@ O9_STRATUM_KEYS: tuple[str, ...] = (
     "N_h",
     "eligibility_rule",
     "n_h",
-    "stratum_end_ordinal",
     "stratum_index",
-    "stratum_start_ordinal",
+    "stratum_offset",
+    "stratum_stride",
     "u_demand_h",
     "u_quality_h",
     "u_recent_h",

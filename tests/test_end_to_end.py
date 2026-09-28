@@ -300,8 +300,9 @@ def test_acceptance_four_stratum_sampling_drives_non_census_strata(
 
     The acceptance fixture plants a 120-asset category, so SRS §5
     ``LREQ-SMP-050`` applies: the category is divided into ``SAMPLE_STRATA`` (4)
-    contiguous ordinal strata and ``SAMPLE_PER_STRATUM`` (25) assets are selected
-    from each. Its persisted members therefore span strata 0-3, its
+    systematic (interleaved) strata by ``(i - 1 + offset) mod SAMPLE_STRATA`` and
+    ``SAMPLE_PER_STRATUM`` (25) assets are selected from each. Its persisted
+    members therefore span strata 0-3, its
     ``sampling_basis`` is ``deterministic_stratified_sample`` rather than
     ``census``, and its persisted ``sample_fraction`` is ``100/120`` -- a value
     strictly below the census ``1.0`` and not null. The run-wide GraphQL request

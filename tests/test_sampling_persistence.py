@@ -1,11 +1,14 @@
 """Analytical tests for chunk 4B — sample persistence, overlap, summaries.
 
-Source of truth: ``Documents/SRS-lean.md`` §5.1/§6.3/§6.5 (``LREQ-SMP-080``) and
-the frozen plan
+Source of truth: ``Documents/SRS-lean.md`` §5.1/§6.3/§6.5 (``LREQ-SMP-080``), the
+frozen plan
 ``Documents/plans/chunk-4B-sample-persistence-overlap-and-sampling-summaries.md``
-(§5 interface contract, §9.2 fixtures O1-O10, §9.3 node list). Every analytical
-node carries ``@pytest.mark.lreq("LREQ-SMP-080")`` and has a
-``tests/traceability.json`` entry keyed by its base node ID.
+(§5 interface contract, §9.2 fixtures O1-O10, §9.3 node list), and the frozen
+remediation plan ``Documents/plans/chunk-24-systematic-strata.md`` (§3.2/§3.3
+renamed geometry columns and ``stratum_statistics_json`` key set, §8.1 O8/O9
+re-baseline). Every analytical node carries
+``@pytest.mark.lreq("LREQ-SMP-080")`` and has a ``tests/traceability.json`` entry
+keyed by its base node ID.
 
 Golden values are hand-derived from the SRS formulas in the comment next to the
 assertion; the overlap percentage is asserted against the unrounded ``float64``
@@ -272,8 +275,8 @@ def test_persisted_member_fields_match_pure_result(tmp_path):
                 assert stored_row.category == pure.category
                 assert stored_row.asset_identity_key == pure.asset_identity_key
                 assert stored_row.stratum_index == pure.stratum_index
-                assert stored_row.stratum_start_ordinal == pure.stratum_start_ordinal
-                assert stored_row.stratum_end_ordinal == pure.stratum_end_ordinal
+                assert stored_row.stratum_offset == pure.stratum_offset
+                assert stored_row.stratum_stride == pure.stratum_stride
                 assert (
                     stored_row.sample_rank_within_stratum
                     == pure.sample_rank_within_stratum
@@ -429,8 +432,9 @@ def test_large_category_summary_round_trips(tmp_path):
                 repository, run, computed_at_utc=pf.COMPUTED_AT_UTC
             )
         pure = run.by_category[pf.LARGE_CATEGORY]
-        # Derivation: four strata at N=101 hold 25/25/25/26; the reduced final
-        # stratum contributes all 26, so the sample is 25+25+25+26 == 100.
+        # Derivation (plan chunk-24 §2.1): the interleaved partition at N=101
+        # gives stratum sizes 26/25/25/25; every stratum selects min(25, N_h)
+        # == 25 and none is reduced, so the sample is 25+25+25+25 == 100.
         assert pf.LARGE_N == 101
         assert len(pure.members) == 100
         assert pure.sample_fraction == pytest.approx(100.0 / 101.0, abs=1e-9)
@@ -498,8 +502,8 @@ def test_stratum_statistics_json_matches_frozen_schema(tmp_path):
         assert tuple(sorted(entries[0])) == tuple(sorted(pf.O9_STRATUM_KEYS))
         entry = entries[0]
         assert entry["stratum_index"] == 0
-        assert entry["stratum_start_ordinal"] == 1
-        assert entry["stratum_end_ordinal"] == 1
+        assert entry["stratum_offset"] == 0
+        assert entry["stratum_stride"] == 1
         assert entry["N_h"] == 1
         assert entry["n_h"] == 1
         assert entry["usable_status"] == pf.PENDING_USABLE_STATUS
@@ -513,8 +517,14 @@ def test_stratum_statistics_json_matches_frozen_schema(tmp_path):
 
 
 @pytest.mark.lreq("LREQ-SMP-080")
-def test_stratum_statistics_json_round_trips_n_h_and_boundaries(tmp_path):
-    """O8: the N=101 per-stratum ``N_h``/``n_h``/boundaries survive the round trip."""
+def test_stratum_statistics_json_round_trips_n_h_and_geometry(tmp_path):
+    """O8: the N=101 per-stratum ``N_h``/``n_h``/(offset, stride) survive the round trip.
+
+    Plan chunk-24 §2.1/§8.1: the interleaved partition gives stratum sizes
+    26/25/25/25 at N = 101 (the stratum holding ordinal 1 takes the remainder),
+    every stratum selects 25 and none is reduced, and each entry carries the
+    category's ``(offset, stride)`` = ``(0, 4)``.
+    """
     run = _run(pf.o6_categories())
     repository = _repository(tmp_path)
     try:
@@ -528,8 +538,8 @@ def test_stratum_statistics_json_round_trips_n_h_and_boundaries(tmp_path):
         observed = tuple(
             (
                 entry["stratum_index"],
-                entry["stratum_start_ordinal"],
-                entry["stratum_end_ordinal"],
+                entry["stratum_offset"],
+                entry["stratum_stride"],
                 entry["N_h"],
                 entry["n_h"],
             )

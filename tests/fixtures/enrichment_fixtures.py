@@ -164,8 +164,8 @@ def category_result(
         (
             sampling.SamplingStratum(
                 stratum_index=0,
-                start_ordinal=1,
-                end_ordinal=len(keys),
+                stratum_offset=0,
+                stratum_stride=1,
                 population_count=len(keys),
                 selected_count=len(members),
                 target_count=len(members),
@@ -180,8 +180,8 @@ def category_result(
             category=category,
             asset_identity_key=key,
             stratum_index=0,
-            stratum_start_ordinal=1,
-            stratum_end_ordinal=len(keys),
+            stratum_offset=0,
+            stratum_stride=1,
             sample_rank_within_stratum=rank,
             sample_is_census=True,
             selection_digest=f"digest:{category}:{key}",
@@ -198,7 +198,7 @@ def category_result(
         discovered_population_count=len(keys),
         enriched_sample_count=len(built_members),
         sample_fraction=1.0 if keys else None,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
     )
 
 
@@ -209,7 +209,7 @@ def overlap_run(run_id: str = RUN_ID) -> sampling.RunSamplingResult:
     """
     return sampling.RunSamplingResult(
         run_id=run_id,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
         categories=(
             category_result(CATEGORY_1, (("A", 1),)),
             category_result(CATEGORY_2, (("A", 1), ("B", 2))),
@@ -359,8 +359,8 @@ def _finalization_category_result(
         (
             sampling.SamplingStratum(
                 stratum_index=0,
-                start_ordinal=1,
-                end_ordinal=population_count,
+                stratum_offset=0,
+                stratum_stride=1,
                 population_count=population_count,
                 selected_count=len(members),
                 target_count=len(members),
@@ -370,13 +370,18 @@ def _finalization_category_result(
         if members
         else ()
     )
+    # A hand-built single stratum whose membership covers ordinals 1..N: the
+    # full-cover geometry is (offset=0, stride=1), the same encoding census uses
+    # (plan chunk-24 §2.3). This fixture drives the metric/finalization paths,
+    # which consume stratum_index/N_h/n_h only; it is not produced by
+    # build_strata and makes no large-category claim.
     built_members = tuple(
         sampling.SampledMember(
             category=category,
             asset_identity_key=key,
             stratum_index=0,
-            stratum_start_ordinal=1,
-            stratum_end_ordinal=population_count,
+            stratum_offset=0,
+            stratum_stride=1,
             sample_rank_within_stratum=rank,
             sample_is_census=False,
             selection_digest=f"digest:{category}:{key}",
@@ -395,7 +400,7 @@ def _finalization_category_result(
         sample_fraction=(len(built_members) / population_count)
         if population_count
         else None,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
     )
 
 
@@ -453,7 +458,7 @@ def finalization_run(run_id: str = RUN_ID) -> sampling.RunSamplingResult:
     """Return the single-category golden run whose samples are F1-F6."""
     return sampling.RunSamplingResult(
         run_id=run_id,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
         categories=(finalization_category(),),
     )
 
@@ -462,7 +467,7 @@ def finalization_run_with_zero(run_id: str = RUN_ID) -> sampling.RunSamplingResu
     """Return the golden run plus the zero-population category (plan §8 E8)."""
     return sampling.RunSamplingResult(
         run_id=run_id,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
         categories=(finalization_category(), zero_population_category()),
     )
 
@@ -551,7 +556,7 @@ def quality_straddle_finalization_run(
     """Return the single-category straddling run whose samples are Q1-Q5."""
     return sampling.RunSamplingResult(
         run_id=run_id,
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
         categories=(quality_straddle_finalization_category(),),
     )
 

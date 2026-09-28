@@ -137,8 +137,8 @@ REQUIRED_ROW_FIELDS: dict[str, tuple[str, ...]] = {
         "category",
         "asset_identity_key",
         "stratum_index",
-        "stratum_start_ordinal",
-        "stratum_end_ordinal",
+        "stratum_offset",
+        "stratum_stride",
         "sample_rank_within_stratum",
         "sample_is_census",
         "selection_digest",
@@ -225,7 +225,7 @@ REQUIRED_ROW_FIELDS: dict[str, tuple[str, ...]] = {
 REQUIRED_CONSTANTS: dict[str, object] = {
     "ENDPOINT_CONTRACT_VERSION": "1.0.0",
     "IDENTITY_MAPPING_RULE_VERSION": "1.0.1",
-    "SAMPLING_RULE_VERSION": "1.0.0",
+    "SAMPLING_RULE_VERSION": "2.0.0",
     "MAX_DISCOVERY_RESULTS_PER_CATEGORY": 9000,
     "PAGE_SIZE": 96,
     "MIN_CATEGORIES_PER_RUN": 8,
@@ -605,7 +605,7 @@ def test_selection_digest_contract() -> None:
     assert (
         hashlib.sha256(payload).hexdigest()
         == hashlib.sha256(
-            b"1.0.0\x00Tools/Level Design/Tilemap\x00package-1234"
+            b"2.0.0\x00Tools/Level Design/Tilemap\x00package-1234"
         ).hexdigest()
     )
     members = [
@@ -614,8 +614,8 @@ def test_selection_digest_contract() -> None:
             category=category,
             asset_identity_key=key,
             stratum_index=0,
-            stratum_start_ordinal=1,
-            stratum_end_ordinal=100,
+            stratum_offset=0,
+            stratum_stride=4,
             sample_rank_within_stratum=rank,
             sample_is_census=False,
             selection_digest=hashlib.sha256(
@@ -975,17 +975,19 @@ def test_repository_protocol_and_schema_specification(
 
 
 @pytest.mark.lreq("LREQ-RPT-020")
-def test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0() -> (
+def test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0() -> (
     None
 ):
-    """The Chunk 23 column is the last column and the schema version is 1.1.0.
+    """The Chunk 23 column is the last column and the schema version is 1.2.0.
 
-    Hand-derived from ``interfaces/chunk-02.md`` §2.1: ``SCHEMA_VERSION`` is
-    ``"1.1.0"`` and ``category_scores`` gains exactly one nullable column,
-    ``discovery_failure_cause_json TEXT``, appended last so the frozen parity
-    ``TABLE_COLUMNS["category_scores"] ==
+    Hand-derived from ``interfaces/chunk-02.md`` §2.1 and the chunk-24 plan §3.1:
+    ``SCHEMA_VERSION`` is ``"1.2.0"`` and ``category_scores`` gains exactly one
+    nullable column, ``discovery_failure_cause_json TEXT``, appended last so the
+    frozen parity ``TABLE_COLUMNS["category_scores"] ==
     models.MANDATORY_ROW_FIELDS["category_scores"]`` still holds and it ships
-    in the ``CREATE TABLE`` text.
+    in the ``CREATE TABLE`` text. The ``1.1.0`` -> ``1.2.0`` bump is chunk-24's
+    ``sample_members`` geometry-column rename (plan §3.1/§3.2); no migration path
+    exists (single-run tool, SRS §15).
     """
     from niche_scout.database import SCHEMA_VERSION
 
@@ -993,7 +995,7 @@ def test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0(
     assert columns[-1] == "discovery_failure_cause_json"
     assert columns[-1] in models.MANDATORY_ROW_FIELDS["category_scores"]
     assert columns == models.MANDATORY_ROW_FIELDS["category_scores"]
-    assert SCHEMA_VERSION == "1.1.0"
+    assert SCHEMA_VERSION == "1.2.0"
     assert "discovery_failure_cause_json" in CREATE_TABLE_STATEMENTS["category_scores"]
 
 
@@ -1053,8 +1055,8 @@ def test_json_round_trip_for_all_records() -> None:
             category="Audio/Music/Ambient",
             asset_identity_key="package-9",
             stratum_index=3,
-            stratum_start_ordinal=76,
-            stratum_end_ordinal=100,
+            stratum_offset=0,
+            stratum_stride=4,
             sample_rank_within_stratum=1,
             sample_is_census=False,
             selection_digest="a" * 64,

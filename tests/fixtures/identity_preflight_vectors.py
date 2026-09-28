@@ -1024,7 +1024,7 @@ def run_record(
         taxonomy_sha256="1" * 64,
         endpoint_contract_version=ENDPOINT_CONTRACT_VERSION_FIXTURE,
         identity_mapping_rule_version="1.0.1",
-        sampling_rule_version="1.0.0",
+        sampling_rule_version="2.0.0",
         page_view_semantics_status=page_view_semantics_status,
         graphql_operation_correlation_mode=EXPLICIT_KEY.value,
         identity_preflight_status="passed",
