@@ -185,4 +185,42 @@ condition met (chunk-lead procedure step 4).
 §4.5 scenario nodes were deliberately left unchanged (values not hand-derivable): no
 `test_pipeline.py` node failed, so `test_failed_category_does_not_abort_other_categories`
 and `test_final_evidence_and_rankability_are_persisted_per_category` need no re-baseline —
-to be re-confirmed after implementation.
+re-confirmed after implementation (they pass, `688 passed`).
+
+## Review (2026-09-28)
+
+`spec-reviewer` session `ses_f16a6616dffeCqm44HlLS1bxRF`: **VERDICT: PASS**, no Blocker, no
+Major. Three Minors, all recorded; none triggers a fix round.
+
+1. `tests/test_metrics.py:712-714` — `ruff format --check` would reformat the
+   `quality_stratum_eligibility_coverage(...)` assertion. **Isolated as new-in-chunk by
+   the lead:** the flagged 3-line form does not occur in the base blob
+   (`51f55fb:tests/test_metrics.py` contains zero `low_coverage_input` occurrences and is
+   `ruff format`-clean), so this one formatting deviation is chunk-25-introduced. Recorded
+   as a Minor: `ruff check` on the changed files is clean, and the gate ruff bullet is
+   "no new lint" (a `format` deviation, not a lint error) — a candidate for a later
+   formatting pass.
+2. `tests/test_metrics.py:663, :717` — stale "Plan §4.4" comment citations (the chunk-25
+   plan §4.4 is "New tests"); comment-only, documented here.
+3. `src/niche_scout/metrics.py:1596-1598` — pre-existing comment (not a chunk-25 line,
+   `metrics.py` untouched) about the eligible-set guard's reachability.
+
+Reviewer UNVERIFIED items closed by the lead:
+
+- **Byte-exact SRS hash.** `git cat-file -p HEAD:Documents/SRS-lean-v2.md` (byte-exact git
+  object, not text-mode redirection) → sha256
+  `417860f40bef33645b270128e0f10f9a92342b7506ffc2495b5a17cefaee380b`, 75,657 bytes, 0 CRLF;
+  base `51f55fb` blob → `eb2c76a3…888bba`, 74,460 bytes. Matches the script's recorded
+  hashes exactly.
+- **Scoped ruff lint.** `ruff check` across the changed source/test/fixture set: 43 error
+  occurrences, **all pre-existing** — `tests/test_contracts.py` (11) and
+  `tests/test_validation.py` (32), both identical counts at base `30f3ef1`; every other
+  changed file is clean. The two fixture files that were un-linted at base
+  (`enrichment_fixtures.py`, `acceptance_fixtures.py`, one I001 each) are improved by the
+  chunk. No new lint.
+- **Scoped ruff format.** 9 of the 10 changed files are already formatted; the single
+  deviation is Minor 1 above.
+- `tests/test_validation.py` **is** in the chunk's changed set (plan §6 allowlist); the
+  reviewer's empty `git diff` was a misread.
+
+## Gate
