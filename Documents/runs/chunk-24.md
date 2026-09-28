@@ -43,8 +43,7 @@ records it here as the operative, correctable decision (chunk-23 surface-naming 
   (`SRS §14:1291`; the constant stays "Configurable = Yes"). The coverage formula is
   unchanged (`sum(N_h/N)` over strata with `u_h >= MIN_USABLE`, `LREQ-MET-090`). The pooled
   eligible gate (`usable_quality_sample_count >= QUALITY_MIN_ELIGIBLE_ASSETS`) already
-  exists in the SRS (§7.5) and in `metrics.py`; it remains the evidence-strength guard.
-  Rationale: with `n_h = 25` and a measured eligible rate `p ≈ 0.185`, `E[X_h] = 4.6 < 5`,
+  exists in the SRS (§7.5) and in `metrics.py`; it remains the evidence-strength guard.  Rationale: with `n_h = 25` and a measured eligible rate `p ≈ 0.185`, `E[X_h] = 4.6 < 5`,
   so a floor of 5 makes each stratum a coin flip and is miscalibrated for any partition.
 - **D3 — versioning/representation.** `SAMPLING_RULE_VERSION` bumps; the persisted
   `stratum_start_ordinal`/`stratum_end_ordinal` interval is not expressible for an
@@ -81,8 +80,8 @@ records it here as the operative, correctable decision (chunk-23 surface-naming 
 | Stage | Status | Session / evidence |
 |---|---|---|
 | Preflight (lead) | DONE | git clean; branch `chunk-24`; this log |
-| Plan — `chunk-planner` | RESUMED (answers applied) | `ses_f1883d0f7ffe0VYrixQ3ZxYUX0` — step cap hit, 3 questions; operator answered A1-A3; planner resumed for chunk-24 (D1+D3) |
-| Tests — `test-author` | PENDING | — |
+| Plan — `chunk-planner` | DONE | First pass `ses_f1883d0f7ffe0VYrixQ3ZxYUX0` hit its step cap with 3 questions; operator answered A1-A3. New session `ses_f1874bac0ffeHCQuzjKoFZb9B6` wrote the 577-line plan; a follow-up froze it. Committed `3214668` (draft), `3387037` (frozen). |
+| Tests — `test-author` | INCOMPLETE (stopped) | `ses_f18651be7ffeBeVkupX832LkzQ` hit its step cap mid-edit; `test_sampling.py` + `sampling_fixtures.py` partially migrated; scope still incomplete |
 | Implement — `impl-deep` | PENDING | — |
 | Review — `spec-reviewer` | PENDING | — |
 | Gate (lead) | PENDING | — |
@@ -140,3 +139,53 @@ operator accepted the lead's recommendations for all six:
 - **OQ-6:** `LREQ-SMP-070` is covered by a structural membership assertion (every stratum's
   ordinals intersect the first-page, middle, and last-page ranges); no quantitative span
   threshold.
+
+## Tests stage — INCOMPLETE (stopped, 2026-09-28)
+
+`test-author` session `ses_f18651be7ffeBeVkupX832LkzQ` reached its step cap mid-edit. Its
+partial work is on disk, uncommitted. The lead reproduced the suite and its failure mode
+rather than accepting the subagent's claim.
+
+### Lead-reproduced state (real output)
+
+| Command | Real result |
+|---|---|
+| `python -m py_compile tests/test_sampling.py tests/fixtures/sampling_fixtures.py` | exit 0 (both files parse): no syntax error introduced |
+| `python -m pytest -q` | **22 failed, 665 passed in 27.05s** |
+| `python -m pytest tests/test_sampling_persistence.py tests/test_database.py tests/test_contracts.py tests/test_enrichment.py tests/test_end_to_end.py tests/test_report.py -q` | 152 passed |
+| `python -m pytest -q -k "not test_sampling and not test_traceability_validator"` | 607 passed, 80 deselected |
+| `python -m niche_scout.tools.validate_traceability` | exit 1: 12 new nodes lack matrix entries + marker/mismatch; 3 retired contiguous nodes still in the matrix |
+| Fixture import + literals (`python -c`, lead) | `OFFSET_RULE_VERSION=2.0.0`; `EXPECTED_OFFSET_LARGE_CATEGORY=0`; N101 vectors `26/25/25/25`; N104 `26` each — all match the plan §8.2 hand-computed values |
+
+### Gap analysis (what remains undone)
+
+1. **All 20 non-traceability failures are missing-implementation failures** — every one is an
+   `AssertionError` on an absent symbol/field (`stratum_offset`, `stratum_stride`,
+   `stratum_member_ordinals`, `category_stratum_offset`, `SAMPLING_RULE_VERSION == "2.0.0"`)
+   from `sampling.py`/`models.py`. No syntax or collection error. Oracle condition met.
+2. **Two failures are test-authoring gaps, not implementation gaps:**
+   - `test_default_constants_are_not_configurable` fails at `assert sampling.SAMPLING_RULE_VERSION == "2.0.0"` (implementation gap, expected initially). It is also a *pre-existing* node edited in place.
+   - `test_sample_fraction_distinct_from_stratum_aggregates` fails on the new member field list (implementation gap), but the node was edited in place rather than split.
+3. **`tests/traceability.json` was not updated at all** (no new entries, no retired-node removal, no atomic `1_1_0`→`1_2_0` key move). This is the largest remaining tests-stage item.
+4. **Fixtures not yet migrated** (still encode the old interval): `sampling_persistence_fixtures.py` (O8 tuple, O9 byte-exact JSON, `O9_STRATUM_KEYS`), `report_fixtures.py`, `enrichment_fixtures.py`. The 152-passing stratum-touching modules pass only because they still exercise the *old* interval, so they will break when the implementation lands and must be migrated in the same change.
+5. **The independent offset literal** for the plan's required `(2.0.0, category)` capture is computed by a hashlib transcription inside the fixture (independent of `src/`) but the plan requires a captured one-liner with its command recorded. Still owed.
+
+### Decision
+
+Per the chunk-lead procedure, an `INCOMPLETE` subagent may be resumed at most twice. The
+remaining tests work is too large for one more bounded continuation step; the honest call is
+to **stop the tests-first stage here** and record it. The lead does not write or repair tests
+itself (role boundary). The implementation stage cannot start cleanly until the tests/fixtures
+are consistent, so chunk-24 is **BLOCKED at the tests stage** pending either (a) a fresh
+tests-first dispatch scoped to the remainder (fixtures + traceability + the two in-place
+nodes), or (b) an explicit operator decision to proceed with the implementation against the
+partially migrated suite.
+
+### Uncommitted files (not staged, not committed by the lead)
+
+- `tests/test_sampling.py` (modified, partially migrated)
+- `tests/fixtures/sampling_fixtures.py` (modified, partially migrated)
+
+Nothing was committed for this stage: the tests-first commit requires a suite whose failures
+are only missing-implementation failures **and** a validator-clean traceability matrix, which
+is not yet true. Working tree is therefore dirty and chunk-24 is paused.
