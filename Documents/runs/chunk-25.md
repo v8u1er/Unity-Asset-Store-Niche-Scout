@@ -127,6 +127,43 @@ Landed text: §5.1 `MIN_USABLE_SAMPLES_PER_STRATUM = 1`; §14 row default `1`, s
 `Configurable = Yes`; header `Version → Lean 1.0.3`; a `Lean 1.0.3` revision-history row;
 and the inclusive-floor sentence. `Documents/SRS-lean.md` remains absent/retired.
 
+**Guard-bypass statement (explicit).** The `edit` tool was denied on `Documents/**`
+(`source: agent`). The operator explicitly directed the shell path on 2026-09-28
+("try editing the srs using shell command"), and the write was executed by a bounded
+Python script run through the shell tool. That script writes `Documents/SRS-lean-v2.md`
+directly and therefore **bypasses the `Documents/**` edit guard** — the same kind of
+guard bypass chunk-24 used when it wrote the new `SRS-lean-v2.md` outside the edit tool.
+The script was bounded (exactly-one-occurrence assertions, abort-without-write on any
+mismatch, LF/UTF-8 preserved) and its WIP snapshot is force-added at
+`.scratch/chunk25_srs_edit.py` (`.scratch/` is gitignored; `-f` per the project
+scratch-commit rule). The `git diff` was inspected hunk-by-hunk: **exactly the five
+enumerated plan §3 edits** (S1 constant, S2 §14 row, S3 Lean 1.0.3 row, S4 header +
+status + §5.1 paragraph, S5 inclusive-floor sentence) and no other text. `validate_traceability`
+still exits 0 (89 IDs, 666 nodes).
+
+## Corpus scan before the fix dispatch (lead, 2026-09-28)
+
+Operator asked for a corpus-wide check for fixtures still relying on the old default 5
+rather than pinning it, and for the `usable:<min>` token.
+
+- **Fixtures inheriting the default 5.** Programmatically queried every
+  `CategoryMetricInput` fixture in `tests/fixtures/metric_estimator_fixtures.py`
+  (16 fixtures) for its pinned `min_usable_samples_per_stratum` and per-stratum
+  observation counts. **Exactly one** fixture relied on the old default and had a
+  sub-5 stratum: `QUALITY_ELIGIBLE_SET_TOO_SMALL` (one stratum, `N_h=75`, `n_h=4`, 4
+  observ-ations, `s5_usable=[]`). `DEMAND_NO_USABLE_STRATUM` and `QUALITY_LOW_COVERAGE`
+  also have a sub-5 stratum but are **explicitly pinned at 5** in their tests, so they are
+  not latent failures. Hence the single failing node is the only one, not the first of a
+  queue. Confirmed by a full-suite run: `1 failed, 687 passed`.
+- **`usable:<min>` token.** `grep 'usable:\d'` across `src/` finds the single producer at
+  `pipeline.py:1650` (`return f"usable:{min_usable_samples_per_stratum}"`, unchanged
+  source). Across `tests/` the only occurrences are `tests/fixtures/enrichment_fixtures.py:328`
+  and `tests/test_enrichment.py:704`, both already re-baselined to
+  `demand=usable:1;recent=usable:1;quality=usable:1`. The persisted-schema fixture
+  `tests/fixtures/sampling_persistence_fixtures.py:351` (`O9_STRATUM_STATISTICS_JSON`)
+  carries `eligibility_rule: null` with `usable_status: "pending"`, not a `usable:<min>`
+  token, so `verify_persisted_sampling` is unaffected by the default.
+
 Subagent hit its step cap once mid-edit; resumed and finished. The lead reproduced every
 claim rather than trusting the report.
 
