@@ -109,6 +109,24 @@ the operator resolved it by directing the revision to a new file. Chunk-25 must 
 already-live `Documents/SRS-lean-v2.md` in place, so the same deny has no equivalent
 escape. Reported as a human checkpoint; no workaround attempted.
 
+### SRS stage — RESOLVED (2026-09-28, operator-directed shell path)
+
+The operator directed a shell-based write. Applied S1–S5 to `Documents/SRS-lean-v2.md` via
+a bounded, byte-exact script (`.scratch/chunk25_srs_edit.py`, committed as a WIP snapshot
+per project rule): each replacement asserts exactly one occurrence, preserves LF and UTF-8
+(no BOM), and aborts without writing on any mismatch.
+
+| Check | Result |
+|---|---|
+| `sha256` before | `eb2c76a336efaf6dc5901bd866b074dae8b5c85b912536c2f8214f92fc888bba` (74,460 bytes, 0 CRLF) |
+| `sha256` after | `417860f40bef33645b270128e0f10f9a92342b7506ffc2495b5a17cefaee380b` (75,657 bytes, 0 CRLF) |
+| `git diff` hunks | 5, exactly S1 (const block), S2 (§14 row), S3 (Lean 1.0.3 row), S4 (header + status + §5.1 paragraph), S5 (inclusive-floor sentence) — no other text changed |
+| `validate_traceability` after | exit 0 — 89 required/defined LREQ IDs, 666 nodes |
+
+Landed text: §5.1 `MIN_USABLE_SAMPLES_PER_STRATUM = 1`; §14 row default `1`, still
+`Configurable = Yes`; header `Version → Lean 1.0.3`; a `Lean 1.0.3` revision-history row;
+and the inclusive-floor sentence. `Documents/SRS-lean.md` remains absent/retired.
+
 Subagent hit its step cap once mid-edit; resumed and finished. The lead reproduced every
 claim rather than trusting the report.
 

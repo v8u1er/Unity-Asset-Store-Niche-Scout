@@ -7,8 +7,8 @@
 | Document type | Software Requirements Specification (SRS) |
 | Parent specification | `SRS-revision2.md`, effective revision 2.3.0 |
 | Variant | Lean, sample-based, decision-grade MVP |
-| Version | Lean 1.0.2 |
-| Status | Decision-grade lean variant (v2; supersedes `SRS-lean.md`) |
+| Version | Lean 1.0.3 |
+| Status | Decision-grade lean variant (v2, Lean 1.0.3; supersedes `SRS-lean.md`) |
 | Target release | v0.1.0-lean |
 
 ## Revision history
@@ -18,6 +18,7 @@
 | Lean 1.0.0 | New standalone lean variant derived from `SRS-revision2.md`. Reduces enrichment, persistence, dashboard, and operational scope while retaining identity integrity, response validation, exact time handling, missing-data safeguards, deterministic scoring, evidence reporting, and ranking-sensitivity diagnostics. |
 | Lean 1.0.1 | Clarifies deterministic-sample interpretation, makes quality stratum-expanded, removes sensitivity/rankability circularity, completes result persistence keys, freezes Lean v1 scoring weights, and specifies zero-population and GraphQL-correlation behavior. |
 | Lean 1.0.2 | Replaces the four contiguous ordinal strata of `LREQ-SMP-050` with a systematic (interleaved) partition over the same stable discovery ordinal (deterministic per-category offset; `stratum_index(i) = (i - 1 + offset) mod SAMPLE_STRATA`), and changes the persisted stratum geometry from an ordinal interval to `(offset, stride)`. All other Lean 1.0.1 behavior is unchanged. |
+| Lean 1.0.3 | Lowers the default `MIN_USABLE_SAMPLES_PER_STRATUM` from 5 to 1 (§5.1, §14), re-baselining per-stratum usability, the three stratum eligibility coverages, the usable component sample counts, evidence grades, and rankability for runs scored under the default policy. The constant remains Configurable = Yes and no formula, weight, partition rule, or other constant changes. |
 
 ## Document status and relationship to the parent SRS
 
@@ -27,7 +28,12 @@ file and the retired `SRS-lean.md` differ, this file is normative. The only
 behavioral change in Lean 1.0.2 is the systematic (interleaved) sampling-stratum
 geometry and its persistence representation (`LREQ-SMP-050`, `LREQ-SMP-080`, §1.4,
 §5.1, §6.3, §14); all other Lean 1.0.1 requirement text is carried forward
-unchanged. Tooling that reads the SRS by path (`src/niche_scout/tools/`,
+unchanged. Lean 1.0.3 supersedes Lean 1.0.2 and changes exactly one default:
+`MIN_USABLE_SAMPLES_PER_STRATUM` is lowered from 5 to 1 (§5.1, §14), which
+re-baselines per-stratum usability, the three stratum eligibility coverages, the
+usable component sample counts, evidence grades, and rankability for runs scored
+under the default policy. No formula, weight, partition rule, or other constant
+changes. Tooling that reads the SRS by path (`src/niche_scout/tools/`,
 `AGENTS.md`) must be re-pointed to this file when the prior file is retired.
 
 This document is a separate implementation target. It does not modify or replace
@@ -443,7 +449,7 @@ separately.
 ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY = 100
 SAMPLE_STRATA = 4
 SAMPLE_PER_STRATUM = 25
-MIN_USABLE_SAMPLES_PER_STRATUM = 5
+MIN_USABLE_SAMPLES_PER_STRATUM = 1
 ```
 
 For lean v1, these sampling constants are fixed and SHALL satisfy:
@@ -451,6 +457,8 @@ For lean v1, these sampling constants are fixed and SHALL satisfy:
 ```text
 ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY = SAMPLE_STRATA * SAMPLE_PER_STRATUM
 ```
+
+The stratum usability minimum is an inclusive floor: a stratum with `u_h >= MIN_USABLE_SAMPLES_PER_STRATUM` usable observations is usable, while a stratum with zero usable observations remains unusable and its population weight is excluded from the stratum eligibility coverages (§7.2, §7.4, §7.5). At the default of 1 this means a stratum is unusable exactly when it has no usable observation.
 
 Changing the sample size, stratum count, per-stratum allocation, or the stratum
 partition rule requires a new sampling-rule version and SRS revision; an
@@ -1316,7 +1324,7 @@ and exhaustive tests of non-scoring infrastructure.
 | `ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY` | 100 | No for v1 | Large-category sample target. |
 | `SAMPLE_STRATA` | 4 | No for v1 | Systematic ordinal-stratum stride (count). |
 | `SAMPLE_PER_STRATUM` | 25 | No for v1 | Per-stratum sample target. |
-| `MIN_USABLE_SAMPLES_PER_STRATUM` | 5 | Yes | Stratum evidence minimum. |
+| `MIN_USABLE_SAMPLES_PER_STRATUM` | 1 | Yes | Stratum evidence minimum. |
 | `MIN_REQUIRED_COMPONENT_COVERAGE` | 0.50 | No for v1 | Minimum required stratum eligibility coverage. |
 | `STRONG_COMPONENT_COVERAGE` | 0.80 | No for v1 | Strong evidence stratum eligibility coverage threshold. |
 | `MIN_AGE_DAYS_FOR_RATE` | 30 | Yes | Index age threshold. |

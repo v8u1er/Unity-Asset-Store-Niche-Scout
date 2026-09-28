@@ -43,7 +43,7 @@ MAX_TAXONOMY_AGE_DAYS: int = 30
 ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY: int = 100
 SAMPLE_STRATA: int = 4
 SAMPLE_PER_STRATUM: int = 25
-MIN_USABLE_SAMPLES_PER_STRATUM: int = 5
+MIN_USABLE_SAMPLES_PER_STRATUM: int = 1
 
 # --------------------------------------------------------------------------
 # Evidence and coverage thresholds
