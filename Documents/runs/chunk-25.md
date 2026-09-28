@@ -67,6 +67,7 @@ Out of scope: the systematic partition (chunk-24), all formulas, weights,
 | Preflight (lead) | DONE | git clean; branch `chunk-25`; this log |
 | Plan — `chunk-planner` | DONE (frozen) | `ses_f17de8754ffeVNUCxM3nsgBtje`; `Documents/plans/chunk-25-min-usable-samples.md`; operator answered 2 questions "go with the recommendation". Committed `30f3ef1` (`chunk-25: plan`). |
 | Tests — `test-author` | DONE | `ses_f16d8b07affe9ywZ3XxaBbWPq9` (2 turns; hit step cap once, resumed). 11 files under `tests/` + traceability entry. Lead-reproduced below. |
+| Tests — `test-author` fix round | DONE | `ses_f16aae072ffeA7QqEmQ6zOFoT5`: `tests/test_metrics.py` lines 657–661 only (counts `4`/`75`, comment de-staled). Lead-verified `688 passed`. |
 | Implement — `impl-deep` | PENDING | — |
 | Review — `spec-reviewer` | PENDING | — |
 | Gate (lead) | PENDING | — |

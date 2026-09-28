@@ -654,11 +654,12 @@ def test_quality_eligible_set_too_small_is_null() -> None:
     result = m.quality_raw(mfx.QUALITY_ELIGIBLE_SET_TOO_SMALL)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_ELIGIBLE_SET_TOO_SMALL
-    # Plan §4.4 / §7.2: total eligible 4 < QUALITY_MIN_ELIGIBLE_ASSETS, so no
-    # stratum accumulated; the fix must leave these true zeros at 0 and not
-    # leak a stale count upward.
-    assert result.usable_sample_count == 0
-    assert result.eligible_population_count == 0
+    # At the default floor ``min_usable_samples_per_stratum = 1`` the single
+    # stratum is quality-usable, so the counts report its 4 quality-eligible
+    # observations and its ``N_h = 75``. The eligible-set guard still fires
+    # because the total eligible set, 4, is below QUALITY_MIN_ELIGIBLE_ASSETS (5).
+    assert result.usable_sample_count == 4
+    assert result.eligible_population_count == 75
     # Plan §4.4 / §7.2: a locally-built NO_USABLE_STRATUM input with two
     # strata of 3 quality-eligible observations each. Total eligible is
     # 6 >= 5 so the eligible-set guard does not fire, but this floor branch pins
