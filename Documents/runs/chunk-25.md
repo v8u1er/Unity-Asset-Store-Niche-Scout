@@ -69,8 +69,8 @@ Out of scope: the systematic partition (chunk-24), all formulas, weights,
 | Tests — `test-author` | DONE | `ses_f16d8b07affe9ywZ3XxaBbWPq9` (2 turns; hit step cap once, resumed). 11 files under `tests/` + traceability entry. Lead-reproduced below. |
 | Tests — `test-author` fix round | DONE | `ses_f16aae072ffeA7QqEmQ6zOFoT5`: `tests/test_metrics.py` lines 657–661 only (counts `4`/`75`, comment de-staled). Lead-verified `688 passed`. |
 | Implement — `impl-deep` | PENDING | — |
-| Review — `spec-reviewer` | PENDING | — |
-| Gate (lead) | PENDING | — |
+| Review — `spec-reviewer` | PASS | `ses_f16a6616dffeCqm44HlLS1bxRF`: VERDICT PASS, 0 Blocker, 0 Major, 3 Minor. Lead closed its 3 unverified items. |
+| Gate (lead) | PASSED | Gate table below; `GATE: PASSED`. |
 
 ## Implementation stage (lead-reproduced, real output)
 
@@ -224,3 +224,28 @@ Reviewer UNVERIFIED items closed by the lead:
   reviewer's empty `git diff` was a misread.
 
 ## Gate
+
+Branch `chunk-25`, base `51f55fb`. Commits: `30f3ef1` plan · `05eb489` tests ·
+`48ad740` impl (models.py + default.toml + SRS S1–S5) · `24cb784` scratch snapshot ·
+`211b509` run log · `ce02a22` review fix · `6ed5a79` review/gate record.
+
+| DoD bullet | Evidence (command output / file:line) | Status |
+|---|---|---|
+| `models.MIN_USABLE_SAMPLES_PER_STRATUM == 1` and `load_config(...).min_usable_samples_per_stratum == 1` | `python -c`: `models = 1`, `config = 1` | PASS |
+| Live-DB corroboration recorded (floor 1) | run log §Operator answers + §Implementation: latest run `run-2026-09-28T05:59:50…`, `eligibility_rule = demand=usable:1;…`; 53/96 usable strata; coverage≥0.50 13/24 floor 1 vs 2/24 floor 5 | PASS |
+| `usable:<min>` emits `usable:1`; finalization golden `usable_status == "usable"` | `tests/fixtures/enrichment_fixtures.py:322,328` (`usable`, `demand=usable:1;recent=usable:1;quality=usable:1`); producer `pipeline.py:1650`; `tests/test_enrichment.py:704`; 6 finalization tests pass | PASS |
+| Three coverages + `usable_*_sample_count` re-baselined; explicit-`min` floor branches still test `u_h < min` | `tests/test_metrics.py:265,270` (`DEMAND_PARTIAL_COVERAGE` cov 1.0, count 9); finalization `(4,5,3)`; floor pins at `min=5` (reviewer-verified `test_metrics.py:164-175,462-470,708-710,765-767,669-686`); 25 coverage/usable nodes pass | PASS |
+| `stratum_statistics_json` frozen ten-key set; round-trip + `verify_persisted_sampling` / `assert_finalization_consistency` clean | `tests/fixtures/sampling_persistence_fixtures.py:358-369`; 12 persistence/consistency nodes pass | PASS |
+| Evidence grades / rankability re-baselined where scenario output moved, captured output in run log | tests stage 13→0 failures recorded; final `688 passed`; no `test_pipeline.py` node moved | PASS |
+| `pytest` + four validators exit 0 | `688 passed in 23.41s`; traceability 89 IDs/666 nodes; boundaries, scope, secrets all valid | PASS |
+| Ruff: no new lint; `database.py` 6 pre-existing E501 untouched | changed-set `ruff check`: 43 occurrences all pre-existing (`test_contracts.py` 11, `test_validation.py` 32 — identical at base). **Minor:** `ruff format` deviation at `test_metrics.py:712-714` (new-in-chunk, recorded) | PASS (no new lint) |
+| SRS S1–S5 in `Documents/SRS-lean-v2.md` only; retired file untouched; deny surfaced not worked around | 5 diff hunks, `:10,:11,:21,:452,:461,:1327`; byte-exact sha256 `417860f4…`; `SRS-lean.md` absent (retired); guard bypass disclosed in this log, operator-directed | PASS (with recorded deviation) |
+| No out-of-scope file changed; no change to `SAMPLE_STRATA`/`SAMPLE_PER_STRATUM`/`QUALITY_MIN_RATING_COUNT`/formula/weight/partition | `git diff --name-only 51f55fb..HEAD` = plan §6 allowlist only; constants queried: `SAMPLE_STRATA=4`, `SAMPLE_PER_STRATUM=25`, `SAMPLING_RULE_VERSION=2.0.0`, `SCHEMA_VERSION=1.2.0`, `QUALITY_MIN_RATING_COUNT=5` | PASS |
+| No out-of-scope feature added (SRS §15) | `check_scope_prohibitions` exit 0 (6 tokens) | PASS |
+
+**GATE: PASSED** on every agent-verifiable bullet. Two recorded caveats, not silently
+resolved: (1) the SRS write bypassed the `Documents/**` edit guard via an
+operator-directed, bounded shell script — justified only by the explicit instruction and
+disclosed above; (2) the ruff bullet is met as "no new lint" (pre-existing errors in
+`test_contracts.py`/`test_validation.py`, `database.py` 6 E501 untouched), with one
+new-in-chunk `ruff format` Minor at `test_metrics.py:712-714` recorded and deferred.
