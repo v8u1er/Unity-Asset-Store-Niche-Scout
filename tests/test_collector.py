@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import tempfile
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -1403,6 +1404,455 @@ def test_persisted_metadata_and_error_summaries_contain_no_credentials(
 
     statuses = statuses_by_category(repository)
     assert statuses[CATEGORY] == DiscoveryStatus.IDENTITY_INCOMPLETE.value
+
+
+# ---------------------------------------------------------------------------
+# Chunk 23 — transient transport retry and persisted discovery failure cause
+# ---------------------------------------------------------------------------
+#
+# Scope authority:
+# Documents/plans/chunk-23-coveo-transport-retry-and-persisted-failure-cause.md
+# section 9. Every node below carries exactly the ``@pytest.mark.lreq`` marker
+# that section's matrix assigns to its base node ID, plus a matching
+# ``tests/traceability.json`` entry. Everything is offline and deterministic:
+# the transport is the scripted fake below, the sleeper records durations, and
+# no node reads the system clock.
+#
+# ``_ScriptedTransport`` is ``send``-shaped -- the canonical ``CoveoTransport``
+# protocol of ``interfaces/chunk-03.md`` section 4 -- because
+# ``RecordingOpener`` is ``open(request)``-shaped and cannot raise ``URLError``
+# (plan section 9).
+
+#: A URL-shaped sentinel (never a real credential) proving that transport
+#: exception text cannot reach a message or a persisted column.
+SCRIPTED_TRANSPORT_SENTINEL = "https://host.invalid/path?token=SECRET-SENTINEL-23"
+
+
+class _ScriptedTransport:
+    """A transport that raises a scripted exception or serves a scripted page.
+
+    Script entries are consumed in order: a ``BaseException`` entry is raised
+    (the R1 transport failure), an ``int`` entry becomes a bare
+    ``RecordedResponse`` carrying that status, and any other entry is returned
+    as-is (a ``RecordedResponse`` page). The last entry repeats once the script
+    is exhausted, so a short script never silently stops the adapter's calls.
+    """
+
+    def __init__(self, script: Sequence[Any]) -> None:
+        assert script, "the script must have at least one entry"
+        self._script = tuple(script)
+        self.calls: list[tuple[str, Mapping[str, str], bytes]] = []
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
+
+    def send(self, url: str, headers: Mapping[str, str], payload: bytes) -> Any:
+        entry = self._script[min(len(self.calls), len(self._script) - 1)]
+        self.calls.append((url, dict(headers), bytes(payload)))
+        if isinstance(entry, BaseException):
+            raise entry
+        if isinstance(entry, int):
+            return RecordedResponse(entry, b"scripted status")
+        return entry
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+def test_transport_url_error_is_retried_with_backoff_then_succeeds(
+    repository: SqliteRepository,
+) -> None:
+    """A transient ``URLError`` retries once under the existing backoff and wins.
+
+    Hand-derived (plan section 9 Node 1): attempt 1 raises ``URLError``, so the
+    loop arms ``COVEO_BACKOFF_BASE_SECONDS * 2 ** (attempts - 1)`` with
+    ``attempts == 1`` -> ``2.0 * 2 ** 0 == 2.0``; attempt 2 serves the
+    one-record page whose ``totalCount`` is 1, so the traversal ends after it.
+    """
+    transport = _ScriptedTransport(
+        [
+            urllib.error.URLError("temporary connection failure"),
+            page_response(fx.records(1), total_count=1),
+        ]
+    )
+    sleeper = Recorder()
+    result = discover(repository, transport, sleeper=sleeper)
+
+    assert transport.call_count == 2
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    assert result.observations_emitted == 1
+    backoffs = [
+        value
+        for value in sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    assert backoffs == [collector_coveo.COVEO_BACKOFF_BASE_SECONDS]
+    intervals = [
+        value
+        for value in sleeper.calls
+        if value == collector_coveo.COVEO_MIN_REQUEST_INTERVAL_SECONDS
+    ]
+    assert intervals == [], (
+        "one logical page: the first request owes no interval and the retry is "
+        "spaced by backoff only"
+    )
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+def test_transport_os_error_is_retried_and_bounded_then_request_failed(
+    repository: SqliteRepository,
+) -> None:
+    """An ``OSError`` consumes the same bounded budget and then fails the page.
+
+    Hand-derived (plan section 9 Node 2): every attempt raises, so the adapter
+    issues ``COVEO_MAX_RETRIES + 1 == 6`` sends and arms five backoffs,
+    ``2.0 * 2 ** (attempts - 1)`` for attempts 1..5 ->
+    ``[2.0, 4.0, 8.0, 16.0, 32.0]``; the sixth failure finds the budget
+    exhausted and raises the terminal ``CoveoRequestFailed``.
+    """
+    attempts = collector_coveo.COVEO_MAX_RETRIES + 1
+    transport = _ScriptedTransport([OSError("connection reset by peer")] * attempts)
+    sleeper = Recorder()
+    result = discover(repository, transport, sleeper=sleeper)
+
+    assert transport.call_count == attempts
+    assert result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    assert result.observations_emitted == 0
+    backoffs = [
+        value
+        for value in sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    assert backoffs == [2.0, 4.0, 8.0, 16.0, 32.0]
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+def test_transport_retry_budget_is_bounded_and_matches_status_backoff_schedule(
+    tmp_path: Path,
+) -> None:
+    """The transport arm reuses the status schedule, cap, and rate limiting.
+
+    Hand-derived (plan section 9 Node 3):
+
+    - A mixed script ``[URLError, 503, URLError, 503, URLError, URLError]``
+      issues six failing attempts; the retries after attempts 1..5 sleep
+      ``2.0 * 2 ** (attempts - 1)`` -> ``[2.0, 4.0, 8.0, 16.0, 32.0]``,
+      exactly the schedule the existing exhausted-503 node pins for a pure
+      status script, and the sixth failure is terminal (never a seventh send).
+    - A two-page traversal whose first attempt raises ``URLError`` records
+      exactly one ``2.0`` backoff and exactly one
+      ``COVEO_MIN_REQUEST_INTERVAL_SECONDS == 1.0`` interval for the second
+      logical page: retries are spaced by backoff, not by the interval, and the
+      interval is applied once per logical page (chunk-03 section 6).
+    """
+    mixed = _ScriptedTransport(
+        [
+            urllib.error.URLError("mixed transport failure"),
+            503,
+            urllib.error.URLError("mixed transport failure"),
+            503,
+            urllib.error.URLError("mixed transport failure"),
+            urllib.error.URLError("mixed transport failure"),
+        ]
+    )
+    mixed_sleeper = Recorder()
+    mixed_repo = SqliteRepository(tmp_path / "chunk23-mixed.sqlite3")
+    try:
+        _insert_run(mixed_repo)
+        mixed_result = discover(mixed_repo, mixed, sleeper=mixed_sleeper)
+    finally:
+        mixed_repo.close()
+
+    assert mixed.call_count == collector_coveo.COVEO_MAX_RETRIES + 1
+    assert mixed_result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    mixed_backoffs = [
+        value
+        for value in mixed_sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    assert mixed_backoffs == [2.0, 4.0, 8.0, 16.0, 32.0]
+
+    statuses = _ScriptedTransport([503] * (collector_coveo.COVEO_MAX_RETRIES + 1))
+    status_sleeper = Recorder()
+    status_repo = SqliteRepository(tmp_path / "chunk23-status.sqlite3")
+    try:
+        _insert_run(status_repo)
+        status_result = discover(status_repo, statuses, sleeper=status_sleeper)
+    finally:
+        status_repo.close()
+
+    assert statuses.call_count == mixed.call_count
+    assert status_result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    status_backoffs = [
+        value
+        for value in status_sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    assert status_backoffs == mixed_backoffs
+
+    paged = _ScriptedTransport(
+        [
+            urllib.error.URLError("page-one transport failure"),
+            page_response(fx.records(PAGE_SIZE), total_count=PAGE_SIZE + 1),
+            page_response(fx.records(1, start=PAGE_SIZE), total_count=PAGE_SIZE + 1),
+        ]
+    )
+    paged_sleeper = Recorder()
+    paged_repo = SqliteRepository(tmp_path / "chunk23-paged.sqlite3")
+    try:
+        _insert_run(paged_repo)
+        paged_result = discover(paged_repo, paged, sleeper=paged_sleeper)
+    finally:
+        paged_repo.close()
+
+    assert paged.call_count == 3
+    assert paged_result.discovery_status is DiscoveryStatus.COMPLETE
+    assert paged_result.observations_emitted == PAGE_SIZE + 1
+    paged_backoffs = [
+        value
+        for value in paged_sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    paged_intervals = [
+        value
+        for value in paged_sleeper.calls
+        if value == collector_coveo.COVEO_MIN_REQUEST_INTERVAL_SECONDS
+    ]
+    assert (paged_backoffs, paged_intervals) == ([2.0], [1.0])
+    assert sorted(paged_sleeper.calls) == [1.0, 2.0]
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_transport_failure_message_omits_exception_text_and_secrets(
+    repository: SqliteRepository,
+) -> None:
+    """Sentinel-bearing transport text reaches no message or persisted column.
+
+    Hand-derived (plan section 9 Node 4): the first page commits one record and
+    the second page's transport budget is exhausted; the terminal
+    ``CoveoRequestFailed`` names only the failure class and attempt count, and
+    the persisted cause and the page-1 columns carry none of the exception text,
+    the URL sentinel, or the bearer token.
+    """
+    sentinel = SCRIPTED_TRANSPORT_SENTINEL
+    attempts = collector_coveo.COVEO_MAX_RETRIES + 1
+    failures = [urllib.error.URLError(sentinel)] * attempts
+    transport = _ScriptedTransport(
+        [page_response(fx.records(1), total_count=12)] + failures
+    )
+    result = discover(repository, transport, sleeper=Recorder())
+
+    assert result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    assert transport.call_count == 1 + attempts
+    issues = " ".join(issue.to_json() for issue in result.issues)
+    assert sentinel not in issues
+    assert "SECRET-SENTINEL-23" not in issues
+
+    rows = list(repository.iter_raw_discovery_observations(RUN_ID, CATEGORY))
+    assert len(rows) == 1, "the first page stays committed when the second fails"
+    scores = {row.category: row for row in repository.get_category_scores(RUN_ID)}
+    cause = scores[CATEGORY].discovery_failure_cause_json
+    assert cause is not None
+    for field in (
+        cause,
+        rows[0].request_metadata_json,
+        rows[0].error_summary_json or "",
+    ):
+        assert sentinel not in field
+        assert "SECRET-SENTINEL-23" not in field
+
+    with pytest.raises(collector_coveo.CoveoRequestFailed) as failure:
+        collector_coveo.fetch_category_page(
+            fx.request_body(),
+            headers=collector_coveo.build_coveo_headers(fx.BEARER_TOKEN),
+            url=collector_coveo.coveo_search_url(),
+            transport=_ScriptedTransport([urllib.error.URLError(sentinel)] * attempts),
+            sleeper=Recorder(),
+        )
+    message = str(failure.value)
+    assert sentinel not in message
+    assert "SECRET-SENTINEL-23" not in message
+    assert fx.BEARER_TOKEN not in message
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+def test_permanent_status_after_transport_retries_is_not_retried_further(
+    repository: SqliteRepository,
+) -> None:
+    """A 403 after one transport retry is raised at once and never retried.
+
+    Hand-derived (plan section 9 Node 5 and section 7 DP5c): attempt 1 raises
+    ``URLError`` (one ``2.0`` backoff), attempt 2 answers 403 -> permanent,
+    ``attempts == 2``, ``failure_class = http_permanent``, and no third send.
+    The persisted cause is exactly ``attempt_count`` 2, ``failure_class``
+    ``http_permanent``, ``http_status`` 403, ``page_index`` 0 (zero-based; the
+    first page's ``firstResult`` is 0).
+    """
+    transport = _ScriptedTransport([urllib.error.URLError("transient"), 403])
+    sleeper = Recorder()
+    result = discover(repository, transport, sleeper=sleeper)
+
+    assert transport.call_count == 2
+    assert result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    backoffs = [
+        value
+        for value in sleeper.calls
+        if value >= collector_coveo.COVEO_BACKOFF_BASE_SECONDS
+    ]
+    assert backoffs == [collector_coveo.COVEO_BACKOFF_BASE_SECONDS]
+    scores = {row.category: row for row in repository.get_category_scores(RUN_ID)}
+    text = scores[CATEGORY].discovery_failure_cause_json
+    assert text is not None
+    assert json.loads(text) == {
+        "attempt_count": 2,
+        "failure_class": "http_permanent",
+        "http_status": 403,
+        "page_index": 0,
+    }
+
+
+@pytest.mark.lreq("LREQ-EXT-100")
+@pytest.mark.lreq("LREQ-NFR-030")
+def test_coveo_request_failed_carries_attempts_and_failure_class() -> None:
+    """Every terminal raise carries the issued attempt count and class token.
+
+    Hand-derived (plan section 9 Node 6): a transport-exhausted script issues
+    ``COVEO_MAX_RETRIES + 1 == 6`` attempts -> ``TRANSPORT_FAILURE``; an
+    exhausted-503 script also issues 6 -> ``HTTP_TRANSIENT``; an immediate 403
+    issues 1 -> ``HTTP_PERMANENT``. ``attempts`` is never 0.
+    """
+
+    def fetch(script: Sequence[Any]) -> None:
+        collector_coveo.fetch_category_page(
+            fx.request_body(),
+            headers=collector_coveo.build_coveo_headers(fx.BEARER_TOKEN),
+            url=collector_coveo.coveo_search_url(),
+            transport=_ScriptedTransport(script),
+            sleeper=Recorder(),
+        )
+
+    failure_class = collector_coveo.CoveoTransportFailureClass
+    attempts = collector_coveo.COVEO_MAX_RETRIES + 1
+
+    with pytest.raises(collector_coveo.CoveoRequestFailed) as transport_failure:
+        fetch([urllib.error.URLError("gone")] * attempts)
+    assert transport_failure.value.attempts == attempts
+    assert transport_failure.value.failure_class is failure_class.TRANSPORT_FAILURE
+
+    with pytest.raises(collector_coveo.CoveoRequestFailed) as transient_failure:
+        fetch([503] * attempts)
+    assert transient_failure.value.attempts == attempts
+    assert transient_failure.value.failure_class is failure_class.HTTP_TRANSIENT
+
+    with pytest.raises(collector_coveo.CoveoRequestFailed) as permanent_failure:
+        fetch([403])
+    assert permanent_failure.value.attempts == 1
+    assert permanent_failure.value.failure_class is failure_class.HTTP_PERMANENT
+
+    assert failure_class.TRANSPORT_FAILURE.value == "transport_failure"
+    assert failure_class.HTTP_TRANSIENT.value == "http_transient"
+    assert failure_class.HTTP_PERMANENT.value == "http_permanent"
+
+
+@pytest.mark.lreq("LREQ-EXT-090")
+@pytest.mark.lreq("LREQ-NFR-030")
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_category_failure_cause_is_persisted_redacted_and_sibling_categories_unaffected(
+    repository: SqliteRepository,
+) -> None:
+    """A zero-row failed category records its cause; its sibling is untouched.
+
+    Hand-derived (plan section 9 Node 7 and section 7 DP5c): the failed
+    category's very first page exhausts its transport budget, so it has no raw
+    rows yet still stores a non-null cause whose members are exactly the four
+    canonical keys; the healthy sibling is ``COMPLETE`` with a ``NULL`` cause,
+    keeps its rows, and no sentinel text appears in either cause.
+    """
+    sentinel = SCRIPTED_TRANSPORT_SENTINEL
+    failing = _ScriptedTransport(
+        [urllib.error.URLError(sentinel)] * (collector_coveo.COVEO_MAX_RETRIES + 1)
+    )
+    failed_result = discover(repository, failing, sleeper=Recorder())
+
+    healthy = _ScriptedTransport([page_response(fx.records(2), total_count=2)])
+    healthy_result = discover(repository, healthy, category=OTHER_CATEGORY)
+
+    assert failed_result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    assert failed_result.observations_emitted == 0
+    assert healthy_result.discovery_status is DiscoveryStatus.COMPLETE
+
+    scores = {row.category: row for row in repository.get_category_scores(RUN_ID)}
+    failed_row = scores[CATEGORY]
+    healthy_row = scores[OTHER_CATEGORY]
+    assert failed_row.discovery_status == DiscoveryStatus.REQUEST_FAILED.value
+    assert healthy_row.discovery_status == DiscoveryStatus.COMPLETE.value
+    assert healthy_row.discovery_failure_cause_json is None, (
+        "a category with no recorded cause stores NULL, never '' or '{}'"
+    )
+    assert failed_row.discovery_failure_cause_json is not None
+    cause = json.loads(failed_row.discovery_failure_cause_json)
+    assert set(cause) == {
+        "attempt_count",
+        "failure_class",
+        "http_status",
+        "page_index",
+    }
+    assert cause["failure_class"] in (
+        "transport_failure",
+        "http_transient",
+        "http_permanent",
+    )
+    assert cause["failure_class"] == "transport_failure"
+    assert cause["http_status"] is None or isinstance(cause["http_status"], int)
+    assert isinstance(cause["page_index"], int)
+    assert isinstance(cause["attempt_count"], int)
+    assert cause["attempt_count"] == collector_coveo.COVEO_MAX_RETRIES + 1
+
+    # Missing is not zero: the empty failed category has no raw rows at all,
+    # while the sibling's committed rows are untouched (LREQ-NFR-030).
+    assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == 0
+    assert repository.count_raw_discovery_observations(RUN_ID, OTHER_CATEGORY) == 2
+    assert sentinel not in failed_row.discovery_failure_cause_json
+    assert sentinel not in (healthy_row.discovery_failure_cause_json or "")
+
+
+@pytest.mark.lreq("LREQ-EXT-090")
+@pytest.mark.lreq("LREQ-SEC-020")
+def test_persisted_failure_cause_is_canonical_json_with_null_http_status(
+    repository: SqliteRepository,
+) -> None:
+    """The stored text is canonical JSON and a pure transport failure is ``null``.
+
+    Hand-derived (plan sections 7 DP5/DP5b and 9 Node 8): page 1 serves one
+    record with ``totalCount`` 12, page 2 exhausts its transport budget, so the
+    stored payload is exactly ``{"attempt_count": 6, "failure_class":
+    "transport_failure", "http_status": None, "page_index": 1}``; canonical
+    ``json.dumps(..., sort_keys=True, separators=(",", ":"))`` re-derives the
+    stored text byte for byte, ``http_status`` is JSON ``null`` (never ``0``),
+    and the failing page is the zero-based second page.
+    """
+    failures = [urllib.error.URLError("no http status")] * (
+        collector_coveo.COVEO_MAX_RETRIES + 1
+    )
+    transport = _ScriptedTransport(
+        [page_response(fx.records(1), total_count=12)] + failures
+    )
+    result = discover(repository, transport, sleeper=Recorder())
+
+    assert result.discovery_status is DiscoveryStatus.REQUEST_FAILED
+    scores = {row.category: row for row in repository.get_category_scores(RUN_ID)}
+    text = scores[CATEGORY].discovery_failure_cause_json
+    assert text is not None
+    payload = json.loads(text)
+    assert payload == {
+        "attempt_count": collector_coveo.COVEO_MAX_RETRIES + 1,
+        "failure_class": "transport_failure",
+        "http_status": None,
+        "page_index": 1,
+    }
+    assert text == json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    assert '"http_status":null' in text
+    assert '"http_status":0' not in text
 
 
 # ---------------------------------------------------------------------------

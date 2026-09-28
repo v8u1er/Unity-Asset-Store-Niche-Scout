@@ -2178,6 +2178,115 @@ def test_category_isolation_preserves_unrelated_observations(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.lreq("LREQ-EXT-090")
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_category_failure_cause_column_round_trips_without_zero_substitution(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """The failure-cause text round-trips byte for byte; absent stays NULL.
+
+    Hand-derived from ``interfaces/chunk-02.md`` §2.7/§2.9: a canonical cause
+    string passed to ``set_category_status`` is stored exactly as given and
+    read back unchanged; a row with no recorded cause reads back ``None``,
+    never ``""`` and never ``"{}"``.
+    """
+    database = tmp_path / "niche_scout.sqlite3"
+    category, second = fixtures.DEFAULT_CATEGORIES[:2]
+    cause = json.dumps(
+        {
+            "attempt_count": 6,
+            "failure_class": "transport_failure",
+            "http_status": None,
+            "page_index": 1,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with SqliteRepository(database) as repository:
+        repository.insert_run(run_record)
+        repository.set_category_status(
+            run_record.run_id,
+            category,
+            DiscoveryStatus.REQUEST_FAILED.value,
+            computed_at_utc=_iso(6),
+            discovery_failure_cause_json=cause,
+        )
+        repository.set_category_status(
+            run_record.run_id,
+            second,
+            DiscoveryStatus.COMPLETE.value,
+            computed_at_utc=_iso(6),
+        )
+        stored = {
+            row.category: row for row in repository.get_category_scores(run_record.run_id)
+        }
+        assert stored[category].discovery_failure_cause_json == cause, (
+            "*_json columns are stored exactly as given, never re-serialized"
+        )
+        assert stored[category].discovery_failure_cause_json == json.dumps(
+            json.loads(stored[category].discovery_failure_cause_json),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        assert json.loads(cause)["http_status"] is None
+        assert stored[second].discovery_failure_cause_json is None, (
+            "a category with no cause stores NULL, never '' or '{}'"
+        )
+
+
+@pytest.mark.lreq("LREQ-EXT-090")
+def test_set_category_status_default_leaves_stored_cause_unchanged(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """The default cause parameter cannot null a cause written earlier.
+
+    Hand-derived from ``interfaces/chunk-02.md`` §2.7: ``discovery_failure_cause_json``
+    defaults to ``None`` and, on the conflict path, leaves the stored column
+    unchanged. A second ``set_category_status`` call without the keyword and an
+    ``upsert_category_scores`` finalize both preserve the original text.
+    """
+    database = tmp_path / "niche_scout.sqlite3"
+    category = fixtures.DEFAULT_CATEGORIES[0]
+    cause = json.dumps(
+        {
+            "attempt_count": 2,
+            "failure_class": "http_permanent",
+            "http_status": 403,
+            "page_index": 0,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with SqliteRepository(database) as repository:
+        repository.insert_run(run_record)
+        repository.set_category_status(
+            run_record.run_id,
+            category,
+            DiscoveryStatus.REQUEST_FAILED.value,
+            computed_at_utc=_iso(6),
+            discovery_failure_cause_json=cause,
+        )
+        repository.set_category_status(
+            run_record.run_id,
+            category,
+            DiscoveryStatus.REQUEST_FAILED.value,
+            computed_at_utc=_iso(7),
+        )
+        after_default = repository.get_category_scores(run_record.run_id)[0]
+        assert after_default.discovery_failure_cause_json == cause
+
+        assert repository.upsert_category_scores([_partial_category_score()]) == 1
+        after_upsert = repository.get_category_scores(run_record.run_id)[0]
+        assert after_upsert.discovery_failure_cause_json == cause, (
+            "the scoring-phase upsert must not null the discovery cause"
+        )
+
+
+# ---------------------------------------------------------------------------
+# LREQ-ARCH-030 — the runs provenance hash rejects an empty or whitespace value
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.lreq("LREQ-ARCH-030")
 def test_runs_taxonomy_sha256_empty_is_rejected(
     tmp_path: Path, run_record: RunRecord

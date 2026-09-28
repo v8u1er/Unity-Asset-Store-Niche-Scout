@@ -112,11 +112,20 @@
   "tests/test_collector.py::test_batch_request_header_names_include_cookie_name_only": [
     "LREQ-SEC-020"
   ],
+  "tests/test_collector.py::test_category_failure_cause_is_persisted_redacted_and_sibling_categories_unaffected": [
+    "LREQ-EXT-090",
+    "LREQ-NFR-030",
+    "LREQ-SEC-020"
+  ],
   "tests/test_collector.py::test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count": [
     "LREQ-EXT-070"
   ],
   "tests/test_collector.py::test_coveo_endpoint_headers_and_facet_selection_match_captured_template": [
     "LREQ-EXT-010"
+  ],
+  "tests/test_collector.py::test_coveo_request_failed_carries_attempts_and_failure_class": [
+    "LREQ-EXT-100",
+    "LREQ-NFR-030"
   ],
   "tests/test_collector.py::test_credentials_are_required_before_any_request_and_bearer_scheme_is_normalized": [
     "LREQ-SEC-010"
@@ -256,7 +265,14 @@
     "LREQ-EXT-100",
     "LREQ-TST-040"
   ],
+  "tests/test_collector.py::test_permanent_status_after_transport_retries_is_not_retried_further": [
+    "LREQ-EXT-100"
+  ],
   "tests/test_collector.py::test_persisted_metadata_and_error_summaries_contain_no_credentials": [
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_persisted_failure_cause_is_canonical_json_with_null_http_status": [
+    "LREQ-EXT-090",
     "LREQ-SEC-020"
   ],
   "tests/test_collector.py::test_product_detail_data_product_wrapper_is_unwrapped": [
@@ -334,6 +350,19 @@
   "tests/test_collector.py::test_transport_failure_does_not_escape_as_an_exception": [
     "LREQ-NFR-030"
   ],
+  "tests/test_collector.py::test_transport_failure_message_omits_exception_text_and_secrets": [
+    "LREQ-EXT-100",
+    "LREQ-SEC-020"
+  ],
+  "tests/test_collector.py::test_transport_os_error_is_retried_and_bounded_then_request_failed": [
+    "LREQ-EXT-100"
+  ],
+  "tests/test_collector.py::test_transport_retry_budget_is_bounded_and_matches_status_backoff_schedule": [
+    "LREQ-EXT-100"
+  ],
+  "tests/test_collector.py::test_transport_url_error_is_retried_with_backoff_then_succeeds": [
+    "LREQ-EXT-100"
+  ],
   "tests/test_collector.py::test_uri_fallback_and_unparseable_candidates_contribute_nothing": [
     "LREQ-EXT-060"
   ],
@@ -348,6 +377,9 @@
   ],
   "tests/test_contracts.py::test_census_model_contract": [
     "LREQ-SMP-040"
+  ],
+  "tests/test_contracts.py::test_category_scores_column_set_includes_failure_cause_and_version_is_1_1_0": [
+    "LREQ-RPT-020"
   ],
   "tests/test_contracts.py::test_config_precedence_contract": [
     "LREQ-CLI-030"
@@ -420,6 +452,10 @@
   "tests/test_database.py::test_category_score_columns_cover_report_read_model": [
     "LREQ-RPT-020"
   ],
+  "tests/test_database.py::test_category_failure_cause_column_round_trips_without_zero_substitution": [
+    "LREQ-EXT-090",
+    "LREQ-RPT-020"
+  ],
   "tests/test_database.py::test_category_scores_primary_key_enforced": [
     "LREQ-SMP-080"
   ],
@@ -482,6 +518,9 @@
   ],
   "tests/test_database.py::test_schema_initialization_is_versioned_and_idempotent": [
     "LREQ-SEC-020"
+  ],
+  "tests/test_database.py::test_set_category_status_default_leaves_stored_cause_unchanged": [
+    "LREQ-EXT-090"
   ],
   "tests/test_database.py::test_streamed_raw_append_consumes_single_pass_iterable": [
     "LREQ-NFR-010"
