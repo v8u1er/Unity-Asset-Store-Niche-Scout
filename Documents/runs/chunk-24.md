@@ -81,7 +81,7 @@ records it here as the operative, correctable decision (chunk-23 surface-naming 
 | Stage | Status | Session / evidence |
 |---|---|---|
 | Preflight (lead) | DONE | git clean; branch `chunk-24`; this log |
-| Plan — `chunk-planner` | BLOCKED (questions) | `ses_f1883d0f7ffe0VYrixQ3ZxYUX0` — step cap reached before writing; no plan file created; 3 questions relayed to operator |
+| Plan — `chunk-planner` | RESUMED (answers applied) | `ses_f1883d0f7ffe0VYrixQ3ZxYUX0` — step cap hit, 3 questions; operator answered A1-A3; planner resumed for chunk-24 (D1+D3) |
 | Tests — `test-author` | PENDING | — |
 | Implement — `impl-deep` | PENDING | — |
 | Review — `spec-reviewer` | PENDING | — |
@@ -111,3 +111,16 @@ evidence grades, and rankability — a different test class and golden-vector se
 - **Q3 (offset derivation).** D1's `sha256(sampling_rule_version, category) mod SAMPLE_STRATA`
   does not specify the join delimiter, digest-byte vs hex reduction, or casing. Needs a
   precise, deterministic convention.
+
+### Operator answers (2026-09-28) — "go with recommendations"
+
+- **A1 — split approved.** `chunk-24` = D1+D3 (interleaved partition rule, `(offset, stride)`
+  representation, `SAMPLING_RULE_VERSION`/`SCHEMA_VERSION` bumps, SRS partition edits).
+  `chunk-25` = D2 (`MIN_USABLE` 5→1 and the coverage/evidence/rankability re-baseline).
+  chunk-24's plan records chunk-25 as a declared follow-on, out of this chunk's scope.
+- **A2 — replace.** `sample_members.stratum_start_ordinal`/`stratum_end_ordinal` are replaced
+  by `stratum_offset`/`stratum_stride` (same two keys replace the interval keys in
+  `stratum_statistics_json`). `SCHEMA_VERSION` `1.1.0` → `1.2.0`. A member's discovery ordinal
+  remains recoverable from `raw_discovery_observations.discovery_ordinal`.
+- **A3 — offset derivation.** `offset = int.from_bytes(sha256(utf8(sampling_rule_version + NUL
+  + category)).digest()[:8], "big") mod SAMPLE_STRATA`; deterministic, no RNG, persisted.
