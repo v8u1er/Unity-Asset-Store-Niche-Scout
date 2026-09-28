@@ -31,7 +31,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-SRS_PATH = ROOT / "Documents" / "SRS-lean.md"
+SRS_PATH = ROOT / "Documents" / "SRS-lean-v2.md"
 DEPENDENCY_MAP_PATH = ROOT / "Documents" / "requirements-dependency-map.md"
 TESTS_DIR = ROOT / "tests"
 TRACEABILITY_PATH = TESTS_DIR / "traceability.json"
@@ -66,7 +66,7 @@ def defined_ids(text: str) -> set[str]:
     defined only when it belongs to one of those declared ranges.
     """
     if "## Appendix B" not in text:
-        raise ValueError("SRS-lean.md is missing Appendix B (traceability matrix)")
+        raise ValueError("SRS-lean-v2.md is missing Appendix B (traceability matrix)")
     appendix = text.split("## Appendix B", 1)[1]
     prefixes = {match.group(1) for match in WILDCARD_PATTERN.finditer(appendix)}
     return {item for item in individual_ids(text) if item.rsplit("-", 1)[0] in prefixes}
