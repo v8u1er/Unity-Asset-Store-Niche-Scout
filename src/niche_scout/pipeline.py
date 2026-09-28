@@ -278,10 +278,12 @@ def _ordered_members(category: Any) -> tuple[Any, ...]:
     """Return a category's members in their stable declared order.
 
     The stable order is the sampling member order the 4A engine emits and
-    persists: ``(stratum_index, stratum_start_ordinal,
-    sample_rank_within_stratum)``, with the identity key as the final tie-break.
-    Within one stratum the declared ordinal breaks the tie first, so the order
-    never depends on the member tuple's incidental order. Note that
+    persists: ``(stratum_index, sample_rank_within_stratum)``, with the identity
+    key as the final tie-break. Chunk 24 renamed the persisted stratum geometry
+    from an ordinal interval to ``(stratum_offset, stratum_stride)``, but both
+    are constant across a category's strata and ``sample_rank_within_stratum``
+    already orders members within each stratum, so the geometry is deliberately
+    not a sort key and the order is unchanged. Note that
     ``sample_rank_within_stratum`` is itself assigned by the 4A engine: its
     ``select_stratum_members`` sorts candidates by
     ``(selection_digest, asset_identity_key)``, where ``selection_digest``
@@ -295,7 +297,6 @@ def _ordered_members(category: Any) -> tuple[Any, ...]:
             category.members,
             key=lambda member: (
                 member.stratum_index,
-                member.stratum_start_ordinal,
                 member.sample_rank_within_stratum,
                 member.asset_identity_key,
             ),
@@ -317,8 +318,10 @@ def select_preflight_identities(
     ``per_category_counts`` entries, so that tuple's length equals
     ``len(covered_categories)``. From each covered category, the first
     ``policy.assets_per_category`` members in their stable declared member order
-    (``stratum_index``, ``stratum_start_ordinal``,
-    ``sample_rank_within_stratum``) are taken. The identity union dedups by
+    (``stratum_index``, ``sample_rank_within_stratum``; the chunk-24
+    ``stratum_offset``/``stratum_stride`` geometry is constant across a
+    category's strata and is not a sort key) are taken. The identity union dedups
+    by
     ``asset_identity_key`` with first-seen order preserved, so overlap never
     increases the attempted count. A category with fewer than
     ``assets_per_category`` members contributes nothing and is never counted

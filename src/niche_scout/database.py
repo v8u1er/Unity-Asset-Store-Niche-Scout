@@ -51,7 +51,7 @@ from .models import (
 )
 from .sampling import CategorySamplingResult, RunSamplingResult, compute_overlap
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 # Column types are derived from the logical field types in models.py: SQLite
 # stores timestamps as ISO-8601 UTC TEXT and booleans as INTEGER 0/1.
@@ -136,8 +136,8 @@ CREATE TABLE sample_members (
     category TEXT NOT NULL,
     asset_identity_key TEXT NOT NULL,
     stratum_index INTEGER NOT NULL,
-    stratum_start_ordinal INTEGER NOT NULL,
-    stratum_end_ordinal INTEGER NOT NULL,
+    stratum_offset INTEGER NOT NULL,
+    stratum_stride INTEGER NOT NULL,
     sample_rank_within_stratum INTEGER NOT NULL,
     sample_is_census INTEGER NOT NULL,
     selection_digest TEXT NOT NULL,
@@ -2051,9 +2051,9 @@ STRATUM_STATISTICS_KEYS: tuple[str, ...] = (
     "N_h",
     "eligibility_rule",
     "n_h",
-    "stratum_end_ordinal",
     "stratum_index",
-    "stratum_start_ordinal",
+    "stratum_offset",
+    "stratum_stride",
     "u_demand_h",
     "u_quality_h",
     "u_recent_h",
@@ -2081,17 +2081,20 @@ def serialize_stratum_statistics(category: CategorySamplingResult) -> str:
     the ten keys of :data:`STRATUM_STATISTICS_KEYS`. ``N_h`` is the stratum's
     discovered population (``population_count``); ``n_h`` is the selected count
     (``selected_count``) that the pure 4A result carries and is persisted as-is,
-    never recalculated here; ``u_demand_h``, ``u_recent_h``, ``u_quality_h`` and
-    ``eligibility_rule`` are JSON ``null`` while pending; ``usable_status`` is
-    ``"pending"``. An empty population serializes to ``"[]"``. Deterministic:
+    never recalculated here. The stratum's chunk-24 geometry is persisted as
+    ``stratum_offset`` and ``stratum_stride`` (chunk-24 plan §3.3), replacing the
+    retired ``stratum_start_ordinal``/``stratum_end_ordinal`` interval;
+    ``u_demand_h``, ``u_recent_h``, ``u_quality_h`` and ``eligibility_rule`` are
+    JSON ``null`` while pending; ``usable_status`` is ``"pending"``. An empty
+    population serializes to ``"[]"``. Deterministic:
     ``json.dumps(value, sort_keys=True, separators=(",", ":"))``, with no
     dependence on dict/set iteration order.
     """
     payload = [
         {
             "stratum_index": stratum.stratum_index,
-            "stratum_start_ordinal": stratum.start_ordinal,
-            "stratum_end_ordinal": stratum.end_ordinal,
+            "stratum_offset": stratum.stratum_offset,
+            "stratum_stride": stratum.stratum_stride,
             "N_h": stratum.population_count,
             "n_h": stratum.selected_count,
             "u_demand_h": None,
@@ -2202,8 +2205,8 @@ def persist_run_sampling(
                 category=member.category,
                 asset_identity_key=member.asset_identity_key,
                 stratum_index=member.stratum_index,
-                stratum_start_ordinal=member.stratum_start_ordinal,
-                stratum_end_ordinal=member.stratum_end_ordinal,
+                stratum_offset=member.stratum_offset,
+                stratum_stride=member.stratum_stride,
                 sample_rank_within_stratum=member.sample_rank_within_stratum,
                 sample_is_census=member.sample_is_census,
                 selection_digest=member.selection_digest,
@@ -2303,13 +2306,13 @@ def verify_persisted_sampling(
             stored_member = stored_by_key[identity_key]
             if stored_member.stratum_index != pure_member.stratum_index:
                 mismatches.append(_mismatch(category, "sample_members.stratum_index"))
-            if stored_member.stratum_start_ordinal != pure_member.stratum_start_ordinal:
+            if stored_member.stratum_offset != pure_member.stratum_offset:
                 mismatches.append(
-                    _mismatch(category, "sample_members.stratum_start_ordinal")
+                    _mismatch(category, "sample_members.stratum_offset")
                 )
-            if stored_member.stratum_end_ordinal != pure_member.stratum_end_ordinal:
+            if stored_member.stratum_stride != pure_member.stratum_stride:
                 mismatches.append(
-                    _mismatch(category, "sample_members.stratum_end_ordinal")
+                    _mismatch(category, "sample_members.stratum_stride")
                 )
             if (
                 stored_member.sample_rank_within_stratum

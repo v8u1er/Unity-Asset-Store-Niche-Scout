@@ -218,8 +218,8 @@ class StratumReportRow:
     """One parsed ``stratum_statistics_json`` object (Chunk 4B §5.2 keys)."""
 
     stratum_index: int
-    stratum_start_ordinal: int
-    stratum_end_ordinal: int
+    stratum_offset: int
+    stratum_stride: int
     population_count: int
     selected_count: int
     usable_demand_count: int | None
@@ -597,8 +597,8 @@ def _strata_from_json(payload: str) -> tuple[StratumReportRow, ...]:
     return tuple(
         StratumReportRow(
             stratum_index=int(obj["stratum_index"]),
-            stratum_start_ordinal=int(obj["stratum_start_ordinal"]),
-            stratum_end_ordinal=int(obj["stratum_end_ordinal"]),
+            stratum_offset=int(obj["stratum_offset"]),
+            stratum_stride=int(obj["stratum_stride"]),
             population_count=int(obj["N_h"]),
             selected_count=int(obj["n_h"]),
             usable_demand_count=_optional_int(obj["u_demand_h"]),
@@ -854,8 +854,8 @@ def _render_strata_html(row: CategoryReportRow) -> str:
         return '<p class="missing">no strata recorded</p>'
     headers = (
         "stratum",
-        "start ordinal",
-        "end ordinal",
+        "offset",
+        "stride",
         "N_h (discovered population)",
         "n_h (sampled population)",
         "u_demand_h",
@@ -871,8 +871,8 @@ def _render_strata_html(row: CategoryReportRow) -> str:
             _td(value)
             for value in (
                 stratum.stratum_index,
-                stratum.stratum_start_ordinal,
-                stratum.stratum_end_ordinal,
+                stratum.stratum_offset,
+                stratum.stratum_stride,
                 stratum.population_count,
                 stratum.selected_count,
                 stratum.usable_demand_count,
@@ -976,7 +976,7 @@ def _render_category_detail_text(
     if row.strata:
         lines.extend(
             f"    - stratum {stratum.stratum_index} "
-            f"ordinals {stratum.stratum_start_ordinal}-{stratum.stratum_end_ordinal} "
+            f"offset {stratum.stratum_offset} stride {stratum.stratum_stride} "
             f"N_h={stratum.population_count} n_h={stratum.selected_count} "
             f"u_demand_h={_fmt(stratum.usable_demand_count)} "
             f"u_recent_h={_fmt(stratum.usable_recent_count)} "

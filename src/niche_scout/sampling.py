@@ -2,9 +2,12 @@
 
 This module implements SRS-lean §5.1 (``LREQ-SMP-010`` … ``LREQ-SMP-090``): it
 builds the ordered canonical population from already-persisted discovery
-observations, applies census behaviour at ``N <= 100`` and four contiguous
-ordinal strata above that, and selects within each stratum by a SHA-256 digest
-over ``sampling_rule_version + NUL + category + NUL + asset_identity_key``.
+observations, applies census behaviour at ``N <= 100`` and four systematic
+(interleaved) ordinal strata above that, and selects within each stratum by a
+SHA-256 digest over ``sampling_rule_version + NUL + category + NUL +
+asset_identity_key``. A stratum's geometry is a per-category ``(offset, stride)``
+pair: ordinal ``i`` belongs to stratum ``(i - 1 + offset) mod stride``
+(chunk-24 plan §2).
 
 The module is pure. It performs no I/O, opens no database, reads no clock, and
 uses no random or platform-dependent hash. It imports no collector, database,
@@ -43,11 +46,13 @@ __all__ = [
     "SamplingStratum",
     "build_canonical_population",
     "build_strata",
+    "category_stratum_offset",
     "compute_overlap",
     "select_category_sample",
     "select_run_sample",
     "select_stratum_members",
     "selection_digest",
+    "stratum_member_ordinals",
 ]
 
 # --------------------------------------------------------------------------
@@ -121,12 +126,15 @@ class CanonicalPopulation:
 
 @dataclass(frozen=True, slots=True)
 class SamplingStratum:
-    """One ordinal stratum.
+    """One systematic (interleaved) ordinal stratum.
 
-    ``stratum_index`` is 0-based. ``start_ordinal``/``end_ordinal`` are 1-based
-    inclusive positions in the canonical population (LREQ-SMP-050:
-    ``floor(h*N/4)+1 .. floor((h+1)*N/4)``; census: ``1..N``). A stratum is always
-    non-empty: ``end_ordinal >= start_ordinal``.
+    ``stratum_index`` is 0-based. ``stratum_offset``/``stratum_stride`` are the
+    category's frozen partition geometry (LREQ-SMP-050, chunk-24 plan §2): a
+    population ordinal ``i`` belongs to stratum
+    ``(i - 1 + stratum_offset) mod stratum_stride == stratum_index``. A census
+    population is encoded as ``stratum_offset = 0``, ``stratum_stride = 1``, so
+    its member ordinals are ``1..N``; every large-category stratum shares its
+    category's ``offset`` and has ``stratum_stride == SAMPLE_STRATA``.
 
     ``is_reduced`` is ``True`` exactly when ``population_count`` is below
     ``SAMPLE_PER_STRATUM`` (LREQ-SMP-090); ``selected_count`` never exceeds
@@ -134,8 +142,8 @@ class SamplingStratum:
     """
 
     stratum_index: int
-    start_ordinal: int
-    end_ordinal: int
+    stratum_offset: int
+    stratum_stride: int
     population_count: int
     selected_count: int
     target_count: int
@@ -149,8 +157,8 @@ class SampledMember:
     category: str
     asset_identity_key: str
     stratum_index: int
-    stratum_start_ordinal: int
-    stratum_end_ordinal: int
+    stratum_offset: int
+    stratum_stride: int
     sample_rank_within_stratum: int
     sample_is_census: bool
     selection_digest: str
@@ -355,26 +363,95 @@ def build_canonical_population(
 # --------------------------------------------------------------------------
 
 
+def category_stratum_offset(
+    category: str,
+    *,
+    sampling_rule_version: str = SAMPLING_RULE_VERSION,
+) -> int:
+    """Deterministic per-category systematic-partition offset (A3; LREQ-SMP-050).
+
+    ``payload = (sampling_rule_version + NUL + category).encode("utf-8")`` and
+    the result is
+    ``int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") % SAMPLE_STRATA``.
+    The digest's first eight bytes are read big-endian and reduced modulo
+    ``SAMPLE_STRATA``; the category bytes are used verbatim as UTF-8 with no
+    casing step, so the value is a pure function of the exact version and
+    category strings.
+
+    Range ``0..SAMPLE_STRATA-1``. Raises ``ValueError`` for a non-``str`` or an
+    empty/whitespace-only ``category`` (reusing ``_require_nonempty_category``);
+    an empty category is never a shared offset bucket. ``sampling_rule_version``
+    is used verbatim and is not validated. Pure: no I/O, no clock, no RNG, no
+    platform-dependent hash.
+    """
+    _require_nonempty_category(category)
+    payload = NUL_DELIMITER.join((sampling_rule_version, category))
+    digest = hashlib.sha256(payload.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % SAMPLE_STRATA
+
+
+def stratum_member_ordinals(
+    stratum: SamplingStratum,
+    population_size: int,
+) -> tuple[int, ...]:
+    """Ascending 1-based population ordinals belonging to ``stratum``.
+
+    ``stratum_stride == 1`` -> every ordinal in ``1..population_size`` (the
+    census encoding). ``stratum_stride >= 1`` -> the ascending ``i`` in
+    ``1..population_size`` with
+    ``(i - 1 + stratum.stratum_offset) % stratum.stratum_stride ==
+    stratum.stratum_index``.
+
+    ``population_size == 0`` -> ``()``. ``population_size < 0`` -> ``ValueError``
+    (a negative size is invalid, never silently coerced). ``population_size``
+    must equal the category's canonical population size so a large-category
+    stratum covers exactly its share; a size smaller than the stratum's own
+    ``population_count`` is caller error and is never silently truncated — the
+    intersection the stride rule can justify is returned. Pure; deterministic;
+    no RNG.
+    """
+    if population_size < 0:
+        raise ValueError("population_size must be non-negative")
+    if population_size == 0:
+        return ()
+    stride = stratum.stratum_stride
+    offset = stratum.stratum_offset
+    return tuple(
+        ordinal
+        for ordinal in range(1, population_size + 1)
+        if (ordinal - 1 + offset) % stride == stratum.stratum_index
+    )
+
+
 def build_strata(
     population: CanonicalPopulation,
     *,
     sample_strata: int = SAMPLE_STRATA,
     per_stratum_target: int = SAMPLE_PER_STRATUM,
     census_threshold: int = CENSUS_POPULATION_THRESHOLD,
+    sampling_rule_version: str = SAMPLING_RULE_VERSION,
 ) -> tuple[SamplingStratum, ...]:
-    """Return the ordinal strata for a population (LREQ-SMP-040/050/090).
+    """Systematic strata for a population (LREQ-SMP-040/050/090).
 
-    Census (``size <= census_threshold``): one stratum over ordinals ``1..N``
-    whose target is the full population, because every canonical asset is
-    selected (LREQ-SMP-040 `fully enriched`). Large: ``sample_strata`` contiguous
-    strata with ``start = floor(h*N/sample_strata)+1`` and
-    ``end = floor((h+1)*N/sample_strata)``; the final stratum receives any
-    remainder. An empty population yields ``()``.
+    Empty population -> ``()``. Census (``size <= census_threshold``): one
+    stratum with ``stratum_index = 0``, ``stratum_offset = 0``,
+    ``stratum_stride = 1``, ``population_count = size``,
+    ``selected_count = target_count = size``, and
+    ``is_reduced = (size < per_stratum_target)``. Large: ``S = sample_strata``
+    and ``offset = category_stratum_offset(population.category,
+    sampling_rule_version=sampling_rule_version)`` (always reduced modulo
+    ``SAMPLE_STRATA``); for ``h`` in ``0..S-1`` a stratum with
+    ``stratum_offset = offset``, ``stratum_stride = S``, and
+    ``population_count`` equal to the count of ``i`` in ``1..size`` with
+    ``(i - 1 + offset) mod S == h``. The sizes are therefore the
+    quotient/remainder distribution ``floor(N/S)`` or ``ceil(N/S)``.
 
-    ``is_reduced`` is ``True`` exactly when a stratum holds fewer than
-    ``SAMPLE_PER_STRATUM`` assets (LREQ-SMP-090). Raises ``ValueError`` when
-    ``sample_strata < 1`` or ``per_stratum_target < 1``; production callers use
-    the frozen defaults and never pass these parameters (LREQ-SMP-030).
+    Raises ``ValueError`` when ``sample_strata < 1`` or ``per_stratum_target
+    < 1``. Production callers use the frozen defaults and pass no overrides
+    except the version (LREQ-SMP-030). When ``sample_strata != SAMPLE_STRATA``
+    the stride differs but the offset is still reduced modulo ``SAMPLE_STRATA``
+    (A3) — a test-only override; a non-default ``sample_strata`` is never a
+    production path.
     """
     if sample_strata < 1:
         raise ValueError("sample_strata must be >= 1")
@@ -389,8 +466,8 @@ def build_strata(
         return (
             SamplingStratum(
                 stratum_index=0,
-                start_ordinal=1,
-                end_ordinal=size,
+                stratum_offset=0,
+                stratum_stride=1,
                 population_count=size,
                 selected_count=size,
                 target_count=size,
@@ -398,16 +475,21 @@ def build_strata(
             ),
         )
 
+    offset = category_stratum_offset(
+        population.category, sampling_rule_version=sampling_rule_version
+    )
     strata: list[SamplingStratum] = []
     for stratum_index in range(sample_strata):
-        start_ordinal = (stratum_index * size) // sample_strata + 1
-        end_ordinal = ((stratum_index + 1) * size) // sample_strata
-        population_count = end_ordinal - start_ordinal + 1
+        population_count = sum(
+            1
+            for ordinal in range(1, size + 1)
+            if (ordinal - 1 + offset) % sample_strata == stratum_index
+        )
         strata.append(
             SamplingStratum(
                 stratum_index=stratum_index,
-                start_ordinal=start_ordinal,
-                end_ordinal=end_ordinal,
+                stratum_offset=offset,
+                stratum_stride=sample_strata,
                 population_count=population_count,
                 selected_count=min(per_stratum_target, population_count),
                 target_count=per_stratum_target,
@@ -431,29 +513,30 @@ def select_stratum_members(
 ) -> tuple[SampledMember, ...]:
     """Select up to ``stratum.target_count`` members from ``stratum``.
 
-    Candidates are the population identities at 1-based ordinals
-    ``start_ordinal..end_ordinal``. Each is digested by :func:`selection_digest`;
-    candidates are sorted by ``(digest, asset_identity_key)`` and the first
+    Candidates are the population identities at the 1-based ordinals returned by
+    :func:`stratum_member_ordinals` for the canonical population size. Each is
+    digested by :func:`selection_digest`; candidates are sorted by
+    ``(digest, asset_identity_key)`` and the first
     ``min(target_count, population_count)`` are selected, ranked 1-based in that
     order (LREQ-SMP-060, LREQ-SMP-090). For a census population the target is the
     full stratum, so every canonical asset is selected (LREQ-SMP-040).
 
     Deterministic; no RNG and no clock. An empty stratum returns ``()``. The
-    returned members carry ``sample_is_census`` unchanged and never exceed
+    returned members carry ``stratum.stratum_offset`` / ``stratum.stratum_stride``
+    unchanged and ``sample_is_census`` unchanged, and never exceed
     ``stratum.target_count``.
     """
-    start_index = stratum.start_ordinal - 1
-    candidates = population.identity_keys[start_index : stratum.end_ordinal]
+    ordinals = stratum_member_ordinals(stratum, population.size)
     ranked = [
         (
             selection_digest(
                 population.category,
-                key,
+                population.identity_keys[ordinal - 1],
                 sampling_rule_version=sampling_rule_version,
             ),
-            key,
+            population.identity_keys[ordinal - 1],
         )
-        for key in candidates
+        for ordinal in ordinals
     ]
     ranked.sort(key=lambda item: (item[0], item[1]))
     limit = min(stratum.target_count, len(ranked))
@@ -463,8 +546,8 @@ def select_stratum_members(
             category=population.category,
             asset_identity_key=key,
             stratum_index=stratum.stratum_index,
-            stratum_start_ordinal=stratum.start_ordinal,
-            stratum_end_ordinal=stratum.end_ordinal,
+            stratum_offset=stratum.stratum_offset,
+            stratum_stride=stratum.stratum_stride,
             sample_rank_within_stratum=rank,
             sample_is_census=sample_is_census,
             selection_digest=digest,
@@ -504,7 +587,9 @@ def select_category_sample(
     population = build_canonical_population(records, category=category)
     discovered_population_count = population.size
     sample_is_census = discovered_population_count <= CENSUS_POPULATION_THRESHOLD
-    strata = build_strata(population)
+    strata = build_strata(
+        population, sampling_rule_version=sampling_rule_version
+    )
 
     members: list[SampledMember] = []
     for stratum in strata:
