@@ -65,7 +65,7 @@ min_categories_per_run = 8
 strong_reference_category_count = 21
 max_taxonomy_age_days = 30
 
-min_usable_samples_per_stratum = 5
+min_usable_samples_per_stratum = 1
 min_age_days_for_rate = 30
 recent_window_days = 365
 quality_min_rating_count = 5
@@ -113,7 +113,7 @@ DEFAULT_TOML_VALUES: dict[str, Any] = {
     "min_categories_per_run": 8,
     "strong_reference_category_count": 21,
     "max_taxonomy_age_days": 30,
-    "min_usable_samples_per_stratum": 5,
+    "min_usable_samples_per_stratum": 1,
     "min_age_days_for_rate": 30,
     "recent_window_days": 365,
     "quality_min_rating_count": 5,

@@ -914,10 +914,11 @@ def test_acceptance_sample_fraction_distinct_from_eligibility_coverage(
 ) -> None:
     """Sample fraction and stratum eligibility coverage are distinct measures.
 
-    The frozen Chunk 7B partial-coverage input gives
-    ``demand_stratum_eligibility_coverage = 75/100 = 0.75``, which is a population
-    weight, not the sampled fraction ``45/100 = 0.45``; the two values are
-    different numbers on the same category (SRS §7.2 LREQ-MET-060).
+    The frozen Chunk 7B partial-coverage input has four usable indices in
+    stratum 1 (``N_1 = 25``). At the default minimum 1 that stratum is usable,
+    so ``demand_stratum_eligibility_coverage = 75/100 + 25/100 = 1.0``, a
+    population weight, not the sampled fraction ``45/100 = 0.45``; the two
+    values are different numbers on the same category (SRS §7.2 LREQ-MET-060).
     """
     vector = afx.sample_fraction_vs_coverage_vector()
     result = compute_category_raw_metrics(

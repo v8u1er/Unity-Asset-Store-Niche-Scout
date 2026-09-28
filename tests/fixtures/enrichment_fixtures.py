@@ -319,11 +319,13 @@ FINALIZATION_SAMPLE = 6
 FINALIZATION_U_DEMAND = 4
 FINALIZATION_U_RECENT = 5
 FINALIZATION_U_QUALITY = 3
-FINALIZATION_USABLE_STATUS = "unavailable"
+FINALIZATION_USABLE_STATUS = "usable"
 FINALIZATION_MEMBERS: tuple[str, ...] = ("F1", "F2", "F3", "F4", "F5", "F6")
-#: The first unavailable classification in (stratum, rank) order is F4's null
-#: date, which dominates both the demand and quality fields; recent is usable.
-FINALIZATION_ELIGIBILITY_RULE = "demand=null;recent=usable:5;quality=null"
+#: F4's null date is the first unavailable classification in (stratum, rank)
+#: order, but at the default minimum 1 the demand count (4) and the quality
+#: count (3) still meet the inclusive floor, so every component is usable and
+#: the rule emits ``usable:<min>`` with the default minimum.
+FINALIZATION_ELIGIBILITY_RULE = "demand=usable:1;recent=usable:1;quality=usable:1"
 #: 100 days before the fixed cutoff: finite page views and >= MIN_AGE_DAYS_FOR_RATE.
 FINALIZATION_DATE_UTC = SCORING_CUTOFF_UTC - timedelta(days=100)
 #: A deliberate naive datetime (never persisted): the cutoff-rejection input.

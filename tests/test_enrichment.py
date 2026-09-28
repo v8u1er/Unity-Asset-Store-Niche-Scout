@@ -670,14 +670,15 @@ def test_finalize_explicit_zero_page_views_counts_toward_demand():
 def test_finalize_usable_status_and_eligibility_rule_present():
     """`usable_status` is explicit and the rule names each component's outcome."""
     final = _finalize(ef.finalization_category(), ef.finalization_observations())[0]
-    # Gate line 762: an explicit non-pending status plus a non-null rule. The
-    # quality count is 3 < MIN_USABLE, so its field names the first dominant
-    # unavailable reason (F4's missing date, first in rank order).
+    # Gate line 762: an explicit non-pending status plus a non-null rule. At the
+    # default minimum 1 the hand-computed counts (demand 4, recent 5, quality 3)
+    # all meet the inclusive floor, so every component is usable and the rule
+    # emits ``usable:<min>``; F4's missing date no longer dominates.
     assert final.usable_status == ef.FINALIZATION_USABLE_STATUS
     assert final.eligibility_rule == ef.FINALIZATION_ELIGIBILITY_RULE
     fields = dict(part.split("=", 1) for part in final.eligibility_rule.split(";"))
     assert set(fields) == {"demand", "recent", "quality"}
-    assert fields["quality"] == metrics.METRIC_REASON_NULL
+    assert fields["quality"] == f"usable:{MIN_USABLE_SAMPLES_PER_STRATUM}"
     assert fields["recent"] == f"usable:{MIN_USABLE_SAMPLES_PER_STRATUM}"
     assert all(
         value == f"usable:{MIN_USABLE_SAMPLES_PER_STRATUM}"
@@ -700,7 +701,7 @@ def test_finalize_usable_status_and_eligibility_rule_present():
     usable_final = _finalize(usable_category, usable_observations)[0]
     assert usable_final.usable_status == "usable"
     assert usable_final.eligibility_rule == (
-        "demand=usable:5;recent=usable:5;quality=usable:5"
+        "demand=usable:1;recent=usable:1;quality=usable:1"
     )
 
 
@@ -783,16 +784,17 @@ def test_finalize_category_counts_equal_sum_over_usable_strata(tmp_path):
             )
 
         # SRS §6.5: a category-level count sums u_*_h over only the strata that
-        # meet the minimum (5). The demand (4) and quality (3) strata do not, so
-        # those counts are a measured 0; recent (5) contributes 5.
+        # meet the minimum. At the default minimum 1 the demand (4), recent (5),
+        # and quality (3) counts all meet the inclusive floor, so each count is
+        # its stratum's u_*_h.
         assert final.usable_demand_sample_count == usable_sum(lambda e: e.u_demand_h)
         assert final.usable_recent_supply_sample_count == usable_sum(
             lambda e: e.u_recent_h
         )
         assert final.usable_quality_sample_count == usable_sum(lambda e: e.u_quality_h)
-        assert final.usable_demand_sample_count == 0
+        assert final.usable_demand_sample_count == ef.FINALIZATION_U_DEMAND
         assert final.usable_recent_supply_sample_count == ef.FINALIZATION_U_RECENT
-        assert final.usable_quality_sample_count == 0
+        assert final.usable_quality_sample_count == ef.FINALIZATION_U_QUALITY
     finally:
         repository.close()
 
@@ -818,14 +820,19 @@ def test_finalize_agrees_with_chunk7b_compute_category_raw_metrics(tmp_path):
             final.usable_recent_supply_sample_count
         )
         assert raw.usable_quality_sample_count == final.usable_quality_sample_count
-        # Hand-derived from SRS §6.5 and the plan §9 golden vectors: the demand
-        # (4) and quality (3) strata fall below the minimum 5 and contribute 0,
-        # while the recent (5) stratum is usable and contributes 5.
+        # Hand-derived from SRS §6.5 and the plan §9 golden vectors: at the
+        # default minimum 1 the demand (4), recent (5), and quality (3) counts
+        # all meet the inclusive floor, so each category sum is its stratum's
+        # u_*_h.
         assert (
             raw.usable_demand_sample_count,
             raw.usable_recent_supply_sample_count,
             raw.usable_quality_sample_count,
-        ) == (0, ef.FINALIZATION_U_RECENT, 0)
+        ) == (
+            ef.FINALIZATION_U_DEMAND,
+            ef.FINALIZATION_U_RECENT,
+            ef.FINALIZATION_U_QUALITY,
+        )
     finally:
         repository.close()
 
@@ -888,9 +895,9 @@ def test_assert_consistency_detects_injected_drift(tmp_path):
 def test_assert_consistency_clean_run_returns_no_mismatches(tmp_path):
     """An untouched finalized golden run passes every consistency check.
 
-    The canonical 4/5/3 golden category: demand (4) and quality (3) fall below
-    the minimum 5, so their category-level counts are a measured 0, while recent
-    (5) is usable and contributes 5 (SRS §6.5; plan §12 A3).
+    The canonical 4/5/3 golden category at the default minimum 1: demand (4),
+    recent (5), and quality (3) all meet the inclusive floor, so the
+    category-level counts are ``(4, 5, 3)`` (SRS §6.5; plan §12 A3).
     """
     run = ef.finalization_run()
     repository = _open(tmp_path)
@@ -903,7 +910,11 @@ def test_assert_consistency_clean_run_returns_no_mismatches(tmp_path):
             final.usable_demand_sample_count,
             final.usable_recent_supply_sample_count,
             final.usable_quality_sample_count,
-        ) == (0, ef.FINALIZATION_U_RECENT, 0)
+        ) == (
+            ef.FINALIZATION_U_DEMAND,
+            ef.FINALIZATION_U_RECENT,
+            ef.FINALIZATION_U_QUALITY,
+        )
         assert report.mismatches == ()
         assert _assert_consistency(repository, run, report) == ()
     finally:
@@ -919,10 +930,12 @@ def test_finalize_enrichment_non_default_policy_is_self_consistent(tmp_path):
     sums) with SRS §7.5 / LREQ-MET-090. On the seeded golden single-category run
     (``N_h = 10``, ``n_h = 6``, hand-computed 4/5/3 component counts):
 
-    * defaults (``M = 5``): demand 4 < 5, recent 5 >= 5, quality 3 < 5, so the
-      category sums are ``(0, 5, 0)``;
-    * ``min_usable_samples_per_stratum = 1``: every component's stratum is
-      usable, so ``(4, 5, 3)``;
+    * defaults (``M = 1``): demand 4 >= 1, recent 5 >= 1, quality 3 >= 1, so the
+      category sums are ``(4, 5, 3)``;
+    * ``min_usable_samples_per_stratum = 1`` (explicitly the default): every
+      component's stratum is usable, so ``(4, 5, 3)``;
+    * ``min_usable_samples_per_stratum = 5`` (the former default): demand 4 < 5
+      and quality 3 < 5, while recent 5 >= 5, so ``(0, 5, 0)``;
     * ``min_age_days_for_rate = 101``: the golden date is exactly 100 days
       before the cutoff, so every dated index is ``age_below_minimum`` and
       demand/quality drop to 0 while recent stays 5 -> ``(0, 5, 0)``.
@@ -944,7 +957,11 @@ def test_finalize_enrichment_non_default_policy_is_self_consistent(tmp_path):
             at_defaults.categories[0].usable_demand_sample_count,
             at_defaults.categories[0].usable_recent_supply_sample_count,
             at_defaults.categories[0].usable_quality_sample_count,
-        ) == (0, ef.FINALIZATION_U_RECENT, 0)
+        ) == (
+            ef.FINALIZATION_U_DEMAND,
+            ef.FINALIZATION_U_RECENT,
+            ef.FINALIZATION_U_QUALITY,
+        )
 
         min_one = _finalize_enrichment(
             repository, run, union, min_usable_samples_per_stratum=1
@@ -959,6 +976,16 @@ def test_finalize_enrichment_non_default_policy_is_self_consistent(tmp_path):
             ef.FINALIZATION_U_RECENT,
             ef.FINALIZATION_U_QUALITY,
         )
+
+        min_five = _finalize_enrichment(
+            repository, run, union, min_usable_samples_per_stratum=5
+        )
+        assert min_five.mismatches == ()
+        assert (
+            min_five.categories[0].usable_demand_sample_count,
+            min_five.categories[0].usable_recent_supply_sample_count,
+            min_five.categories[0].usable_quality_sample_count,
+        ) == (0, ef.FINALIZATION_U_RECENT, 0)
 
         older_rate = _finalize_enrichment(
             repository, run, union, min_age_days_for_rate=101
@@ -985,7 +1012,9 @@ def test_finalize_enrichment_rating_min_matches_seventh_b(tmp_path):
     Hand-computed ``u_quality_h`` (``rating_count >= minimum``): at
     ``quality_min_rating_count = 3`` the eligible set is Q2 (3), Q3 (4), Q4 (5),
     Q5 (7) -> 4; Q1 (2) stays below the minimum. At the default 5 only Q4 and Q5
-    are eligible -> 2, which is below ``M = 5`` and contributes a measured 0.
+    are eligible -> 2. The rating-minimum guard call pins
+    ``min_usable_samples_per_stratum = 5`` explicitly (the former default), so
+    ``2 < M = 5`` and it contributes a measured 0.
 
     With ``min_usable_samples_per_stratum = 1`` the override call must return
     and persist ``usable_quality_sample_count == 4`` and ``mismatches == ()``:
@@ -1012,10 +1041,12 @@ def test_finalize_enrichment_rating_min_matches_seventh_b(tmp_path):
         persisted = repository.get_category_scores(run.run_id)
         assert [row.usable_quality_sample_count for row in persisted] == [4]
 
-        # The default minimum 5 leaves Q4 and Q5 (2 < M = 5): a measured 0.
-        default = _finalize_enrichment(repository, run, union)
-        assert default.categories[0].usable_quality_sample_count == 0
-        assert default.mismatches == ()
+        # The minimum 5 leaves Q4 and Q5 (2 < M = 5): a measured 0.
+        floored = _finalize_enrichment(
+            repository, run, union, min_usable_samples_per_stratum=5
+        )
+        assert floored.categories[0].usable_quality_sample_count == 0
+        assert floored.mismatches == ()
     finally:
         repository.close()
 

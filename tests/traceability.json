@@ -1030,6 +1030,10 @@
     "LREQ-MET-080",
     "LREQ-MET-100"
   ],
+  "tests/test_metrics.py::test_default_min_usable_is_inclusive_at_one": [
+    "LREQ-MET-030",
+    "LREQ-SMP-030"
+  ],
   "tests/test_metrics.py::test_demand_coverage_is_distinct_from_sample_fraction": [
     "LREQ-MET-060",
     "LREQ-MET-030"

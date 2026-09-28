@@ -348,15 +348,16 @@ def unequal_stratum_quality_raw_vector() -> dict[str, Any]:
 # confused with ``sample_fraction``").
 #
 # The frozen Chunk 7B ``DEMAND_PARTIAL_COVERAGE`` fixture: stratum 0 (N_0 = 75)
-# is usable (5 usable indices plus 20 unusable) and stratum 1 (N_1 = 25) has only
-# 4 usable indices, below ``MIN_USABLE_SAMPLES_PER_STRATUM`` (5), so it is NOT
-# usable. ``demand_stratum_eligibility_coverage = N_0 / N = 75/100 = 0.75`` (the
-# unusable stratum's population weight is excluded, not zeroed). The sample
-# fraction is a different ratio entirely: 45 sampled rows / 100 discovered =
-# 0.45. The two numbers are distinct measures, not two spellings of one number.
+# has 5 usable indices and stratum 1 (N_1 = 25) has four. At the default
+# ``MIN_USABLE_SAMPLES_PER_STRATUM`` (1) stratum 1's four usable indices meet the
+# inclusive minimum, so both strata are usable and
+# ``demand_stratum_eligibility_coverage = N_0/N + N_1/N = 75/100 + 25/100 = 1.0``.
+# The sample fraction is a different ratio entirely: 45 sampled rows / 100
+# discovered = 0.45. The two numbers are distinct measures, not two spellings of
+# one number.
 
 SAMPLE_FRACTION_VS_COVERAGE_EXPECTED: dict[str, float] = {
-    "demand_stratum_eligibility_coverage": 0.75,
+    "demand_stratum_eligibility_coverage": 1.0,
     "sample_fraction": 0.45,
 }
 

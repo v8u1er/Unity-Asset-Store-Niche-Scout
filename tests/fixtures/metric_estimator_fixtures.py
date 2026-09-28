@@ -557,9 +557,10 @@ QUALITY_ZERO_VISIBILITY: CategoryMetricInput = make_category_input(
 # QUALITY_LOW_COVERAGE — plan §9.2, Q-3 (LREQ-MET-090)
 # ---------------------------------------------------------------------------
 #
-# Two strata: N_0 = 25 with 5 quality-eligible observations (usable), and
-# N_1 = 75 with only 4 quality-eligible observations (below
-# MIN_USABLE_SAMPLES_PER_STRATUM = 5, so not quality-usable). N = 100.
+# Two strata: N_0 = 25 with 5 quality-eligible observations (usable at any
+# floor <= 5), and N_1 = 75 with only 4 quality-eligible observations. The
+# consuming floor-branch tests pin ``min_usable_samples_per_stratum = 5``
+# explicitly, so stratum 1 (4 < 5) is not quality-usable. N = 100.
 #
 #   Total quality-eligible = 5 + 4 = 9 >= QUALITY_MIN_ELIGIBLE_ASSETS (5), so the
 #   eligible-set guard does not fire.
@@ -601,8 +602,8 @@ QUALITY_LOW_COVERAGE: CategoryMetricInput = make_category_input(
 # One stratum, N_h = 75, n_h = 4, all 4 observations quality-eligible.
 # Total quality-eligible = 4 < QUALITY_MIN_ELIGIBLE_ASSETS (5), so QualityRaw is
 # None (METRIC_REASON_ELIGIBLE_SET_TOO_SMALL, which precedes the no-usable-stratum
-# reason in the documented §5.3 order). The stratum is not quality-usable either
-# (4 < MIN_USABLE_SAMPLES_PER_STRATUM), but the eligible-set guard fires first.
+# reason in the documented §5.3 order). The stratum is below the former default
+# floor of 5 as well, but the eligible-set guard fires first.
 QUALITY_ELIGIBLE_SET_TOO_SMALL: CategoryMetricInput = make_category_input(
     (
         make_stratum(
@@ -644,8 +645,9 @@ SEMANTICS_CONTRADICTED: CategoryMetricInput = make_category_input(
 # DEMAND_NO_USABLE_STRATUM — plan §9.3 (LREQ-MET-030)
 # ---------------------------------------------------------------------------
 #
-# Two strata, N_0 = 75, N_1 = 25, n_0 = n_1 = 4; each has only 4 usable indices
-# (u_demand_h = 4 < MIN_USABLE_SAMPLES_PER_STRATUM = 5), so NO stratum is usable.
+# Two strata, N_0 = 75, N_1 = 25, n_0 = n_1 = 4; each has only 4 usable indices.
+# The consuming floor-branch test pins ``min_usable_samples_per_stratum = 5``
+# explicitly, so ``u_demand_h = 4 < 5`` and NO stratum is usable.
 #   Stratum 0 indices [1, 2, 3, 4] (views 10..40 / 10)
 #   Stratum 1 indices [10, 20, 30, 40] (views 100..400 / 10)
 # DemandPerAssetRaw is None (METRIC_REASON_NO_USABLE_STRATUM);
@@ -740,10 +742,12 @@ DEMAND_MEDIAN_EXACT_HALF: CategoryMetricInput = make_category_input(
 #
 # Stratum 0: N_0 = 75, n_0 = 25, 5 usable indices [1, 2, 3, 4, 5] (mean 3.0) and
 #   20 unusable -> usable, w_0 = 0.75.
-# Stratum 1: N_1 = 25, n_1 = 25, only 4 usable indices [10, 20, 30, 40] and 21
-#   unusable -> u_demand_1 = 4 < 5, NOT usable, w_1 excluded.
-# demand_stratum_eligibility_coverage = 0.75 (not 1.0).
-# DemandPerAssetRaw = (0.75 * 3.0) / 0.75 = 3.0, the renormalized usable mean.
+# Stratum 1: N_1 = 25, n_1 = 25, 4 usable indices [10, 20, 30, 40] and 21
+#   unusable -> u_demand_1 = 4, which meets the default minimum 1, so the
+#   stratum is usable at the default and w_1 = 0.25 contributes.
+# demand_stratum_eligibility_coverage = 0.75 + 0.25 = 1.0 at the default.
+# DemandPerAssetRaw at the default = (0.75 * 3.0 + 0.25 * 25.0) / 1.0 = 8.5,
+#   the population-weighted mean of the two usable stratum means.
 # DemandMedianRaw = weighted median of the 9 usable observations: weights 3.0
 #   (stratum 0) and 1.0 (stratum 1); T = 19, half = 9.5; cumulative 3, 6, 9, 12
 #   -> first value with cumulative >= 9.5 is 4.0.
@@ -862,8 +866,9 @@ DEMAND_INELIGIBLE_EXCLUDED: CategoryMetricInput = make_category_input(
 # ---------------------------------------------------------------------------
 #
 # N_0 = N_1 = 50, n_0 = n_1 = 25, N = 100.
-#   Stratum 0: only 4 usable dates (ages 10, 20, 30, 40) -> u_recent_0 = 4 < 5,
-#     so it is NOT usable for Recent Supply and contributes no weight.
+#   Stratum 0: 4 usable dates (ages 10, 20, 30, 40). The consuming floor-branch
+#     test pins ``min_usable_samples_per_stratum = 5`` explicitly, so
+#     u_recent_0 = 4 < 5 and the stratum is NOT usable for Recent Supply.
 #   Stratum 1: 5 usable dates (ages 10..50), all inside the inclusive 365-day
 #     window -> u_recent_1 = 5, usable, share_1 = 5/5 = 1.0.
 # RecentShareRaw = (0.5 * 1.0) / 0.5 = 1.0 (renormalized over the one usable

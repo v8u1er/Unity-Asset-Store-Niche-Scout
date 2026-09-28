@@ -234,7 +234,7 @@ REQUIRED_CONSTANTS: dict[str, object] = {
     "ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY": 100,
     "SAMPLE_STRATA": 4,
     "SAMPLE_PER_STRATUM": 25,
-    "MIN_USABLE_SAMPLES_PER_STRATUM": 5,
+    "MIN_USABLE_SAMPLES_PER_STRATUM": 1,
     "MIN_REQUIRED_COMPONENT_COVERAGE": 0.50,
     "STRONG_COMPONENT_COVERAGE": 0.80,
     "MIN_AGE_DAYS_FOR_RATE": 30,
@@ -562,7 +562,7 @@ def test_sampling_constants_contract() -> None:
     assert models.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY == 100
     assert models.SAMPLE_STRATA == 4
     assert models.SAMPLE_PER_STRATUM == 25
-    assert models.MIN_USABLE_SAMPLES_PER_STRATUM == 5
+    assert models.MIN_USABLE_SAMPLES_PER_STRATUM == 1
     assert (
         models.ENRICHMENT_SAMPLE_SIZE_PER_CATEGORY
         == models.SAMPLE_STRATA * models.SAMPLE_PER_STRATUM
@@ -573,6 +573,9 @@ def test_sampling_constants_contract() -> None:
     assert "sample_per_stratum" not in toml_body
     with pytest.raises(ValueError):
         load_config({"sample_strata": 8})
+    # The shipped default TOML mirrors the in-code default (chunk-25).
+    config = load_config(toml_path=ROOT / "config" / "default.toml")
+    assert config.min_usable_samples_per_stratum == 1
 
 
 @pytest.mark.lreq("LREQ-SMP-040")
@@ -786,7 +789,7 @@ def test_quality_workflow_contract() -> None:
 def test_formula_test_conventions() -> None:
     """The suite foundation supports normal, zero, missing, invalid, tie, and boundary cases."""
     boundary = models.MIN_USABLE_SAMPLES_PER_STRATUM
-    assert boundary == 5
+    assert boundary == 1
     assert boundary - 1 < boundary <= boundary
     assert models.MIN_REQUIRED_COMPONENT_COVERAGE == 0.50
     assert models.STRONG_COMPONENT_COVERAGE == 0.80

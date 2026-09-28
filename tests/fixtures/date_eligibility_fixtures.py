@@ -250,14 +250,15 @@ RECENT_WINDOW_NON_FINITE_VECTORS: tuple[float, ...] = (
     float("nan"),
 )
 
-#: ``(usable_observation_count, expected usability)`` at the default minimum 5;
-#: the boundary is inclusive (SRS-lean.md §7.2, LREQ-MET-030).
+#: ``(usable_observation_count, expected usability)`` at the default minimum 1;
+#: the boundary is inclusive (SRS-lean.md §7.2, LREQ-MET-030): ``u_h == 0`` is
+#: unusable, and every ``u_h >= 1`` is usable.
 STRATUM_USABLE_VECTORS: tuple[tuple[int, bool], ...] = (
     (0, False),
-    (1, False),
-    (2, False),
-    (3, False),
-    (4, False),
+    (1, True),
+    (2, True),
+    (3, True),
+    (4, True),
     (5, True),
     (6, True),
 )

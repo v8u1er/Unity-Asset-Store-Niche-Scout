@@ -159,13 +159,17 @@ def test_demand_per_asset_uses_population_weighted_means() -> None:
 def test_demand_per_asset_null_when_no_usable_stratum() -> None:
     """``u_demand_h < 5`` in every stratum is null, not a zero (LREQ-MET-030).
 
-    In ``mfx.DEMAND_NO_USABLE_STRATUM`` each stratum has only 4 usable indices
-    (``u_demand_h = 4 < MIN_USABLE_SAMPLES_PER_STRATUM = 5``), so no stratum is
-    usable. SRS §7.2 / LREQ-MET-030: ``DemandPerAssetRaw`` is null when no stratum
-    has at least the usable minimum, and plan §5.1 gives that outcome the reason
+    In ``mfx.DEMAND_NO_USABLE_STRATUM`` each stratum has only 4 usable indices.
+    This floor branch pins ``min_usable_samples_per_stratum = 5`` explicitly, so
+    ``u_demand_h = 4 < 5`` and no stratum is usable. SRS §7.2 / LREQ-MET-030:
+    ``DemandPerAssetRaw`` is null when no stratum has at least the usable
+    minimum, and plan §5.1 gives that outcome the reason
     ``METRIC_REASON_NO_USABLE_STRATUM``.
     """
-    result = m.demand_per_asset_raw(mfx.DEMAND_NO_USABLE_STRATUM)
+    floored = dataclasses.replace(
+        mfx.DEMAND_NO_USABLE_STRATUM, min_usable_samples_per_stratum=5
+    )
+    result = m.demand_per_asset_raw(floored)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_NO_USABLE_STRATUM
 
@@ -245,24 +249,49 @@ def test_demand_coverage_sums_usable_stratum_weights() -> None:
 
     SRS §7.2 / LREQ-MET-060. In ``mfx.DEMAND_UNEQUAL_STRATA`` both strata are
     usable, so coverage is ``75 / 100 + 25 / 100 = 0.75 + 0.25 = 1.0``. In
-    ``mfx.DEMAND_PARTIAL_COVERAGE`` (plan §9.3) stratum 1 has ``u_demand_1 = 4 <
-    5`` and is therefore not usable; its population weight is excluded rather
-    than zeroed, leaving ``N_0 / N = 75 / 100 = 0.75``. Only stratum 0
-    contributes to the aggregate ``usable_demand_sample_count``, which is
-    ``u_demand_0 = 5`` (plan §5.2 / SRS §6.5: observations contributing to
-    strata that satisfy the applicable usable minimum).
+    ``mfx.DEMAND_PARTIAL_COVERAGE`` (plan §9.3) stratum 1 has ``u_demand_1 = 4``,
+    which meets the default usable minimum 1, so it is usable: coverage is
+    ``75 / 100 + 25 / 100 = 1.0`` and the aggregate
+    ``usable_demand_sample_count`` is ``5 + 4 = 9`` (plan §5.2 / SRS §6.5:
+    observations contributing to strata that satisfy the applicable usable
+    minimum). A below-minimum stratum's population weight is excluded rather
+    than zeroed; the §4.3 floor branch pins the minimum at 5 to exercise that.
     """
     assert m.demand_stratum_eligibility_coverage(
         mfx.DEMAND_UNEQUAL_STRATA
     ) == pytest.approx(1.0, abs=1e-9)
     assert m.demand_stratum_eligibility_coverage(
         mfx.DEMAND_PARTIAL_COVERAGE
-    ) == pytest.approx(0.75, abs=1e-9)
+    ) == pytest.approx(1.0, abs=1e-9)
     aggregate = m.compute_category_raw_metrics(
         mfx.DEMAND_PARTIAL_COVERAGE,
         mfx.make_breadth_input(None, 0),
     )
-    assert aggregate.usable_demand_sample_count == 5
+    assert aggregate.usable_demand_sample_count == 9
+
+
+@pytest.mark.lreq("LREQ-MET-030")
+@pytest.mark.lreq("LREQ-SMP-030")
+def test_default_min_usable_is_inclusive_at_one() -> None:
+    """At the module default, one usable observation makes a stratum usable.
+
+    SRS §5.1 / LREQ-SMP-030 sets the default
+    ``MIN_USABLE_SAMPLES_PER_STRATUM = 1``, and SRS §7.2 / LREQ-MET-030 makes
+    the floor inclusive: ``u_h >= 1`` is usable while ``u_h == 0`` stays
+    unusable. ``mfx.DEMAND_PARTIAL_COVERAGE`` has 5 usable indices in stratum 0
+    (``N_0 = 75``) and 4 in stratum 1 (``N_1 = 25``), so at the default both
+    strata are usable: ``demand_stratum_eligibility_coverage =
+    75 / 100 + 25 / 100 = 1.0`` and ``usable_demand_sample_count = 5 + 4 = 9``.
+    """
+    assert m.stratum_is_usable(1) is True
+    assert m.stratum_is_usable(0) is False
+    coverage = m.demand_stratum_eligibility_coverage(mfx.DEMAND_PARTIAL_COVERAGE)
+    assert coverage == pytest.approx(1.0, abs=1e-9)
+    aggregate = m.compute_category_raw_metrics(
+        mfx.DEMAND_PARTIAL_COVERAGE,
+        mfx.make_breadth_input(None, 0),
+    )
+    assert aggregate.usable_demand_sample_count == 9
 
 
 @pytest.mark.lreq("LREQ-MET-060")
@@ -420,27 +449,29 @@ def test_recent_supply_usability_minimum_boundary() -> None:
     """A stratum needs ``u_recent_h >= 5``; four usable dates is not usable.
 
     SRS §7.4 / LREQ-MET-080 with the usable minimum of SRS §7.2 /
-    LREQ-MET-030 (``MIN_USABLE_SAMPLES_PER_STRATUM = 5``). In
-    ``mfx.RECENT_USABILITY_BOUNDARY`` the population is ``N_0 = N_1 = 50``,
-    ``N = 100``: stratum 0 has ``u_recent_0 = 4`` (ages ``10, 20, 30, 40``) and
-    is excluded; stratum 1 has ``u_recent_1 = 5`` (ages ``10..50``, all inside
-    the window) and is usable with ``share_1 = 5 / 5 = 1.0``. The raw value
-    renormalizes over the one usable stratum: ``(0.5 * 1.0) / 0.5 = 1.0``,
-    while coverage is ``N_1 / N = 50 / 100 = 0.5`` (the excluded stratum's
-    population weight is dropped, never zeroed).
+    LREQ-MET-030. This floor branch pins ``min_usable_samples_per_stratum = 5``
+    explicitly (the former default). In ``mfx.RECENT_USABILITY_BOUNDARY`` the
+    population is ``N_0 = N_1 = 50``, ``N = 100``: stratum 0 has
+    ``u_recent_0 = 4`` (ages ``10, 20, 30, 40``) and is excluded; stratum 1 has
+    ``u_recent_1 = 5`` (ages ``10..50``, all inside the window) and is usable
+    with ``share_1 = 5 / 5 = 1.0``. The raw value renormalizes over the one
+    usable stratum: ``(0.5 * 1.0) / 0.5 = 1.0``, while coverage is
+    ``N_1 / N = 50 / 100 = 0.5`` (the excluded stratum's population weight is
+    dropped, never zeroed).
 
     SRS §7.4 also defines ``usable_recent_supply_sample_count`` as the sum of
     usable dated observations in those usable strata, so only stratum 1's
     ``u_recent_1 = 5`` counts (stratum 0's four usable dates do not).
     """
-    result = m.recent_share_raw(mfx.RECENT_USABILITY_BOUNDARY)
-    assert result.value == pytest.approx(1.0, abs=1e-9)
-    coverage = m.recent_supply_stratum_eligibility_coverage(
-        mfx.RECENT_USABILITY_BOUNDARY
+    boundary_input = dataclasses.replace(
+        mfx.RECENT_USABILITY_BOUNDARY, min_usable_samples_per_stratum=5
     )
+    result = m.recent_share_raw(boundary_input)
+    assert result.value == pytest.approx(1.0, abs=1e-9)
+    coverage = m.recent_supply_stratum_eligibility_coverage(boundary_input)
     assert coverage == pytest.approx(0.5, abs=1e-9)
     aggregate = m.compute_category_raw_metrics(
-        mfx.RECENT_USABILITY_BOUNDARY,
+        boundary_input,
         mfx.make_breadth_input(None, 0),
     )
     assert aggregate.usable_recent_supply_sample_count == 5
@@ -630,23 +661,27 @@ def test_quality_eligible_set_too_small_is_null() -> None:
     assert result.eligible_population_count == 0
     # Plan §4.4 / §7.2: a locally-built NO_USABLE_STRATUM input with two
     # strata of 3 quality-eligible observations each. Total eligible is
-    # 6 >= 5 so the eligible-set guard does not fire, but 3 <
-    # MIN_USABLE_SAMPLES_PER_STRATUM (5) so neither stratum is quality-usable
-    # and both counts stay the true zero.
-    no_usable_stratum_input = mfx.make_category_input(
-        (
-            mfx.make_stratum(
-                0,
-                50,
-                (mfx.make_observation(),) * 3,
+    # 6 >= 5 so the eligible-set guard does not fire, but this floor branch pins
+    # ``min_usable_samples_per_stratum = 5`` explicitly (the former default), so
+    # 3 < 5 and neither stratum is quality-usable and both counts stay the true
+    # zero.
+    no_usable_stratum_input = dataclasses.replace(
+        mfx.make_category_input(
+            (
+                mfx.make_stratum(
+                    0,
+                    50,
+                    (mfx.make_observation(),) * 3,
+                ),
+                mfx.make_stratum(
+                    1,
+                    50,
+                    (mfx.make_observation(),) * 3,
+                ),
             ),
-            mfx.make_stratum(
-                1,
-                50,
-                (mfx.make_observation(),) * 3,
-            ),
+            category="no-usable-quality-stratum",
         ),
-        category="no-usable-quality-stratum",
+        min_usable_samples_per_stratum=5,
     )
     no_usable_stratum = m.quality_raw(no_usable_stratum_input)
     assert no_usable_stratum.unavailable_reason == m.METRIC_REASON_NO_USABLE_STRATUM
@@ -662,14 +697,19 @@ def test_quality_raw_null_below_required_coverage() -> None:
     reach ``MIN_REQUIRED_COMPONENT_COVERAGE = 0.50`` or ``QualityRaw`` is null
     with ``METRIC_REASON_INSUFFICIENT_COVERAGE``. In
     ``mfx.QUALITY_LOW_COVERAGE`` stratum 0 (``N_0 = 25``, 5 eligible) is
-    quality-usable and stratum 1 (``N_1 = 75``, 4 eligible < 5) is not, so the
-    coverage is the population weight ``25 / 100 = 0.25``, below the required
-    ``0.50``. The total eligible set is ``5 + 4 = 9 >= 5``, so only the
+    quality-usable and stratum 1 (``N_1 = 75``, 4 eligible) is not. This floor
+    branch pins ``min_usable_samples_per_stratum = 5`` explicitly (the former
+    default), so stratum 1's 4 eligible observations stay below the floor and
+    the coverage is the population weight ``25 / 100 = 0.25``, below the
+    required ``0.50``. The total eligible set is ``5 + 4 = 9 >= 5``, so only the
     coverage guard fires.
     """
-    result = m.quality_raw(mfx.QUALITY_LOW_COVERAGE)
+    low_coverage_input = dataclasses.replace(
+        mfx.QUALITY_LOW_COVERAGE, min_usable_samples_per_stratum=5
+    )
+    result = m.quality_raw(low_coverage_input)
     assert m.quality_stratum_eligibility_coverage(
-        mfx.QUALITY_LOW_COVERAGE
+        low_coverage_input
     ) == pytest.approx(0.25, abs=1e-9)
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_INSUFFICIENT_COVERAGE
@@ -680,7 +720,7 @@ def test_quality_raw_null_below_required_coverage() -> None:
     assert result.usable_sample_count == 5
     assert result.eligible_population_count == 25
     aggregate = m.compute_category_raw_metrics(
-        mfx.QUALITY_LOW_COVERAGE,
+        low_coverage_input,
         mfx.make_breadth_input(None, 100),
     )
     assert aggregate.usable_quality_sample_count == 5
@@ -712,14 +752,19 @@ def test_quality_coverage_not_renormalized() -> None:
 
     SRS §7.5 / LREQ-MET-090: ``quality_stratum_eligibility_coverage`` is
     ``sum(N_h / N)`` over the quality-usable strata — it is neither
-    ``eligible / total_eligible`` nor renormalized to the usable subset. In
-    ``mfx.QUALITY_LOW_COVERAGE`` only stratum 0 is usable, so coverage is
-    ``N_0 / N = 25 / 100 = 0.25`` while the naive count fraction would be
-    ``5 / 9 = 0.5555...`` (the 5 eligible observations of stratum 0 over the
-    9 eligible observations in total). ``mfx.QUALITY_UNEQUAL_STRATA`` has both
-    strata usable, so coverage is ``50 / 100 + 50 / 100 = 1.0``.
+    ``eligible / total_eligible`` nor renormalized to the usable subset. This
+    floor branch pins ``min_usable_samples_per_stratum = 5`` explicitly (the
+    former default) on ``mfx.QUALITY_LOW_COVERAGE``, so only stratum 0 is
+    usable: coverage is ``N_0 / N = 25 / 100 = 0.25`` while the naive count
+    fraction would be ``5 / 9 = 0.5555...`` (the 5 eligible observations of
+    stratum 0 over the 9 eligible observations in total).
+    ``mfx.QUALITY_UNEQUAL_STRATA`` has both strata usable, so coverage is
+    ``50 / 100 + 50 / 100 = 1.0``.
     """
-    low_coverage = m.quality_stratum_eligibility_coverage(mfx.QUALITY_LOW_COVERAGE)
+    low_coverage_input = dataclasses.replace(
+        mfx.QUALITY_LOW_COVERAGE, min_usable_samples_per_stratum=5
+    )
+    low_coverage = m.quality_stratum_eligibility_coverage(low_coverage_input)
     assert low_coverage == pytest.approx(0.25, abs=1e-9)
     assert abs(low_coverage - 5 / 9) > 1e-9
     full_coverage = m.quality_stratum_eligibility_coverage(mfx.QUALITY_UNEQUAL_STRATA)
