@@ -124,3 +124,19 @@ evidence grades, and rankability — a different test class and golden-vector se
   remains recoverable from `raw_discovery_observations.discovery_ordinal`.
 - **A3 — offset derivation.** `offset = int.from_bytes(sha256(utf8(sampling_rule_version + NUL
   + category)).digest()[:8], "big") mod SAMPLE_STRATA`; deterministic, no RNG, persisted.
+
+### Operator answers to plan open questions (2026-09-28) — "go with recommendations"
+
+Plan `Documents/plans/chunk-24-systematic-strata.md` §11 had six open questions; the
+operator accepted the lead's recommendations for all six:
+
+- **OQ-1:** census encodes as `stratum_offset = 0`, `stratum_stride = 1`.
+- **OQ-2:** `SAMPLING_RULE_VERSION = "2.0.0"`.
+- **OQ-3:** the offset is always reduced `mod SAMPLE_STRATA`; a non-default `sample_strata`
+  argument is test-only and does not change the offset modulus.
+- **OQ-4:** follow the real `tests/traceability.json` (keyed node ID → LREQ list); do not edit
+  `tests/AGENTS.md` (pre-existing doc bug, out of scope).
+- **OQ-5:** add an SRS revision-history row (next label `Lean 1.0.2`).
+- **OQ-6:** `LREQ-SMP-070` is covered by a structural membership assertion (every stratum's
+  ordinals intersect the first-page, middle, and last-page ranges); no quantitative span
+  threshold.

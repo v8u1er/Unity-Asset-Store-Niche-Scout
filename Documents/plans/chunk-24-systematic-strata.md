@@ -1,6 +1,6 @@
 # Chunk 24 — Systematic (interleaved) strata sampling-rule revision
 
-Status: DRAFT (planning; freeze blocked on the open questions in §10)
+Status: FROZEN (operator answered all open questions 2026-09-28; see §11)
 Chunk id: `chunk-24` (remediation chunk; no §3/§4 dependency-map row — chunk-14/23 precedent).
 Run log: `Documents/runs/chunk-24.md`. Operator authorization: run log §"Operator
 authorization" (2026-09-28) and §"Design decision" D1/D3; answers A1–A3 at run log
@@ -119,7 +119,8 @@ assets selected, `selected_count = target_count = N`, `sample_is_census = True`,
 `sample_fraction = 1.0`. Its geometry is encoded as
 `stratum_offset = 0`, `stratum_stride = 1`, so `stratum_member_ordinals` returns
 `1..N` (every `i` satisfies `(i-1+0) mod 1 == 0`). `is_reduced = (N < 25)`
-(`LREQ-SMP-090`), unchanged. See OQ-1.
+(`LREQ-SMP-090`), unchanged. The census encoding is frozen: `stratum_offset = 0`,
+`stratum_stride = 1` (OQ-1, §11).
 
 ---
 
@@ -129,7 +130,7 @@ assets selected, `selected_count = target_count = N`, `sample_is_census = True`,
 
 | Constant | File:line | Current | New |
 |---|---|---|---|
-| `SAMPLING_RULE_VERSION` | `models.py:27` | `"1.0.0"` | `"2.0.0"` (proposed — OQ-2) |
+| `SAMPLING_RULE_VERSION` | `models.py:27` | `"1.0.0"` | `"2.0.0"` (frozen, OQ-2) |
 | `SCHEMA_VERSION` | `database.py:54` | `"1.1.0"` | `"1.2.0"` |
 
 `config.py` reads both from `models` (`config.py:35,93`); no config edit is required.
@@ -208,6 +209,7 @@ are the **current** pre-edit lines (read this session).
 | S5 | §5.1 — `LREQ-SMP-080` | 473 | "stratum boundaries" → "stratum geometry (offset and stride)". |
 | S6 | §6.3 `sample_members` field list | 561–562 | Replace `stratum_start_ordinal, stratum_end_ordinal` with `stratum_offset, stratum_stride`. |
 | S7 | §14 Configuration reference — `SAMPLE_STRATA` row | 1289 | Purpose "Ordinal strata count." → note it is the systematic stride. Do **not** edit line 1291 (`MIN_USABLE… = 5`) — that is chunk-25/D2. |
+| S8 | §14 revision history (table under §Revision history) | 14–20 | Add a row labeled `Lean 1.0.2` describing the systematic (interleaved) partition revision, the `(offset, stride)` representation, and the `SAMPLING_RULE_VERSION 2.0.0` bump (OQ-5, §11). |
 
 Not edited: §5.1 line 436 (`MIN_USABLE_SAMPLES_PER_STRATUM = 5`) and §14 line 1291
 (chunk-25). §6.5 line 602 (`stratum_statistics_json`) needs no SRS text change: the
@@ -311,7 +313,7 @@ def build_strata(
     Production callers use the frozen defaults and pass no overrides except the
     version (LREQ-SMP-030). Note: when sample_strata != SAMPLE_STRATA the stride
     differs but the offset is still reduced mod SAMPLE_STRATA (A3) — test-only
-    override, see OQ-3.
+    override; non-default sample_strata is never a production path.
     """
 ```
 
@@ -368,8 +370,9 @@ otherwise unchanged (census/fraction/basis semantics `sampling.py:481–542`).
 `"tests/test_contracts.py::test_census_model_contract": ["LREQ-SMP-040"]`). This
 **contradicts** `tests/AGENTS.md`, which says the file is keyed by LREQ ID with an
 array of node IDs. The top-level `AGENTS.md` "key = test node ID" matches the file.
-Flagged OQ-4; the implementer must follow whatever
-`python -m niche_scout.tools.validate_traceability` accepts.
+Frozen (OQ-4, §11): follow the real `tests/traceability.json` (node ID → LREQ list);
+do not edit `tests/AGENTS.md`. The implementer must also keep
+`python -m niche_scout.tools.validate_traceability` passing.
 
 ### 7.2 Node-ID that must be renamed (read)
 
@@ -428,6 +431,13 @@ count into a frozen artifact without the anchored enumeration.
   `tests/fixtures/report_fixtures.py`, `tests/fixtures/enrichment_fixtures.py`
   (see §8).
 
+### 7.5 `LREQ-SMP-070` structural membership test (OQ-6, §11)
+
+The partition is covered by a structural membership assertion, never a span threshold:
+for a large fixture population, each of the four strata's member ordinals must
+intersect the first-page, middle, and last-page ranges of the ordinal axis. No
+minimum ordinal span or quantitative threshold is asserted.
+
 ---
 
 ## 8. Golden vectors / fixtures re-baseline list
@@ -469,7 +479,7 @@ count into a frozen artifact without the anchored enumeration.
    new pure result.
 
 `SCHEMA_VERSION` / version-string assertions elsewhere (grep `1.1.0`, `1.0.0` in
-`tests/`) are re-baselined to `1.2.0` / the value chosen in OQ-2.
+`tests/`) are re-baselined to `1.2.0` / `"2.0.0"` (frozen, OQ-2).
 
 ---
 
@@ -488,14 +498,16 @@ remediation chunk:
 - [ ] Repeated selection is identical; changing `SAMPLING_RULE_VERSION` changes both
       the offset and the digest/selection; no RNG, no clock.
 - [ ] Early/middle/late discovery positions are represented by every stratum
-      (`LREQ-SMP-070`).
+      (`LREQ-SMP-070`): a structural membership assertion shows each stratum's ordinals
+      intersect the first-page, middle, and last-page ranges; no quantitative span
+      threshold is required (OQ-6, §11).
 - [ ] `sample_fraction` remains distinct from stratum eligibility coverage.
 - [ ] Every selected sample has a persisted membership with a reproducible digest; the
       `(offset, stride)` geometry survives a SQLite round trip; `stratum_statistics_json`
       carries exactly the renamed ten-key set.
 - [ ] `verify_persisted_sampling` compares `stratum_offset`/`stratum_stride` and still
       returns `mismatches == ()` for a re-materialized run.
-- [ ] `SCHEMA_VERSION == "1.2.0"`; `SAMPLING_RULE_VERSION` is the OQ-2 value; a stale
+- [ ] `SCHEMA_VERSION == "1.2.0"`; `SAMPLING_RULE_VERSION == "2.0.0"`; a stale
       `1.1.0` database is rejected by the existing create-schema guard.
 - [ ] `sampling.py` and `metrics.py`/`scoring.py` remain pure:
       `python -m niche_scout.tools.check_import_boundaries` → exit 0.
@@ -506,7 +518,7 @@ remediation chunk:
       touched files (per `pyproject.toml`).
 - [ ] No file outside §"Files touched" below changed; no `MIN_USABLE`/coverage/evidence
       value touched (chunk-25 boundary held); no out-of-scope feature added.
-- [ ] SRS edits S1–S7 applied textually and the interface deltas of §5 recorded, each
+- [ ] SRS edits S1–S8 applied textually and the interface deltas of §5 recorded, each
       naming `chunk-24`.
 
 Gate end state: `Documents/runs/chunk-24.md` records `GATE: PASSED` with real command
@@ -540,38 +552,26 @@ Not touched: `config.py`, `config/default.toml`, `metrics.py`, `scoring.py`,
 
 ---
 
-## 11. Open questions
+## 11. Resolved questions (operator, 2026-09-28)
 
-Resolve none of these here; the plan stays DRAFT until the operator/lead answers.
+All six open questions were answered by the operator on 2026-09-28; each answer is
+frozen and is applied throughout this plan.
 
-1. **OQ-1 — census stratum `(offset, stride)` encoding.** The SRS (SRS-lean.md:459,
-   507–508) says census is "one stratum containing ordinals `1..N`" and is silent on
-   encoding it as `(offset, stride)`. A2 requires the two keys in
-   `stratum_statistics_json` and in `sample_members`. Proposed: census
+1. **OQ-1 — census stratum `(offset, stride)` encoding.** Frozen: census
    `stratum_offset = 0`, `stratum_stride = 1` (the only stride under
-   `(i-1+offset) mod stride == 0` that reproduces all ordinals). Options: (a) proposed
-   0/1; (b) persist `stratum_stride = SAMPLE_STRATA` with census membership defined
-   only by `sample_is_census`; (c) NULL for census (requires relaxing `NOT NULL`). The
-   test vectors in §8.1 depend on the choice.
-2. **OQ-2 — exact `SAMPLING_RULE_VERSION` value.** The decisions say "bump" but do not
-   fix the string, and §2.2 makes the string an input to every offset, so every offset
-   and selection golden vector depends on it. Proposed `"2.0.0"` (behaviour-breaking
-   partition change). Confirm or supply the value before test-author writes vectors.
-   The same string must be used in `models.py`, the SRS edit S2/S3, and every fixture.
-3. **OQ-3 — `build_strata(sample_strata=…)` override interaction.** `LREQ-SMP-030`
-   makes `SAMPLE_STRATA` non-configurable in production; the existing parameter exists
-   only for tests (`sampling.py:361,379–380`). A3 fixes the offset modulus to
-   `SAMPLE_STRATA`. Confirm the offset stays `mod SAMPLE_STRATA` even when a test passes
-   a different `sample_strata` (proposed), or state that non-default `sample_strata`
-   must also change the offset modulus.
-4. **OQ-4 — traceability key direction.** `tests/AGENTS.md` and top-level `AGENTS.md`
-   disagree on whether `tests/traceability.json` is keyed by node ID or by LREQ ID; the
-   file is keyed by node ID (read, `tests/traceability.json:372–380`). Which document
-   is authoritative for the chunk-24 edits?
-5. **OQ-5 — SRS revision-history entry.** SRS-lean.md:14–20 is a revision table
-   (latest "Lean 1.0.1"). Confirm whether S2–S7 require a new revision-history row and
-   a version label, or whether the §5.1 sampling-rule-version bump alone is sufficient.
-6. **OQ-6 — `LREQ-SMP-070` wording.** Confirm the added "systematic partition satisfies
-   early/middle/late" clause (S4) does not need a quantitative test (e.g. each stratum's
-   min/max ordinal span) beyond the existing `LREQ-SMP-070` assertions; the plan
-   proposes a structural membership assertion only.
+   `(i-1+offset) mod stride == 0` that reproduces all ordinals). Applies to
+   `SamplingStratum`, `SampledMember`, `sample_members`, and §8.1.
+2. **OQ-2 — exact `SAMPLING_RULE_VERSION` value.** Frozen:
+   `SAMPLING_RULE_VERSION = "2.0.0"` in `models.py`, SRS edits S2/S3, and every
+   fixture/golden vector.
+3. **OQ-3 — `build_strata(sample_strata=…)` override interaction.** Frozen: the offset
+   is always `mod SAMPLE_STRATA` (A3); a non-default `sample_strata` is a test-only
+   override and never a production path (`LREQ-SMP-030`).
+4. **OQ-4 — traceability key direction.** Frozen: follow the real
+   `tests/traceability.json` (keyed by pytest node ID → list of LREQ IDs). Do not edit
+   `tests/AGENTS.md`.
+5. **OQ-5 — SRS revision-history entry.** Frozen: add an SRS revision-history row
+   labeled `Lean 1.0.2` (edit S8, §4).
+6. **OQ-6 — `LREQ-SMP-070` wording.** Frozen: covered by a structural membership
+   assertion — each stratum's ordinals intersect the first-page, middle, and last-page
+   ranges (§7.5, §9) — with no quantitative span threshold.
