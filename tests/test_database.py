@@ -347,6 +347,7 @@ def _full_category_score(**overrides: Any) -> models.CategoryScoreRecord:
         "sensitivity_warning": None,
         "ranking_sensitivity_json": json.dumps({"balanced": {"D": 0.35}}),
         "computed_at_utc": _iso(6),
+        "discovery_failure_cause_json": None,
     }
     payload.update(overrides)
     return models.CategoryScoreRecord(**payload)

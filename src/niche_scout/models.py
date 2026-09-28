@@ -507,6 +507,12 @@ class CategoryScoreRecord(_UtcRecord):
     sensitivity_warning: bool | None
     ranking_sensitivity_json: str
     computed_at_utc: datetime
+    #: Canonical, redacted category-level discovery failure cause, or ``None``.
+    #: Added last (Chunk 23, ``SCHEMA_VERSION`` "1.1.0") so the column-order parity
+    #: ``TABLE_COLUMNS == MANDATORY_ROW_FIELDS`` holds. It carries only the four
+    #: redacted scalars ``failure_class``/``http_status``/``page_index``/
+    #: ``attempt_count`` and is never ``""`` or ``"{}"`` (LREQ-SEC-020).
+    discovery_failure_cause_json: str | None = None
 
     def __post_init__(self) -> None:
         self._validate_utc_fields()

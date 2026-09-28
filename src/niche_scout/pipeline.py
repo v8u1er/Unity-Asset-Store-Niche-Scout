@@ -36,6 +36,8 @@ from niche_scout.collector_coveo import (
     CategoryDiscoveryResult,
     CoveoObservationSink,
     CoveoRateLimiter,
+    CoveoTransportFailureClass,
+    _failure_cause_json,
     discover_category,
 )
 from niche_scout.collector_graphql import (
@@ -2931,14 +2933,20 @@ def _discover_all(
                 category,
                 type(exc).__name__,
             )
+            result = _failed_discovery_result(category)
             with repository.transaction():
                 repository.set_category_status(
                     run_id,
                     category,
                     DiscoveryStatus.REQUEST_FAILED.value,
                     computed_at_utc=clock(),
+                    discovery_failure_cause_json=_failure_cause_json(
+                        failure_class=CoveoTransportFailureClass.HTTP_PERMANENT.value,
+                        http_status=None,
+                        page_index=0,
+                        attempt_count=1,
+                    ),
                 )
-            result = _failed_discovery_result(category)
         results[category] = result
         _log_discovery_outcome(result)
     return results
@@ -3011,6 +3019,12 @@ def _persist_failure_limitation_rows(
                 category,
                 discovery.discovery_status.value,
                 computed_at_utc=clock(),
+                discovery_failure_cause_json=_failure_cause_json(
+                    failure_class=CoveoTransportFailureClass.HTTP_PERMANENT.value,
+                    http_status=None,
+                    page_index=0,
+                    attempt_count=1,
+                ),
             )
             base = next(
                 (

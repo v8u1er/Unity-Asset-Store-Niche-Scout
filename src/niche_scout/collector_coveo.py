@@ -47,6 +47,7 @@ from collections.abc import Callable, Container, Iterator, Mapping, MutableMappi
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -102,6 +103,7 @@ __all__ = [
     "CoveoRequestFailed",
     "CoveoTaxonomyInvalid",
     "CoveoTransport",
+    "CoveoTransportFailureClass",
     "CoveoUrlOpener",
     "build_coveo_headers",
     "build_coveo_request_body",
@@ -404,8 +406,47 @@ class CoveoDiscoveryError(RuntimeError):
     """Base class for every Coveo discovery failure."""
 
 
+class CoveoTransportFailureClass(str, Enum):
+    """The terminal cause class of one failed Coveo discovery page request.
+
+    Coveo-local (Chunk 23): it is deliberately not
+    ``collector_graphql.GraphQLFailureClass`` and no GraphQL name is imported.
+    ``TRANSPORT_FAILURE`` means the injected transport raised ``URLError``/``OSError``
+    and no HTTP response existed; ``HTTP_TRANSIENT`` means a ``429``/``5xx`` status
+    exhausted the retry budget; ``HTTP_PERMANENT`` means any other non-200 status
+    (raised immediately, never retried).
+    """
+
+    TRANSPORT_FAILURE = "transport_failure"
+    HTTP_TRANSIENT = "http_transient"
+    HTTP_PERMANENT = "http_permanent"
+
+
 class CoveoRequestFailed(CoveoDiscoveryError):
-    """Retries exhausted, or a permanent request failure."""
+    """Retries exhausted, or a permanent request failure.
+
+    ``attempts`` is the number of requests the adapter actually issued for the one
+    logical page (always ``>= 1``); ``failure_class`` is the terminal
+    :class:`CoveoTransportFailureClass`; ``http_status`` is the observed status
+    when the cause came from a response and ``None`` otherwise. Neither the
+    message nor any attribute ever carries exception text, a URL, a header value,
+    or a credential (LREQ-SEC-020).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempts: int,
+        failure_class: CoveoTransportFailureClass,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+        self.failure_class = failure_class
+        #: The HTTP status when the terminal cause came from a response, else
+        #: ``None`` (a pure transport failure never reports ``0``).
+        self.http_status = http_status
 
 
 class CoveoTaxonomyInvalid(CoveoDiscoveryError):
@@ -897,6 +938,16 @@ def fetch_category_page(
     response carries a numeric one. A permanent failure (any other non-200
     status) is raised immediately and never retried.
 
+    A **transport-layer** failure — ``urllib.error.URLError`` or ``OSError``
+    raised by the injected transport, i.e. a connection error or socket timeout
+    with no HTTP response — is transient too (Chunk 23, LREQ-EXT-100): it
+    consumes the same bounded budget and the same backoff schedule, with no
+    ``Retry-After`` to honor because there is no response. The total attempts for
+    one logical page never exceed ``max_retries + 1``. The terminal
+    :class:`CoveoRequestFailed` carries ``attempts`` and ``failure_class`` and its
+    message names only the failure class and the attempt count — never
+    ``str(exc)``, a URL, a header value, or a credential (LREQ-SEC-020).
+
     ``rate_limiter`` — when supplied — spaces this request against every other
     request of the run; the adapter's :func:`discover_category` shares one
     limiter across all categories. The interval is awaited once per logical page
@@ -951,6 +1002,7 @@ def fetch_category_page(
         rate_limiter.count_issued()
     attempts = 0
     last_status: int | None = None
+    last_failure_class: CoveoTransportFailureClass | None = None
     pending_delay = 0.0
 
     while attempts <= max_retries:
@@ -973,11 +1025,18 @@ def fetch_category_page(
                 for key, value in dict(getattr(exc, "headers", {}) or {}).items()
             }
             body = bytes(exc.read() or b"")
-        except (urllib.error.URLError, OSError) as exc:
-            raise CoveoRequestFailed(
-                "the Coveo discovery request failed at the transport layer "
-                f"({exc.__class__.__name__}) for page {first_result}"
-            ) from None
+        except (urllib.error.URLError, OSError):
+            # The transport raised before any response existed, so there is no
+            # status and no ``Retry-After`` to honor. This is the transient class
+            # (LREQ-EXT-100, Chunk 23): it consumes the same bounded budget and the
+            # same backoff schedule. ``str(exc)`` is never captured, interpolated,
+            # or persisted (LREQ-SEC-020).
+            last_status = None
+            last_failure_class = CoveoTransportFailureClass.TRANSPORT_FAILURE
+            if attempts > max_retries:
+                break
+            pending_delay = COVEO_BACKOFF_BASE_SECONDS * (2 ** (attempts - 1))
+            continue
 
         last_status = status
         classification = _classify_status(status)
@@ -989,7 +1048,9 @@ def fetch_category_page(
                 request_metadata=metadata,
             )
         if classification == "permanent":
+            last_failure_class = CoveoTransportFailureClass.HTTP_PERMANENT
             break
+        last_failure_class = CoveoTransportFailureClass.HTTP_TRANSIENT
         if attempts > max_retries:
             break
         delay = COVEO_BACKOFF_BASE_SECONDS * (2 ** (attempts - 1))
@@ -1003,10 +1064,22 @@ def fetch_category_page(
         # reaching here with one armed means the transient budget was consumed by
         # an exception rather than a response; do not sleep for nothing.
         pending_delay = 0.0
+    failure_class = (
+        last_failure_class or CoveoTransportFailureClass.TRANSPORT_FAILURE
+    )
+    if last_status is None:
+        detail = f"the transport layer failed; it is a {failure_class.value}"
+    else:
+        detail = (
+            f"HTTP status {last_status} ({failure_class.value}); transient retries "
+            "are exhausted or the failure is permanent"
+        )
     raise CoveoRequestFailed(
         f"the Coveo discovery request for page {first_result} failed after "
-        f"{attempts} attempt(s) with HTTP status {last_status}: transient retries "
-        "are exhausted or the failure is permanent, and it is not retried further"
+        f"{attempts} attempt(s): {detail}, and it is not retried further",
+        attempts=attempts,
+        failure_class=failure_class,
+        http_status=last_status,
     )
 
 
@@ -1497,6 +1570,10 @@ class _CategoryCounters:
     )
     conditions: list[DiscoveryStatus] = field(default_factory=list)  # type: ignore[assignment]
     issues: list[ValidationIssue] = field(default_factory=list)  # type: ignore[assignment]
+    #: Canonical-JSON discovery failure cause for the category, built directly
+    #: from the terminal failure datum (Chunk 23 R2). ``None`` when the category
+    #: recorded no page failure, so the persisted column stays ``NULL``.
+    failure_cause_json: str | None = None
 
 
 def _condition_precedence_rank(condition: DiscoveryStatus) -> int:
@@ -1962,7 +2039,16 @@ def _discover_category_in_transaction(
                     str(exc),
                     category=category,
                     page_index=page_index,
+                    failure_class=exc.failure_class.value,
+                    attempts=exc.attempts,
+                    http_status=exc.http_status,
                 )
+            )
+            counters.failure_cause_json = _failure_cause_json(
+                failure_class=exc.failure_class.value,
+                http_status=exc.http_status,
+                page_index=page_index,
+                attempt_count=exc.attempts,
             )
             break
         except Exception as exc:  # noqa: BLE001 - per-category failure isolation
@@ -1983,6 +2069,15 @@ def _discover_category_in_transaction(
         if page.is_structural_failure:
             counters.conditions.append(DiscoveryStatus.PAGE_FAILED)
             parent_issues.extend(page.issues)
+            # A structurally failed 200 page is neither a transport failure nor a
+            # status failure; the plan records ``http_permanent`` for it (Chunk 23
+            # R-R1, an acknowledged limitation). No fourth token is invented.
+            counters.failure_cause_json = _failure_cause_json(
+                failure_class=CoveoTransportFailureClass.HTTP_PERMANENT.value,
+                http_status=None,
+                page_index=page.page_index,
+                attempt_count=1,
+            )
             break
 
         observed_counts.append(page.total_count)
@@ -2257,6 +2352,36 @@ def _write_page(
     return outcome
 
 
+def _failure_cause_json(
+    *,
+    failure_class: str,
+    http_status: int | None,
+    page_index: int,
+    attempt_count: int,
+) -> str:
+    """Return the canonical JSON failure cause for a failed category.
+
+    The cause is built directly from the terminal failure datum — the failure
+    class token, the observed HTTP status (or ``None``), the zero-based page
+    index, and the number of attempts issued — so it is never derived by decoding
+    redacted issue context and no caller text can reach it (LREQ-SEC-020). It
+    carries exactly ``failure_class``, ``http_status``, ``page_index``, and
+    ``attempt_count``; ``http_status`` is JSON ``null`` (never ``0``) when no HTTP
+    status existed. The JSON is canonical:
+    ``sort_keys=True, separators=(",", ":")``.
+    """
+    return json.dumps(
+        {
+            "failure_class": failure_class,
+            "http_status": http_status,
+            "page_index": page_index,
+            "attempt_count": attempt_count,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def _finalize_result(
     category: str,
     *,
@@ -2266,12 +2391,22 @@ def _finalize_result(
     repository: SqliteRepository,
     computed_at_utc: datetime,
 ) -> CategoryDiscoveryResult:
-    """Assemble the terminal result and persist the category's discovery status."""
+    """Assemble the terminal result and persist the category's discovery status.
+
+    The category-level discovery failure cause is persisted alongside the status
+    in redacted, canonical-JSON form (Chunk 23 R2) so a failed category stays
+    diagnosable from the database without terminal output (LREQ-EXT-090,
+    LREQ-NFR-030).
+    """
     conditions = _ordered_conditions(counters.conditions)
     status = _select_terminal_status(conditions)
     issues = tuple(parent_issues) + tuple(counters.issues)
     repository.set_category_status(
-        run_id, category, status.value, computed_at_utc=ensure_utc(computed_at_utc)
+        run_id,
+        category,
+        status.value,
+        computed_at_utc=ensure_utc(computed_at_utc),
+        discovery_failure_cause_json=counters.failure_cause_json,
     )
     return CategoryDiscoveryResult(
         category=category,

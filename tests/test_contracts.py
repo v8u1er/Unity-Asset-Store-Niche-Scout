@@ -218,6 +218,7 @@ REQUIRED_ROW_FIELDS: dict[str, tuple[str, ...]] = {
         "sensitivity_warning",
         "ranking_sensitivity_json",
         "computed_at_utc",
+        "discovery_failure_cause_json",
     ),
 }
 
@@ -334,6 +335,7 @@ def _category_score_record() -> CategoryScoreRecord:
         sensitivity_warning=None,
         ranking_sensitivity_json="{}",
         computed_at_utc=_iso(3),
+        discovery_failure_cause_json=None,
     )
 
 

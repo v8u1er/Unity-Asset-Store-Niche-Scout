@@ -51,7 +51,7 @@ from .models import (
 )
 from .sampling import CategorySamplingResult, RunSamplingResult, compute_overlap
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 # Column types are derived from the logical field types in models.py: SQLite
 # stores timestamps as ISO-8601 UTC TEXT and booleans as INTEGER 0/1.
@@ -227,6 +227,7 @@ CREATE TABLE category_scores (
     sensitivity_warning INTEGER,
     ranking_sensitivity_json TEXT NOT NULL,
     computed_at_utc TEXT NOT NULL,
+    discovery_failure_cause_json TEXT,
     PRIMARY KEY (run_id, category),
     FOREIGN KEY (run_id) REFERENCES runs (run_id)
 )
@@ -1230,6 +1231,7 @@ class SqliteRepository:
         discovery_status: str,
         *,
         computed_at_utc: datetime | None = None,
+        discovery_failure_cause_json: Optional[str] = None,
     ) -> None:
         """Upsert one ``(run_id, category)`` discovery status into ``category_scores``.
 
@@ -1249,6 +1251,13 @@ class SqliteRepository:
         Because the value is always supplied, a conflicting
         ``(run_id, category)`` update always assigns it; there is no
         update-without-timestamp path.
+
+        ``discovery_failure_cause_json`` is the additive Chunk 23 keyword. Its
+        default (``None``) means *no cause supplied*, not *clear the cause*: the
+        conflict path leaves the stored column unchanged, so the scoring-phase
+        :meth:`upsert_category_scores` — which never passes a cause — cannot null
+        a cause written during discovery. A supplied string is stored exactly as
+        given (the ``*_json`` codec) on both the insert and the conflict path.
         """
         self._check_open()
         _validate_enum("category_scores", "discovery_status", discovery_status)
@@ -1269,7 +1278,24 @@ class SqliteRepository:
         update_columns = tuple(
             column for column in columns if column not in ("run_id", "category")
         )
-        values = (run_id, category, discovery_status, encoded_computed_at)
+        values: tuple[object, ...] = (
+            run_id,
+            category,
+            discovery_status,
+            encoded_computed_at,
+        )
+        # A supplied cause joins the insert columns and the conflict assignment;
+        # the default ``None`` binds neither, so the stored value survives.
+        if discovery_failure_cause_json is not None:
+            columns = columns + ("discovery_failure_cause_json",)
+            values = values + (
+                _encode_column(
+                    "category_scores",
+                    "discovery_failure_cause_json",
+                    discovery_failure_cause_json,
+                ),
+            )
+            update_columns = update_columns + ("discovery_failure_cause_json",)
         assignments = ", ".join(
             f"{column} = excluded.{column}" for column in update_columns
         )
@@ -1810,8 +1836,23 @@ class SqliteRepository:
         if not records:
             return 0
         columns = tuple(TABLE_COLUMNS[table])
+        # ``discovery_failure_cause_json`` is written only by the discovery phase
+        # (through :meth:`set_category_status`). The scoring-phase
+        # ``upsert_category_scores`` row carries ``None`` for it, and a ``None``
+        # here means *no cause supplied*, not *clear the cause*: the column is
+        # omitted from the update assignment so a cause persisted during discovery
+        # survives the scoring finalize (Chunk 23, LREQ-EXT-090). A supplied string
+        # still advances it on the conflict path.
+        preserve_when_absent = (
+            ("discovery_failure_cause_json",)
+            if table == "category_scores"
+            else ()
+        )
         update_columns = tuple(
-            column for column in columns if column not in TABLE_PRIMARY_KEYS[table]
+            column
+            for column in TABLE_COLUMNS[table]
+            if column not in TABLE_PRIMARY_KEYS[table]
+            and column not in preserve_when_absent
         )
         assignments = ", ".join(
             f"{column} = excluded.{column}" for column in update_columns
