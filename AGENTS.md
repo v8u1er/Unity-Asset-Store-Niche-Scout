@@ -8,7 +8,7 @@ or docs that claim otherwise.
 
 ## Source of truth (read on demand, never whole)
 
-- `Documents/SRS-lean.md` — requirements, `LREQ-<AREA>-<NNN>`. Each file is ~18k tokens;
+- `Documents/SRS-lean-v2.md` — requirements, `LREQ-<AREA>-<NNN>`. Each file is ~18k tokens;
   do not read it end to end. `grep` for the LREQ ID or section number, then read that
   section only.
 - `Documents/requirements-dependency-map.md` — chunk plan (Chunks 0–13), ownership and
