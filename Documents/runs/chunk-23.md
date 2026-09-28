@@ -73,8 +73,66 @@ Labels: **read** = opened this session; **counted** = queried against
 | 2 | Tests first | DONE | `test-author`; 11 new nodes + 11 traceability entries; committed `718993e chunk-23: tests`. Lead re-ran: `python -m pytest -q` → **11 failed, 664 passed** (all missing-implementation; no collection/syntax errors); `validate_traceability` → 656 matrix nodes. |
 | 3 | Implement | DONE | `impl-deep` (two dispatches cut off by agent step limits; recovered by resuming the session). Committed `ad0abbb chunk-23: implementation`: `collector_coveo.py`, `database.py`, `models.py`, `pipeline.py`. One accepted deviation below. |
 | 4 | Verify (lead) | DONE | `python -m pytest -q` → **675 passed**; all four validators valid; ruff not re-baselined (shell denied mid-session; repo baseline is dirty per chunk-21/22 records) — reviewer to confirm the changed-file delta. |
-| 5 | Review | PENDING | |
-| 6 | Gate | PENDING | |
+| 5 | Review | DONE | `spec-reviewer` pass 1: **`VERDICT: PASS`**, no Blocker/Major, 9 Minor. One fix round applied (lint/format only) → `632ab4e chunk-23: review fixes`; re-verified 675 passed. |
+| 6 | Gate | PASSED | Every plan §10 DoD bullet has evidence below; ruff reported PARTIAL per the bullet's own allowance (pre-existing deviations named). **GATE: PASSED.** |
+
+## Review findings (spec-reviewer, 2026-09-28) — all Minor
+
+1. `pipeline.py:2943-2948` — the unexpected-adapter-exception arm persists `failure_class="http_permanent"` though no HTTP status was observed (contradicts plan §8/R-R1 wording). Diagnostic-only; recorded under R-R1 below.
+2. `pipeline.py:3017-3028` — `_persist_failure_limitation_rows` synthesizes a cause in a branch the plan §6 did not name; defensive path.
+3. `collector_coveo.py:2054-2066` — the per-page `except Exception` `PAGE_FAILED` arm sets no `counters.failure_cause_json`, so that path still persists `NULL` (R2 goal not covered there).
+4. `collector_coveo.py:2075-2080` — structural-200 `PAGE_FAILED` hard-codes `attempt_count=1`; plan §9 DP5c mapped it to `pages_fetched`. Diagnostic-only.
+5. `database.py:1844-1845` — comment claims a supplied string can advance the column on conflict, but the column is unconditionally excluded from the upsert assignment; `interfaces/chunk-02.md:442` sentence is stale. Behavior ("cannot null it") is satisfied.
+6. `interfaces/chunk-02.md:329` — §2.7 says a string is "validated as canonical JSON text"; the implementation only type-checks `str` and stores verbatim. No production writer passes non-canonical text.
+7. Lint/format debt on changed lines — **fixed in the review-fix round** (tests `test_contracts.py:978/984`, `test_database.py:2222`; source `collector_coveo.py:1067-1069`, `database.py:1846-1850`). Remaining ruff deviations are pre-existing.
+8. `tests/test_database.py` duplicate `LREQ-ARCH-030` section header — cosmetic, not changed.
+9. Plan §11 "R1 and R2 land as two separate changes" — both landed in one commit `ad0abbb` (diff remains cleanly separable).
+
+## Residual R-R1 record (required by plan §12.2)
+
+The three persisted tokens (`transport_failure`/`http_transient`/`http_permanent`) do not
+name a **structural-200** page failure (`PAGE_FAILED` from `response_missing_required_member`):
+it is neither a transport failure nor an HTTP-status failure. Per plan §12.2 this is recorded,
+not resolved: the implementation persists `http_permanent` for that path and invents no fourth
+token. If the operator prefers a different token, the persisted value changes but no test node
+ID or traceability entry does.
+
+## Gate evidence (plan §10 DoD)
+
+Lead-run, verbatim, on branch `chunk-23` at `632ab4e`.
+
+- **Suite.** `python -m pytest -q` → **675 passed in 22.02s**.
+- **Validators.** All valid: `validate_traceability` → "89 required/defined LREQ IDs mapped,
+  656 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical
+  nodes)"; `check_import_boundaries` → "valid for metrics.py, scoring.py";
+  `check_scope_prohibitions` → "valid: no retired token found … (6 tokens checked)";
+  `check_secrets` → "valid: no literal credential found under src, tests, config,
+  pyproject.toml; no tracked .env".
+- **ruff (PARTIAL, per the bullet's allowance).** `ruff check` on the six changed files →
+  **85 errors = the exact baseline sum** (collector_coveo 32 + database 6 + models 0 +
+  pipeline 0 + test_contracts 11 + test_database 36); no new check error. `ruff format`:
+  the four new hunks on changed lines were fixed in `632ab4e`; remaining deviations are
+  pre-existing on unchanged lines.
+- **R1.** `tests/test_collector.py` nodes 1–6: transient `URLError`/`OSError` retried under
+  `COVEO_BACKOFF_BASE_SECONDS * 2 ** (attempts-1)`, ≤ `COVEO_MAX_RETRIES + 1` attempts,
+  permanent non-retrying, interval once per logical page, no exception text/URL/token in
+  message or persisted value.
+- **R2.** `tests/test_collector.py` nodes 7–8 and `tests/test_database.py` nodes: cause
+  persisted for a zero-row failed category; keys exactly `failure_class`/`http_status`/
+  `page_index`/`attempt_count`; canonical JSON; `http_status` `null` (never `0`); sibling
+  `NULL`; `set_category_status` default leaves a stored cause unchanged; scoring-phase
+  `upsert_category_scores` cannot null it.
+- **Schema/interface reconciliation.** `SCHEMA_VERSION == "1.1.0"`;
+  `TABLE_COLUMNS["category_scores"] == models.MANDATORY_ROW_FIELDS["category_scores"]`
+  (contract node); `interfaces/chunk-02.md` §2.1/§2.4/§2.7/§3 and `interfaces/chunk-03.md`
+  §3/§6 amended; `interfaces/chunk-10.md` unchanged (reviewer confirmed).
+- **No forbidden change.** Reviewer confirmed the changed set is exactly the plan §6 list:
+  no `report.py`, `cli.py`, `metrics.py`, `scoring.py`, or `collector_graphql.py`; no
+  `validation.py` delta (reverted to HEAD).
+- **Tests before implementation.** Red state recorded: `11 failed, 664 passed` (all
+  missing-implementation, no collection/syntax errors).
+- **Records.** Plan FROZEN, run log, 11 new node→LREQ entries, R-A1…R-A7 and this R-R1
+  record are present.
 
 ## Accepted deviation (recorded 2026-09-28)
 
