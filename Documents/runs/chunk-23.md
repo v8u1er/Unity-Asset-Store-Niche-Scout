@@ -69,12 +69,32 @@ Labels: **read** = opened this session; **counted** = queried against
 | # | Stage | Status | Notes |
 |---|---|---|---|
 | 0 | Preflight | DONE | Tree clean at `d6e703d`; branch `chunk-23` created. |
-| 1 | Plan | BLOCKED | `chunk-planner` authored `Documents/plans/chunk-23-coveo-transport-retry-and-persisted-failure-cause.md` as **DRAFT — BLOCKED** (510 lines, R1+R2 separated). Two rulings gate freeze (Q1 frozen-signature change; Q2 `category_scores` column addition), five design questions follow. Stopped per `AGENTS.md` (surface, never resolve). No commit. |
-| 2 | Tests first | PENDING | |
-| 3 | Implement | PENDING | |
-| 4 | Verify (lead) | PENDING | |
+| 1 | Plan | BLOCKED → DONE | Two rulings blocked the first plan; after operator authorization the planner froze it (`Documents/plans/chunk-23-coveo-transport-retry-and-persisted-failure-cause.md`), amended `interfaces/chunk-02.md`/`chunk-03.md`. Committed `d76f295 chunk-23: plan`. |
+| 2 | Tests first | DONE | `test-author`; 11 new nodes + 11 traceability entries; committed `718993e chunk-23: tests`. Lead re-ran: `python -m pytest -q` → **11 failed, 664 passed** (all missing-implementation; no collection/syntax errors); `validate_traceability` → 656 matrix nodes. |
+| 3 | Implement | DONE | `impl-deep` (two dispatches cut off by agent step limits; recovered by resuming the session). Committed `ad0abbb chunk-23: implementation`: `collector_coveo.py`, `database.py`, `models.py`, `pipeline.py`. One accepted deviation below. |
+| 4 | Verify (lead) | DONE | `python -m pytest -q` → **675 passed**; all four validators valid; ruff not re-baselined (shell denied mid-session; repo baseline is dirty per chunk-21/22 records) — reviewer to confirm the changed-file delta. |
 | 5 | Review | PENDING | |
 | 6 | Gate | PENDING | |
+
+## Accepted deviation (recorded 2026-09-28)
+
+The frozen schema change (new `category_scores.discovery_failure_cause_json`, Chunk-23
+authorized) required three **test-side fixture-parity lines** that the committed tests did
+not carry: `tests/test_contracts.py` (+`discovery_failure_cause_json` in the test-local
+`REQUIRED_ROW_FIELDS["category_scores"]` and in `_category_score_record()`) and
+`tests/test_database.py` (+the key in `_full_category_score()`). These were applied by the
+implementer rather than `test-author`. They only add the new required field to a
+schema-mirror constant and two fixture constructors; no assertion, node ID, or expected
+value was changed. `spec-reviewer` must confirm no assertion was weakened.
+
+## Implementation notes / deviations from the plan's channel
+
+The first implementer derived the persisted cause by decoding integers back out of the
+redacted `ValidationIssue.context`, which is lossy and raised `NameError`; that approach
+was abandoned and `src/niche_scout/validation.py` was restored to HEAD (its out-of-scope
+edit reverted). The cause is now built directly from `CoveoRequestFailed`'s
+`failure_class`/`http_status`/`attempts` and the loop's 0-based `page_index` and persisted
+via `_finalize_result` → `set_category_status`.
 
 ## Planner blocker questions (verbatim, 2026-09-28)
 
@@ -156,3 +176,31 @@ precedent of explicit, surface-naming authorization):
 
 Item 3 (sampling increase) remains undecided; a precise assessment is commissioned
 before it is ruled in or out.
+
+## Item 3 assessment — sampling increase (read-only, 2026-09-28)
+
+An independent read-only analyst recomputed all 96 per-stratum quality counts and every
+`quality_stratum_eligibility_coverage` for `run-2026-09-27T18:09:08.458509+00:00`, calling
+the production `metrics.quality_observation_eligibility`. Reconciliation was exact
+(`MISMATCHES []`, `NROWS 24`). Findings:
+
+- The Q failure is an ordinal-popularity gradient, not randomness: pooled eligible rates
+  per stratum (rating_count >= 3) are `0.580 / 0.122 / 0.040 / 0.0067` across all 24
+  categories, but conditioning on the 11 Q-blocked categories (selected *because* they
+  failed) the lower-stratum rates collapse to `0.011 / 0.007 / 0.0`.
+- Raising `SAMPLE_PER_STRATUM` 25 → 50: expected **~3** category flips (n=100: ~8;
+  within-category MLE floor 0, unconditional-pooled ceiling ~11), at **+~2400 requests /
+  +~20 min** (n=100: +~7200 / +~60 min), plus a new `SAMPLING_RULE_VERSION` and SRS
+  revision that reshuffles every sample (a new regime, not a top-up). It still cannot fix
+  the two discovery-broken categories.
+- Cheaper config-only lever: `QUALITY_MIN_RATING_COUNT` 3 → 2 flips **9 of 11** at **zero**
+  network cost and no new sampling-rule version (3 → 1 flips all 11). `MIN_AGE_DAYS_FOR_RATE`
+  is inert here (40 of 2399 assets < 30 days, none rating-eligible).
+- `MIN_USABLE_SAMPLES_PER_STRATUM = 0` would force coverage to 1.0 by calling empty strata
+  usable — rejected as metric gaming.
+- D/R coverage is already 1.0 for all 24, so more samples buy nothing for D/R; the Q-blocked
+  set would rise at most `insufficient → weak` (counts stay < the 40 `moderate` threshold).
+
+**Recommendation: RULE OUT the sample-size increase; do not open chunk-24.** The operator's
+goal is better met by the per-run `QUALITY_MIN_RATING_COUNT 3 → 2` override (a config
+decision, no code change). Surfaced to the operator for confirmation.
