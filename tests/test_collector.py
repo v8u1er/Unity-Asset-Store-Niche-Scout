@@ -4224,7 +4224,9 @@ def test_product_detail_rating_average_accepts_integral_json_number(
 
 @pytest.mark.lreq("LREQ-GQL-050")
 @pytest.mark.lreq("LREQ-TST-010")
-def test_product_detail_rating_average_zero_with_positive_count_is_unavailable() -> None:
+def test_product_detail_rating_average_zero_with_positive_count_is_unavailable() -> (
+    None
+):
     """Row 6: a zero average with a positive count is unavailable, count kept.
 
     Plan ``chunk-27`` §3.1 row 6, §8 (null/edge behavior), gate bullet 2. Unity
@@ -4262,7 +4264,10 @@ def test_product_detail_rating_average_zero_with_positive_count_is_unavailable()
     assert not isinstance(fields.rating_count, bool)
 
     codes = [issue.code for issue in validation.issues]
-    assert codes == ["rating_average_zero_with_positive_count"]
+    assert codes == [RATING_AVERAGE_ZERO_WITH_COUNT_CODE]
+    issue = validation.issues[0]
+    assert issue.code == RATING_AVERAGE_ZERO_WITH_COUNT_CODE
+    assert issue.message == RATING_AVERAGE_ZERO_WITH_COUNT_MESSAGE
 
 
 @pytest.mark.lreq("LREQ-GQL-040")
@@ -4431,7 +4436,9 @@ RATING_AVERAGE_ZERO_WITH_COUNT_MESSAGE = (
 
 @pytest.mark.lreq("LREQ-GQL-050")
 @pytest.mark.lreq("LREQ-TST-010")
-def test_product_detail_rating_positive_average_with_zero_count_is_contradictory() -> None:
+def test_product_detail_rating_positive_average_with_zero_count_is_contradictory() -> (
+    None
+):
     """Row 4: a positive average with a zero count nulls both members.
 
     Plan ``chunk-27`` §3.1 row 4, §8, §9.3 item 2. A genuine positive average
@@ -4461,6 +4468,9 @@ def test_product_detail_rating_positive_average_with_zero_count_is_contradictory
 
     codes = [issue.code for issue in validation.issues]
     assert codes == [RATING_AVERAGE_WITHOUT_COUNT_CODE]
+    issue = validation.issues[0]
+    assert issue.code == RATING_AVERAGE_WITHOUT_COUNT_CODE
+    assert issue.message == RATING_AVERAGE_WITHOUT_COUNT_MESSAGE
 
 
 @pytest.mark.lreq("LREQ-GQL-050")
@@ -4538,7 +4548,9 @@ def test_product_detail_rating_zero_count_with_absent_average_is_no_rating() -> 
 
 @pytest.mark.lreq("LREQ-GQL-050")
 @pytest.mark.lreq("LREQ-TST-010")
-def test_product_detail_rating_positive_average_with_absent_count_is_unchanged() -> None:
+def test_product_detail_rating_positive_average_with_absent_count_is_unchanged() -> (
+    None
+):
     """Q5 (row 3): a positive average with an absent count keeps the average.
 
     Plan ``chunk-27`` §3.1 row 3, §3.6 Q5, §8, §9.3 item 5. An absent count is

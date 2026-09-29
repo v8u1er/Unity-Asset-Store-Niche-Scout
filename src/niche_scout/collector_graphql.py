@@ -1144,6 +1144,79 @@ def _collect_payload_issues(
     return list(structure.issues)
 
 
+def _map_rating_pair(
+    rating_average_value: float | None,
+    rating_count_value: int | None,
+) -> tuple[float | None, int | None, tuple[ValidationIssue, ...]]:
+    """Apply the ``chunk-27`` §3.1 typed-pair precedence (frozen rule).
+
+    Returns ``(rating_average, rating_count, contradiction_issues)``. It never
+    fabricates a value: row 4 returns ``(None, None, (code A,))``, row 5 returns
+    ``(None, None, ())``, and row 6 returns ``(None, count, (code B,))``.
+
+    The rule keys on the **typed** pair the caller passes -- a Python ``float``
+    for ``rating.average`` and a Python ``int`` for ``rating.count``, each
+    ``None`` when the member was absent, null, or wrong-typed -- never on the raw
+    JSON member. Rows 1-3 and 7 are existing behavior and are returned unchanged;
+    rows 4-6 are the Unity "unrated" placeholders:
+
+    * row 1 ``(None, None)`` -> ``(None, None)``, no issue;
+    * row 2 ``(None, cnt)`` -> ``(None, cnt)``, no issue;
+    * row 3 ``(avg, None)`` -> ``(avg, None)``, no issue (Q5);
+    * row 4 ``cnt == 0`` and ``avg > 0`` -> ``(None, None)``, code
+      ``rating_average_without_rating_count``;
+    * row 5 ``cnt == 0`` and ``avg == 0.0`` -> ``(None, None)``, no issue;
+    * row 6 ``cnt > 0`` and ``avg == 0.0`` -> ``(None, cnt)`` with the count
+      retained as returned, code ``rating_average_zero_with_positive_count``;
+    * row 7 ``cnt > 0`` and ``0 < avg <= 5`` -> ``(avg, cnt)``, no issue.
+
+    A count of ``0`` with an absent (``None``) average is row 5, not row 4: an
+    absent member is not a positive average. Pure and deterministic: no RNG, no
+    clock, no set/dict-ordering dependence.
+    """
+    if rating_count_value is None:
+        # Rows 1-3: no count, so no zero-count contradiction is possible.
+        return rating_average_value, None, ()
+
+    if rating_count_value == 0:
+        if rating_average_value is not None and rating_average_value > 0:
+            # Row 4: a genuine positive average cannot sit alongside a zero count.
+            return (
+                None,
+                None,
+                (
+                    _issue(
+                        "rating_average_without_rating_count",
+                        "rating.average is positive while rating.count is zero; "
+                        "both are unavailable and neither is coerced to a default",
+                        field="rating.average",
+                    ),
+                ),
+            )
+        # Row 5: ``avg`` is ``0.0`` or absent (``None``); both are "no rating".
+        return None, None, ()
+
+    if rating_average_value is not None and rating_average_value == 0.0:
+        # Row 6: a zero average placeholder with a positive count. The count is
+        # genuinely returned, so it is retained; only the average is unavailable.
+        return (
+            None,
+            rating_count_value,
+            (
+                _issue(
+                    "rating_average_zero_with_positive_count",
+                    "rating.average is a zero placeholder with a positive "
+                    "rating.count; the average is unavailable and the count is "
+                    "retained as returned",
+                    field="rating.average",
+                ),
+            ),
+        )
+
+    # Rows 2/3/7 (non-zero count): retain both members unchanged.
+    return rating_average_value, rating_count_value, ()
+
+
 def validate_product_detail_payload(
     payload: object,
     *,
@@ -1274,6 +1347,19 @@ def validate_product_detail_payload(
     review_count_raw = payload.get("reviewCount")
     review_count_value = _usable_number(review_count_raw, int)
 
+    # Chunk 27 / D2: apply the §3.1 typed-pair precedence once, after the
+    # wrong-scalar-type checks and before the field construction. The mapped pair
+    # feeds both this validated path and the draft-only path, which reads
+    # ``validation.product_detail`` (§3.5). Any contradiction issue rides on the
+    # validation result's ``issues`` tuple and therefore reaches the operation
+    # success result's issue channel (§3.4).
+    (
+        rating_average_mapped,
+        rating_count_mapped,
+        rating_issues,
+    ) = _map_rating_pair(rating_average_value, rating_count_value)
+    issues.extend(rating_issues)
+
     first_published_date_utc, first_published_date_issue = _parse_first_published_date(
         payload.get("firstPublishedDate")
     )
@@ -1306,10 +1392,10 @@ def validate_product_detail_payload(
         graphql_id=graphql_id,
         product_id=product_id,
         rating_average=(
-            float(rating_average_value) if rating_average_value is not None else None
+            float(rating_average_mapped) if rating_average_mapped is not None else None
         ),
         rating_count=(
-            int(rating_count_value) if rating_count_value is not None else None
+            int(rating_count_mapped) if rating_count_mapped is not None else None
         ),
         review_count=(
             int(review_count_value) if review_count_value is not None else None
