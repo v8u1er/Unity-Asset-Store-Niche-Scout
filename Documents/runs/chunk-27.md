@@ -54,7 +54,7 @@ Latest run `run-2026-09-29T05:33:21.664034+00:00`. Counted from
 |---|---|---|
 | Preflight (lead) | DONE | branch `chunk-27`; clean tree; chunk-26 GATE PASSED; baseline 695 passed; DB re-verified above. |
 | Plan — `chunk-planner` | DONE (FROZEN) | First dispatch hit its step cap (INCOMPLETE, no file). An `explore` session (`ses_f12fa3e97ffeUihixiWLCDEJnx`) recommended answers to the six open questions; operator adopted them ("go with the suggested answers"). Re-dispatched `chunk-planner` (`ses_f12e27d59ffeft9nAxVc2WC4k8`); plan written (513 lines, §1–§13, `Status: FROZEN`, no open questions), then a follow-up edit froze the draft-path mechanism to one private `_map_rating_pair` builder. Lead verified §3.5/§8/§11 by read. Commit `3f8a15f`. |
-| Tests — `test-author` | PENDING | |
+| Tests — `test-author` | DONE | `ses_f12d66960ffejwARE7PjRyfzWm` hit its step cap after the edits were applied (2 message constants left unreferenced — see below). Files: `tests/test_collector.py`, `tests/fixtures/graphql_fixtures.py`, `tests/traceability.json`. Lead-reproduced below. Commit `7bf0f87`. |
 | Implement — `impl-deep` | PENDING | |
 | Verify (lead) | PENDING | |
 | Review — `spec-reviewer` | PENDING | |
@@ -114,3 +114,28 @@ Recorded-not-fixed: `Documents/interfaces/chunk-05.md` §5.6 omits `mapping_rule
 ## Gate
 
 (not attempted)
+
+### Tests stage — lead-reproduced (real output)
+
+| Command | Real result |
+|---|---|
+| `git status --porcelain` | only the three allowlisted test paths modified |
+| `python -m pytest tests/test_collector.py -q --collect-only` | 98 tests collected, 0 errors (no syntax/collection errors) |
+| `python -m pytest tests/test_collector.py -q` | **4 failed, 94 passed in 4.32s** — all four are missing-implementation value failures (`assert 0 is None` on `rating_count` / `rating_average`); no syntax or collection errors |
+| `python -m pytest -q` | **4 failed, 696 passed in 45.18s** — the same 4 nodes; no collateral regression (695 baseline + 5 new nodes; the re-baselined accepts node keeps its ID) |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 IDs, **679 matrix nodes** (was 673 at chunk-26; +6) |
+| `python -m ruff check tests/test_collector.py tests/fixtures/graphql_fixtures.py` | **39 pre-existing errors** (E501 ×~35, I001 ×2, F401 ×3) — none chunk-27-introduced except 3 E501 on new long test `def` lines. Recorded so the gate uses "no new lint" (chunk-25/26 precedent). |
+| `python -m ruff format --check` on the same two files | 2 files would be reformatted; the diff is **not** confined to chunk-27 hunks (pre-existing formatting deviation across both files). Format ≠ lint. |
+
+**Test-author cap note (carried into implementation):** two module constants
+`RATING_AVERAGE_WITHOUT_COUNT_MESSAGE` / `RATING_AVERAGE_ZERO_WITH_COUNT_MESSAGE`
+(`tests/test_collector.py:4422-4429`) are defined but unreferenced, and the row-6 node
+asserts the code as a **literal** (`:4265`) rather than via
+`RATING_AVERAGE_ZERO_WITH_COUNT_CODE`. The implementer must make the row-4 and row-6
+nodes assert the frozen message constants (plan §3.2) and use the CODE constants, then
+re-run pytest; that is an in-scope test fix within the allowlist (the implementer must
+not weaken any assertion).
+
+### Test-author questions (none raised; notes only)
+
+The test-author returned `QUESTIONS: none` and `DISPUTES: none`.
