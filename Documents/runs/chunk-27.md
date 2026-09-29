@@ -56,9 +56,9 @@ Latest run `run-2026-09-29T05:33:21.664034+00:00`. Counted from
 | Plan — `chunk-planner` | DONE (FROZEN) | First dispatch hit its step cap (INCOMPLETE, no file). An `explore` session (`ses_f12fa3e97ffeUihixiWLCDEJnx`) recommended answers to the six open questions; operator adopted them ("go with the suggested answers"). Re-dispatched `chunk-planner` (`ses_f12e27d59ffeft9nAxVc2WC4k8`); plan written (513 lines, §1–§13, `Status: FROZEN`, no open questions), then a follow-up edit froze the draft-path mechanism to one private `_map_rating_pair` builder. Lead verified §3.5/§8/§11 by read. Commit `3f8a15f`. |
 | Tests — `test-author` | DONE | `ses_f12d66960ffejwARE7PjRyfzWm` hit its step cap after the edits were applied (2 message constants left unreferenced — see below). Files: `tests/test_collector.py`, `tests/fixtures/graphql_fixtures.py`, `tests/traceability.json`. Lead-reproduced below. Commit `7bf0f87`. |
 | Implement — `impl-deep` | DONE | `ses_f12c21b37ffevDc8W4mCRamF16`. `src/niche_scout/collector_graphql.py` (+90) adds `_map_rating_pair` and calls it once in `validate_product_detail_payload`; `tests/test_collector.py` (+20/−6) pins the frozen codes/messages in 3 nodes (the test-author's unreferenced constants are now used). Lead-reproduced below. Commit `000b1b1`. |
-| Verify (lead) | PENDING | |
-| Review — `spec-reviewer` | PENDING | |
-| Gate (lead) | PENDING | |
+| Verify (lead) | DONE | step-6 evidence in the "Implementation stage" section below; re-verified after the review fix (701 passed). |
+| Review — `spec-reviewer` | PASS (round 2) | Round 1 `ses_f12adea2cffeMFeHjuBimCRHE9`: **FAIL**, 2 Blocker — (a) "unmocked clock" and (b) "`EnrichmentResult.issues` misses the code"; (a) lead-refuted by read (`git grep datetime.now\|utcnow\|time.time` over `collector_graphql.py` → nothing; `retrieved_at_utc` is caller-supplied; the only clock is the caller `pipeline.py:3387,:3445`), (b) lead-refuted by read + probe (the plan's channel is `result.product_detail.issues`, consumed by `pipeline._operation_diagnostic_issues` at `pipeline.py:627-646`, which iterates the operations, not `result.issues`). One part of Blocker (a) was ACCEPTED: no test drove the row-6 pair end-to-end — fixed. Round 2 `ses_f11d6c544ffeJUcKsTWE6PqopG`: **VERDICT: PASS**, 0 Blocker, 0 Major, 4 Minor (recorded below; Minors do not loop). |
+| Gate (lead) | PASSED | Gate table below; `GATE: PASSED`. |
 
 ## Gate bullets (the plan must adopt these)
 
@@ -113,7 +113,30 @@ Recorded-not-fixed: `Documents/interfaces/chunk-05.md` §5.6 omits `mapping_rule
 
 ## Gate
 
-(not attempted)
+Branch `chunk-27`, base `main`. Commits: `90db498` preflight · `3f8a15f` plan · `28b77f9` plan log · `7bf0f87` tests · `d886cf2` tests log · `000b1b1` implementation · `35d85db` impl log · `885a3a3` review fixes.
+
+| Bullet (plan §12) | Evidence (command output / file:line) | Status |
+|---|---|---|
+| 1. `rating_count==0, rating_average==0` round-trips as `None`/`None` | `tests/test_collector.py::test_product_detail_rating_zero_count_and_zero_average_is_no_rating` passes; probe read at `collector_graphql.py:1204-1216` (row 5) → `(None, None, ())`. | PASS |
+| 2. Row 6 persists `rating_average=None`, integer count retained, distinct deterministic issue in the audit-summary channel | `test_row_six_pair_persists_none_average_with_retained_count` (real `enrich_asset` → draft → `to_record`): probe output `draft.rating_average None`, `draft.rating_count 210 int`, `record.rating_average None`, `record.rating_count 210`; `result.product_detail.issues == ['rating_average_zero_with_positive_count']` consumed by `pipeline._operation_diagnostic_issues` (`pipeline.py:627-646`) → `diagnostic_summary_json` (`:669, :678-680`). | PASS |
+| 3. `count>0, avg in (0,5]` unchanged | `test_product_detail_rating_average_accepts_integral_json_number` (cases `(5, 5.0)`, `(4.5, 4.5)`) and the row-7 branch (`collector_graphql.py:1218`) pass; `tests/test_validation.py` pure `[0,5]` nodes untouched. | PASS |
+| 4. `metrics.py`/`scoring.py` unchanged; `check_import_boundaries` exit 0; no `or 0` / `.get(k, 0)` added | `git diff main --name-only -- src/niche_scout/metrics.py src/niche_scout/scoring.py` → empty; `check_import_boundaries` → exit 0; reviewer grep for `or 0`/`.get(k,0)`/`fillna(0)` in `collector_graphql.py` → no match. | PASS |
+| 5. pytest + four validators exit 0; ruff no new lint | `python -m pytest -q` → **701 passed in 23.54s**; `validate_traceability` exit 0 (89 IDs, 680 nodes); `check_import_boundaries`, `check_scope_prohibitions`, `check_secrets` exit 0; `ruff check collector_graphql.py` → `All checks passed!`; `ruff check tests/test_collector.py` → 29 errors, all pre-existing (highest flagged line 3337 < the new node at 4628). | PASS |
+| 6. No SRS edit; no version bump; no out-of-scope file changed | `git diff main --name-only -- Documents/SRS-lean-v2.md Documents/interfaces/ src/niche_scout/{models,database,config,metrics,scoring,validation,pipeline,report}.py` → empty; `SCHEMA_VERSION = "1.2.0"` (`database.py:54`), `SAMPLING_RULE_VERSION = "2.0.0"` (`models.py:27`), `ENDPOINT_CONTRACT_VERSION = "1.0.0"` (`models.py:25`) unchanged; changed set = plan, run log, `collector_graphql.py`, `graphql_fixtures.py`, `test_collector.py`, `traceability.json`. | PASS |
+
+**Gate: PASSED**, with four recorded Minors (below; none triggers a further fix round).
+
+### Review findings (round 2; all Minor — recorded per procedure step 7)
+
+1. `collector_graphql.py` `_map_rating_pair` folds out-of-domain typed negatives into rows 5/6 (`avg < 0, cnt == 0` → row-5 output; `cnt < 0, avg == 0.0` → row-6 code B though its message says "positive rating.count"). Direction is safe (nothing fabricated as zero; `metrics` keeps its inclusive `[0,5]` check) and the live data has no negative counts. Not in the frozen table; recorded, no test added.
+2. Row-7 acceptance node parametrizes only `(5, 5.0)` / `(4.5, 4.5)`; no adapter `avg > 5` case. The pure-layer `[0,5]` boundary stays covered by the frozen `test_validation.py` nodes (plan §9.4 says unchanged). Coverage complement only.
+3. `Documents/runs/chunk-27.md` ledger line for the implementation stage records 700 passed; final HEAD (`885a3a3`) is 701 passed / 680 matrix nodes (the review-fix node). Refreshed in this log.
+4. `ruff format --check` on the touched files exits non-zero with pre-existing deviation; the `_map_rating_pair` region is absent from the format diff. Format ≠ lint; no new lint.
+
+### Refuted reviewer findings (round 1 Blockers, no change made)
+
+- "Unmocked clock in `enrich_asset`": refuted by read — `git grep -n "datetime.now\|utcnow\|time.time" -- src/niche_scout/collector_graphql.py` → no output; `retrieved_at_utc` is caller-supplied (`:2726-2754`, `:2887-2919`); the clock lives only in the caller (`pipeline.py:3387, :3445`).
+- "Issue stripped from `EnrichmentResult.issues`": refuted by read + probe — the plan §3.4 channel is the operation success result's `issues` (`collector_graphql.py:2526`), consumed by `pipeline._operation_diagnostic_issues` (`pipeline.py:627-646`), which iterates `result.product_detail` / `result.page_views`; `EnrichmentResult.issues` carries correlation issues by design.
 
 ### Tests stage — lead-reproduced (real output)
 
