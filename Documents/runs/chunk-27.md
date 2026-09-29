@@ -55,7 +55,7 @@ Latest run `run-2026-09-29T05:33:21.664034+00:00`. Counted from
 | Preflight (lead) | DONE | branch `chunk-27`; clean tree; chunk-26 GATE PASSED; baseline 695 passed; DB re-verified above. |
 | Plan — `chunk-planner` | DONE (FROZEN) | First dispatch hit its step cap (INCOMPLETE, no file). An `explore` session (`ses_f12fa3e97ffeUihixiWLCDEJnx`) recommended answers to the six open questions; operator adopted them ("go with the suggested answers"). Re-dispatched `chunk-planner` (`ses_f12e27d59ffeft9nAxVc2WC4k8`); plan written (513 lines, §1–§13, `Status: FROZEN`, no open questions), then a follow-up edit froze the draft-path mechanism to one private `_map_rating_pair` builder. Lead verified §3.5/§8/§11 by read. Commit `3f8a15f`. |
 | Tests — `test-author` | DONE | `ses_f12d66960ffejwARE7PjRyfzWm` hit its step cap after the edits were applied (2 message constants left unreferenced — see below). Files: `tests/test_collector.py`, `tests/fixtures/graphql_fixtures.py`, `tests/traceability.json`. Lead-reproduced below. Commit `7bf0f87`. |
-| Implement — `impl-deep` | PENDING | |
+| Implement — `impl-deep` | DONE | `ses_f12c21b37ffevDc8W4mCRamF16`. `src/niche_scout/collector_graphql.py` (+90) adds `_map_rating_pair` and calls it once in `validate_product_detail_payload`; `tests/test_collector.py` (+20/−6) pins the frozen codes/messages in 3 nodes (the test-author's unreferenced constants are now used). Lead-reproduced below. Commit `000b1b1`. |
 | Verify (lead) | PENDING | |
 | Review — `spec-reviewer` | PENDING | |
 | Gate (lead) | PENDING | |
@@ -135,6 +135,25 @@ asserts the code as a **literal** (`:4265`) rather than via
 nodes assert the frozen message constants (plan §3.2) and use the CODE constants, then
 re-run pytest; that is an in-scope test fix within the allowlist (the implementer must
 not weaken any assertion).
+
+### Implementation stage — lead-reproduced (step 6, real output)
+
+Changed: `src/niche_scout/collector_graphql.py` (+90), `tests/test_collector.py` (+20/−6).
+
+| Command | Real result |
+|---|---|
+| `python -m pytest -q` | **700 passed in 26.66s** |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 IDs, 679 matrix nodes |
+| `python -m niche_scout.tools.check_import_boundaries` | exit 0 — valid for `metrics.py`, `scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | exit 0 — 6 tokens, none retired |
+| `python -m niche_scout.tools.check_secrets` | exit 0 |
+| `python -m ruff check src/niche_scout/collector_graphql.py` | `All checks passed!` |
+| `python -m ruff check tests/test_collector.py` | **29 errors** — all pre-existing (32 at the tests commit, less the 3 chunk-introduced E501s the follow-up wrapped; the remaining 29 exist on `main`). No new lint from this chunk. |
+| `python -m ruff format --check src/niche_scout/collector_graphql.py` | 1 file would be reformatted — **pre-existing** hunks at `:706`, `:832`, `:1677`, `:1697`, `:1788`, `:2307`; the new `_map_rating_pair` region is absent from the diff |
+| `python -m ruff format --check tests/test_collector.py` | would be reformatted — pre-existing hunks only |
+| `git diff --name-only main -- src/niche_scout/metrics.py src/niche_scout/scoring.py` | empty — pure modules unchanged |
+| `git diff main --name-only` | plan, run log, `collector_graphql.py`, `graphql_fixtures.py`, `test_collector.py`, `traceability.json` only |
+| `python -c "..."` | `_map_rating_pair` present; `ENDPOINT_CONTRACT_VERSION == "1.0.0"` (no bump) |
 
 ### Test-author questions (none raised; notes only)
 
