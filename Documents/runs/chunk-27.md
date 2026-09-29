@@ -53,7 +53,7 @@ Latest run `run-2026-09-29T05:33:21.664034+00:00`. Counted from
 | Stage | Status | Evidence |
 |---|---|---|
 | Preflight (lead) | DONE | branch `chunk-27`; clean tree; chunk-26 GATE PASSED; baseline 695 passed; DB re-verified above. |
-| Plan — `chunk-planner` | PENDING | target `Documents/plans/chunk-27-rating-missingness-remediation.md` |
+| Plan — `chunk-planner` | DONE (FROZEN) | First dispatch hit its step cap (INCOMPLETE, no file). An `explore` session (`ses_f12fa3e97ffeUihixiWLCDEJnx`) recommended answers to the six open questions; operator adopted them ("go with the suggested answers"). Re-dispatched `chunk-planner` (`ses_f12e27d59ffeft9nAxVc2WC4k8`); plan written (513 lines, §1–§13, `Status: FROZEN`, no open questions), then a follow-up edit froze the draft-path mechanism to one private `_map_rating_pair` builder. Lead verified §3.5/§8/§11 by read. Commit `3f8a15f`. |
 | Tests — `test-author` | PENDING | |
 | Implement — `impl-deep` | PENDING | |
 | Verify (lead) | PENDING | |
@@ -82,9 +82,34 @@ Latest run `run-2026-09-29T05:33:21.664034+00:00`. Counted from
 NOT: `metrics.py`, `scoring.py`, `pipeline.py`, `database.py`, `report.py`, config, SRS,
 sampling constants. A needed change outside this list is a STOP-and-flag, not an edit.
 
-## Open questions
+## Open questions and adopted answers
 
-(none yet)
+The planner raised six questions. An `explore` analysis session recommended answers,
+and the operator adopted them (2026-09-29): "go with the suggested answers". Plan §3
+records the frozen rule.
+
+- **Q1 (channel).** Option (a) only: contradiction issues ride the ProductDetail success
+  result's `issues` tuple → `PreflightObservation.diagnostic_summary_json` →
+  `runs.identity_preflight_summary_json.diagnostic_summary_json`. The per-row
+  `product_detail_error_summary` stays NULL (option (b) would need `pipeline.py`, out of
+  allowlist). Success-path `error_summary=None` is NOT changed (rejected alternative,
+  plan §6.1). Gate bullet 2's "persists" = the run-level audit-summary channel (plan §12).
+- **Q2 (codes).** `rating_average_without_rating_count` (count==0, avg>0) and
+  `rating_average_zero_with_positive_count` (count>0, avg==0). No code registry exists;
+  unprefixed `snake_case`, not added to the four-code structural dedup dict.
+- **Q3 (invariant).** Both codes stay out of `_classify_product_detail_failure`, so
+  `is_valid=True` / `failure_class=NONE` and the retained count survive. Load-bearing:
+  `select_operation_correlation_mode` stays `VALIDATED_POSITION`.
+- **Q4 (precedence).** Total order on the typed pair (plan §3.1, rows 1–7). `count==0`
+  with avg in {0, absent, null} → both `None`, no issue; key on the typed count, not the
+  raw member (`0.0` count stays `response_wrong_scalar_type`).
+- **Q5.** `avg>0` with count absent → unchanged, no issue.
+- **Q6 (re-baseline).** Exactly one existing node changes
+  (`test_product_detail_rating_average_accepts_integral_json_number`, case `(0, 0.0)`);
+  six new nodes; a new fixture helper; traceability entries only for new node IDs.
+
+Recorded-not-fixed: `Documents/interfaces/chunk-05.md` §5.6 omits `mapping_rule_version`
+(plan §6.2) — outside the allowlist, not touched.
 
 ## Gate
 
