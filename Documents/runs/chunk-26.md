@@ -65,6 +65,14 @@ config snapshot `min_usable_samples_per_stratum=1`, `quality_min_rating_count=5`
 | Plan Q&A — operator | **DONE** | OQ-1…OQ-14 all resolved (plan §13, §14). Only the D1-S1…D1-S7 SRS edit remains a human checkpoint for `chunk-28`. |
 | Tests / Implement / Review / Gate | NOT STARTED | `chunk-26` (D4+D5) is now freezeable; next step is branch + tests-first. |
 
+## Preflight executed (2026-09-29)
+
+| Check | Result |
+|---|---|
+| `git status --porcelain --branch` | `## main`; only the two chunk-26 docs untracked |
+| Branch | `git switch -c chunk-26` → "Switched to a new branch 'chunk-26'" |
+| Plan commit | `git commit` → `[chunk-26 3a1b2a5] chunk-26: plan (D4+D5 scoped; OQ-1..OQ-14 resolved)` — 2 files, 1213 insertions |
+
 ## Operator ruling 2026-09-29 (D1 — page-view semantics)
 
 Operator statements (verbatim intent): (1) the Unity Asset Store page view count is
