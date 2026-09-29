@@ -70,7 +70,7 @@ config snapshot `min_usable_samples_per_stratum=1`, `quality_min_rating_count=5`
 | Stage | Status | Evidence |
 |---|---|---|
 | Tests — `test-author` | DONE | session `ses_f139f0821ffez7NIo6KEhDdFj9`. Modified `tests/test_report.py`, `tests/fixtures/report_fixtures.py`, `tests/traceability.json`; 7 new/rebased D4+D5 nodes. Lead-reproduced below. Commit `b6f0748`. |
-| Implement — `impl-fast` | PENDING | — |
+| Implement — `impl-fast` | DONE | session `ses_f138db5cbffebYYIqD3XJbmHAg`. `src/niche_scout/report.py` only (+32/−12). Lead-reproduced below. Commit `3bb0edb`. |
 | Review — `spec-reviewer` | PENDING | — |
 | Gate (lead) | PENDING | — |
 
@@ -85,6 +85,22 @@ config snapshot `min_usable_samples_per_stratum=1`, `quality_min_rating_count=5`
 
 Ruff was not run at the tests stage: the sub-agent reported `ruff` invocations denied by
 its permission layer. The lead re-runs ruff at the verify stage.
+
+### Implementation stage — lead-reproduced (step 6, real output)
+
+Only `src/niche_scout/report.py` modified (`git status --porcelain` → ` M src/niche_scout/report.py`).
+
+| Command | Real result |
+|---|---|
+| `python -m pytest -q` | **695 passed in 38.56s** (688 baseline + 7 new nodes) |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 IDs, 673 matrix nodes |
+| `python -m niche_scout.tools.check_import_boundaries` | exit 0 — valid for `metrics.py`, `scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | exit 0 — 6 tokens, none retired |
+| `python -m niche_scout.tools.check_secrets` | exit 0 |
+| `ruff check src/niche_scout/report.py` | `All checks passed!` |
+| `ruff format --check src/niche_scout/report.py` | `1 file already formatted` |
+
+The seven tests-stage failures are resolved; no collateral regression. Commit `3bb0edb`.
 
 ## Preflight executed (2026-09-29)
 
