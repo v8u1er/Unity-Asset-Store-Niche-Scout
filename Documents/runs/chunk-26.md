@@ -95,7 +95,15 @@ Branch `chunk-26`, base `main`. Commits: `3a1b2a5` plan · `fa29b8e` preflight l
 | Ruff: no new lint | `ruff check src/niche_scout/report.py tests/test_report.py tests/fixtures/report_fixtures.py` → `All checks passed!`; `ruff format --check src/niche_scout/report.py` + `tests/fixtures/report_fixtures.py` → already formatted. **Minor:** `ruff format --check tests/test_report.py` → 1 file would be reformatted (two chunk-added hunks, recorded; format ≠ lint) | PASS (no new lint) |
 | No SRS text edited; no out-of-scope file changed | `git diff main...HEAD --name-only` = plan, run log, `report.py`, `report_fixtures.py`, `test_report.py`, `traceability.json` only. No `Documents/SRS-*` change; no change to `scoring.py`/`metrics.py`/`pipeline.py`/`database.py`/sampling constants (`SAMPLE_PER_STRATUM` stays 25 per OQ-5) | PASS |
 
-**GATE: PASSED**, with one recorded Minor (`tests/test_report.py` `ruff format` deviation, deferred per chunk-25 precedent).
+**Gate: PASSED**, with one recorded Minor (`tests/test_report.py` `ruff format` deviation, deferred per chunk-25 precedent).
+
+### Merge (2026-09-29, operator-requested)
+
+`git switch main` → `git merge --ff-only chunk-26` → `Updating 44fe283..7fdf92e`,
+fast-forward, 6 files / +1654 / −21. Post-merge on `main`: `git log --oneline -3`
+HEAD `7fdf92e`; `python -m pytest -q` → **695 passed in 28.48s**. Branch `chunk-26`
+retained (not deleted — deletion is an operator shell action; the lead's block
+denies `git branch -d`).
 
 **Not done here (next chunks, per the adopted split):** D2 → `chunk-27`; D1 → `chunk-28`
 (its SRS edits D1-S1…D1-S7 remain the operator checkpoint, plan §13.4/§14.6). D3 is closed
