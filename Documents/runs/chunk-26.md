@@ -63,7 +63,28 @@ config snapshot `min_usable_samples_per_stratum=1`, `quality_min_rating_count=5`
 | Operator ruling — D1 semantics | DONE (2026-09-29) | Operator confirmed the Unity page-view field is per-week (trailing 7 days), refresh stable ≤30 min / assumed ≤ daily. Plan §13 records the ruling, the best-assumption formula, the required SRS edits D1-S1…D1-S7, and new OQ-11…OQ-14. §3.2/OQ-1/OQ-2 marked RESOLVED; §1.3/§1.4 split updated. |
 | Operator ruling — all remaining OQ | DONE (2026-09-29) | Operator: "go with what your sub-agent determined as best answer." Plan §14 records the adopted answers for OQ-3…OQ-14 (OQ-1/OQ-2 already resolved in §13): D2 at the collector mapping with four distinct states incl. the 416-row contradiction; **D3 no change** (no census move, no version bump); D4 best-first from `rank_balanced`; D5 fix `report.py:112`; keep the symbol (OQ-11); bump `ENDPOINT_CONTRACT_VERSION` 1.0.0→1.1.0 (OQ-12) and `SCHEMA_VERSION` 1.2.0→1.3.0 (OQ-13); reword report caveats (OQ-14); split accepted (`chunk-26`=D4+D5, `chunk-27`=D2, `chunk-28`=D1). |
 | Plan Q&A — operator | **DONE** | OQ-1…OQ-14 all resolved (plan §13, §14). Only the D1-S1…D1-S7 SRS edit remains a human checkpoint for `chunk-28`. |
-| Tests / Implement / Review / Gate | NOT STARTED | `chunk-26` (D4+D5) is now freezeable; next step is branch + tests-first. |
+| Tests / Implement / Review / Gate | IN PROGRESS | Tests DONE; implement/review/gate pending. |
+
+## Stage log (chunk-26 = D4 + D5)
+
+| Stage | Status | Evidence |
+|---|---|---|
+| Tests — `test-author` | DONE | session `ses_f139f0821ffez7NIo6KEhDdFj9`. Modified `tests/test_report.py`, `tests/fixtures/report_fixtures.py`, `tests/traceability.json`; 7 new/rebased D4+D5 nodes. Lead-reproduced below. Commit `b6f0748`. |
+| Implement — `impl-fast` | PENDING | — |
+| Review — `spec-reviewer` | PENDING | — |
+| Gate (lead) | PENDING | — |
+
+### Tests stage — lead-reproduced (real output)
+
+| Command | Real result |
+|---|---|
+| `git status --porcelain` | only the three allowlisted test paths modified (`tests/fixtures/report_fixtures.py`, `tests/test_report.py`, `tests/traceability.json`) |
+| `python -m pytest tests/test_report.py -q` | **7 failed, 17 passed in 1.56s** — all 7 are missing-implementation value failures against the unchanged `report.py` (e.g. `assert 2 == 1`, `'rating' is contained here` at `test_demand_formula_text_does_not_claim_rating_inputs`); no syntax/collection errors |
+| `python -m pytest -q` | **7 failed, 688 passed in 23.35s** — the same 7 nodes; no collateral regression |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 IDs, **673 matrix nodes** (was 666; +7 new nodes) |
+
+Ruff was not run at the tests stage: the sub-agent reported `ruff` invocations denied by
+its permission layer. The lead re-runs ruff at the verify stage.
 
 ## Preflight executed (2026-09-29)
 
