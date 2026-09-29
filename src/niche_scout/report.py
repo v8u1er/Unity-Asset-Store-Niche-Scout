@@ -109,8 +109,8 @@ _FORMULA_EXPLANATIONS: tuple[str, ...] = (
     f"(D {W_D:.2f} x C {W_C:.2f} x R {W_R:.2f} x Q {W_Q:.2f}), renormalized "
     "over the available components only; it is not a sales, revenue, or "
     "download forecast.",
-    "D (demand) consumes the discovered page-view index and rating signals, "
-    "shrunk by demand stratum eligibility coverage.",
+    "D (demand) consumes the discovered page-view index, shrunk by demand "
+    "stratum eligibility coverage.",
     "C (competition) consumes verified catalog breadth; unbounded or incomplete "
     "breadth makes it unavailable.",
     "R (recent supply) consumes the recent share and median asset age, shrunk by "
@@ -530,30 +530,50 @@ def _fallback_row(run: RunRecord, category: str) -> CategoryReportRow:
 def _order_rows(
     rows_by_category: dict[str, CategoryReportRow],
 ) -> tuple[CategoryReportRow, ...]:
-    """Order ranked rows by ``(-rank, category)``, then unranked by category."""
+    """Order ranked rows by ``(rank, category)``, then unranked by category.
+
+    Rank 1 is the best balanced composite score (SRS §9.3 ``LREQ-SEN-020``), so
+    ascending ``rank`` renders best-first and keeps the rank column monotone with
+    the adjacent composite-score column (plan §6.2, OQ-8). Unranked rows follow,
+    ascending by category.
+    """
     ranked = [row for row in rows_by_category.values() if row.rank is not None]
     unranked = [row for row in rows_by_category.values() if row.rank is None]
-    ranked.sort(key=lambda row: (-row.rank, row.category))
+    ranked.sort(key=lambda row: (row.rank, row.category))
     unranked.sort(key=lambda row: row.category)
     return tuple(ranked) + tuple(unranked)
 
 
 def _rank_from_sensitivity(payload: str, category: str) -> int | None:
-    """Derive the displayed rank from ``ranking_sensitivity_json``; else ``None``."""
+    """Return ``rank_balanced`` for ``category`` from ``ranking_sensitivity_json``.
+
+    The payload's ``categories`` list carries the persisted 1-based balanced
+    ranks (SRS §9.3 ``LREQ-SEN-020``); ``ranked_categories`` is only the
+    base-candidate (requested) order and is never used for the display rank
+    (plan §6.2, D4). Returns ``None`` for invalid JSON, a non-object value, a
+    missing/empty/non-list ``categories``, no matching entry, a non-mapping
+    matching entry, or a missing/non-``int`` ``rank_balanced`` (``bool`` is not
+    treated as an ``int``).
+    """
     try:
         decoded = json.loads(payload)
     except json.JSONDecodeError:
         return None
     if not isinstance(decoded, dict):
         return None
-    ranked = decoded.get("ranked_categories")
-    if not isinstance(ranked, list):
+    categories = decoded.get("categories")
+    if not isinstance(categories, list) or not categories:
         return None
-    try:
-        position = ranked.index(category)
-    except ValueError:
-        return None
-    return position + 1
+    for entry in categories:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("category") != category:
+            continue
+        rank = entry.get("rank_balanced")
+        if isinstance(rank, bool) or not isinstance(rank, int):
+            return None
+        return rank
+    return None
 
 
 def _parse_component_list(payload: str) -> tuple[str, ...]:
