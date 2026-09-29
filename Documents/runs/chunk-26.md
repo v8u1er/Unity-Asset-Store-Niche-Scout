@@ -71,8 +71,35 @@ config snapshot `min_usable_samples_per_stratum=1`, `quality_min_rating_count=5`
 |---|---|---|
 | Tests — `test-author` | DONE | session `ses_f139f0821ffez7NIo6KEhDdFj9`. Modified `tests/test_report.py`, `tests/fixtures/report_fixtures.py`, `tests/traceability.json`; 7 new/rebased D4+D5 nodes. Lead-reproduced below. Commit `b6f0748`. |
 | Implement — `impl-fast` | DONE | session `ses_f138db5cbffebYYIqD3XJbmHAg`. `src/niche_scout/report.py` only (+32/−12). Lead-reproduced below. Commit `3bb0edb`. |
-| Review — `spec-reviewer` | PENDING | — |
-| Gate (lead) | PENDING | — |
+| Review — `spec-reviewer` | PASS | session `ses_f1384766affeUOiXdHkuQPP4x1`. `VERDICT: PASS`, 0 Blocker, 0 Major, 3 Minor (recorded below). Reviewer hit its step cap after the review was substantively complete. |
+| Gate (lead) | PASSED | Gate table below; `GATE: PASSED`. |
+
+### Review findings (3 Minor; none triggers a fix round — recorded per procedure step 7)
+
+1. `tests/test_report.py` fails `ruff format --check` on two hunks the chunk added (lines ~504-509, ~561-570): a line-break style ruff would collapse. `ruff check` passes on the same file. Lead-confirmed `ruff format --diff tests/test_report.py` shows only those two chunk-introduced hunks. **Format deviation, not lint** → gate bullet is "no new lint" (chunk-25 precedent: same class of Minor deferred and recorded).
+2. `src/niche_scout/report.py:266-267` — `CategoryReportRow` docstring still says `rank` is `None` for a category absent from `ranking_sensitivity_json.ranked_categories`; the operative source is now `categories[*].rank_balanced`. Not false for real 1:1 payloads (both lists carry the same categories), but stale. Docstring-only.
+3. `tests/fixtures/report_fixtures.py` — the fixture `categories` entries carry only `{"category","rank_balanced"}` while the real payload is `[asdict(row) for row in sensitivity.categories]` (10 fields, `scoring.py:1210-1234`). Faithful for the two keys the reader consumes; optional hardening only.
+
+Reviewer UNVERIFIED items closed by the lead:
+- **§9 live-DB D4 confirmation** (reviewer did not run it): lead ran it — see Gate evidence row 1. Confirms rank 1 = run-max score on the persisted run.
+
+## Gate
+
+Branch `chunk-26`, base `main`. Commits: `3a1b2a5` plan · `fa29b8e` preflight log · `b6f0748` tests · `e100cd8` tests log · `3bb0edb` implementation · `d5d52b0` impl log.
+
+| Bullet (plan §11) | Evidence (command output / file:line) | Status |
+|---|---|---|
+| D4: report rank equals persisted `rank_balanced`; run-max row prints rank 1; monotone; stored `ranked_categories` order unchanged; `not_rankable` rows `None` | Live read-only confirmation: `n_ranked 21`; `rank1 ('vfx/particles/environment', 0.8544565…, 1)`; `rank_last ('3d/characters/creatures', 0.2217…, 21)`; `unranked ['3d/props/furniture','3d/props/weapons','3d/vehicles/land']`. `scoring.py` untouched (`git diff main...HEAD --name-only -- src/` → only `report.py`). | PASS |
+| D5: D formula text no longer claims rating inputs; Q keeps rating | `tests/test_report.py::test_demand_formula_text_does_not_claim_rating_inputs` passes; `report.py:112-113` reworded, Q line unchanged. | PASS |
+| `pytest` + four validators exit 0 | `python -m pytest -q` → **695 passed in 38.56s**; `validate_traceability` exit 0 (89 IDs, 673 nodes); `check_import_boundaries`, `check_scope_prohibitions`, `check_secrets` exit 0 | PASS |
+| Ruff: no new lint | `ruff check src/niche_scout/report.py tests/test_report.py tests/fixtures/report_fixtures.py` → `All checks passed!`; `ruff format --check src/niche_scout/report.py` + `tests/fixtures/report_fixtures.py` → already formatted. **Minor:** `ruff format --check tests/test_report.py` → 1 file would be reformatted (two chunk-added hunks, recorded; format ≠ lint) | PASS (no new lint) |
+| No SRS text edited; no out-of-scope file changed | `git diff main...HEAD --name-only` = plan, run log, `report.py`, `report_fixtures.py`, `test_report.py`, `traceability.json` only. No `Documents/SRS-*` change; no change to `scoring.py`/`metrics.py`/`pipeline.py`/`database.py`/sampling constants (`SAMPLE_PER_STRATUM` stays 25 per OQ-5) | PASS |
+
+**GATE: PASSED**, with one recorded Minor (`tests/test_report.py` `ruff format` deviation, deferred per chunk-25 precedent).
+
+**Not done here (next chunks, per the adopted split):** D2 → `chunk-27`; D1 → `chunk-28`
+(its SRS edits D1-S1…D1-S7 remain the operator checkpoint, plan §13.4/§14.6). D3 is closed
+with no change. Not merged to `main` (merge only on explicit request).
 
 ### Tests stage — lead-reproduced (real output)
 
