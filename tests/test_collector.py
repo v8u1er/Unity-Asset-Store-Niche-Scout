@@ -4176,7 +4176,6 @@ def test_select_operation_correlation_mode_rejects_empty_evidence() -> None:
     ("rating_average", "expected"),
     [
         (5, 5.0),
-        (0, 0.0),
         (4.5, 4.5),
     ],
 )
@@ -4191,12 +4190,19 @@ def test_product_detail_rating_average_accepts_integral_json_number(
     rating averages (human ruling on the Chunk 18 follow-on). The frozen
     interface types the field ``rating_average: float | None``
     (``interfaces/chunk-05.md`` section 5.6), so the accepted value is carried
-    as a ``float`` -- no rounding, float64 throughout.
+    as a ``float`` -- no rounding, float64 throughout. These two cases are plan
+    ``chunk-27`` §3.1 row 7: the count is the default positive ``210`` and the
+    average is a genuine ``0 < avg <= 5`` value, so the pair is retained
+    unchanged.
 
-    Hand-derived expected values: ``float(5)`` is exactly ``5.0``;
-    ``float(0)`` is exactly ``0.0`` (zero is a real value, not an absent or
-    failed one); ``4.5`` is exactly representable (9/2). All three are exact
-    in binary, so the ``1e-9`` tolerance is slack, not a fudge.
+    Hand-derived expected values: ``float(5)`` is exactly ``5.0`` and ``4.5``
+    is exactly representable (9/2); both are exact in binary, so the ``1e-9``
+    tolerance is slack, not a fudge.
+
+    The former ``(0, 0.0)`` case is **not** an acceptance case under plan
+    ``chunk-27`` §3.1 row 6 (positive count with a zero average is the Unity
+    "unrated" placeholder); it moved to
+    :func:`test_product_detail_rating_average_zero_with_positive_count_is_unavailable`.
     """
     validation = collector_graphql.validate_product_detail_payload(
         gqlfx.product_detail_payload(rating_average=rating_average)
@@ -4207,7 +4213,56 @@ def test_product_detail_rating_average_accepts_integral_json_number(
     fields = validation.product_detail
     assert fields is not None
     assert fields.rating_average == pytest.approx(expected, abs=1e-9)
+    assert fields.rating_average is not None
     assert isinstance(fields.rating_average, float)
+    # Row 7 retains the count unchanged as well (default 210).
+    assert fields.rating_count == 210
+    assert fields.rating_count is not None
+    assert isinstance(fields.rating_count, int)
+    assert not isinstance(fields.rating_count, bool)
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_product_detail_rating_average_zero_with_positive_count_is_unavailable() -> None:
+    """Row 6: a zero average with a positive count is unavailable, count kept.
+
+    Plan ``chunk-27`` §3.1 row 6, §8 (null/edge behavior), gate bullet 2. Unity
+    sends a literal ``0`` for ``rating.average`` on unrated assets; SRS §1.2
+    (``SRS-lean-v2.md``:92-93) forbids converting that placeholder to zero and
+    ``LREQ-GQL-050`` (``SRS-lean-v2.md``:341-343) requires the failed field to
+    stay ``None``. The count is genuinely returned, so it is retained as the
+    integer ``210`` -- ``LREQ-GQL-050`` forbids *filling* a missing field, it
+    does not require discarding a present, valid member.
+
+    Hand-derived expectations (plan §9.3 item 1, §9.3 hand-computed paragraph):
+    ``float(210)`` is retained as the exact ``int`` 210; ``0.0`` is the exact
+    placeholder the mapping nulls. Exactly one issue is appended, code
+    ``rating_average_zero_with_positive_count`` (plan §3.2).
+
+    Q3 invariant (plan §3.3, load-bearing): the new code is not in
+    ``_classify_product_detail_failure``'s membership tests and is not a
+    ``response_*`` code, so the payload stays valid with
+    ``failure_class is NONE`` and the correlation mode is not flipped.
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_contradiction_payload(
+            rating_average=0, rating_count=210
+        )
+    )
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_average is None
+    assert fields.rating_count == 210
+    # The retained count stays a Python ``int``, never a coerced ``float``.
+    assert isinstance(fields.rating_count, int)
+    assert not isinstance(fields.rating_count, bool)
+
+    codes = [issue.code for issue in validation.issues]
+    assert codes == ["rating_average_zero_with_positive_count"]
 
 
 @pytest.mark.lreq("LREQ-GQL-040")
@@ -4343,3 +4398,216 @@ def test_identity_alias_set_compares_authoritative_id_only() -> None:
         collector_graphql.annotate_product_detail_identity(
             requested, fields, mapping_rule_version="9.9.9"
         )
+
+
+# ---------------------------------------------------------------------------
+# Chunk 27 / D2 rating missingness -- the typed-pair precedence table (rows 4/5/6)
+# ---------------------------------------------------------------------------
+#
+# Scope authority: Documents/plans/chunk-27-rating-missingness-remediation.md §3
+# (typed-pair precedence), §8 (null/edge behavior), §9.3 (new nodes). Unity sends
+# a literal 0 for rating.average / rating.count on unrated assets; the adapter
+# maps the typed pair to None so a "no rating" state is never persisted as a real
+# zero (SRS §1.2, LREQ-GQL-050). Every body here is an offline fixture: no
+# transport, no network, no clock.
+
+#: Plan §3.2 row 4 code: a positive average with a zero count.
+RATING_AVERAGE_WITHOUT_COUNT_CODE = "rating_average_without_rating_count"
+
+#: Plan §3.2 row 6 code: a zero average placeholder with a positive count.
+RATING_AVERAGE_ZERO_WITH_COUNT_CODE = "rating_average_zero_with_positive_count"
+
+#: The exact message plan §3.2 gives each new code. Pinned so the implementation
+#: uses the frozen wording (LREQ-GQL-050), not an ad-hoc string.
+RATING_AVERAGE_WITHOUT_COUNT_MESSAGE = (
+    "rating.average is positive while rating.count is zero; both are "
+    "unavailable and neither is coerced to a default"
+)
+RATING_AVERAGE_ZERO_WITH_COUNT_MESSAGE = (
+    "rating.average is a zero placeholder with a positive rating.count; the "
+    "average is unavailable and the count is retained as returned"
+)
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_product_detail_rating_positive_average_with_zero_count_is_contradictory() -> None:
+    """Row 4: a positive average with a zero count nulls both members.
+
+    Plan ``chunk-27`` §3.1 row 4, §8, §9.3 item 2. A genuine positive average
+    cannot sit alongside a zero count, so the pair is contradictory: SRS §1.2
+    (``SRS-lean-v2.md``:92-93) forbids converting a contradictory value to zero,
+    so **neither** member is defaulted -- both become ``None`` and exactly one
+    issue with code ``rating_average_without_rating_count`` is appended (plan
+    §3.2).
+
+    Hand-derived (plan §9.3 hand-computed paragraph): ``None``/``None`` are
+    exact; ``4.5`` is exactly representable (9/2) but is not retained here.
+    The payload stays valid (``is_valid is True``, ``failure_class is NONE``)
+    because the new code is not a structural failure class (plan §3.3).
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_contradiction_payload(
+            rating_average=4.5, rating_count=0
+        )
+    )
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_average is None
+    assert fields.rating_count is None
+
+    codes = [issue.code for issue in validation.issues]
+    assert codes == [RATING_AVERAGE_WITHOUT_COUNT_CODE]
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_product_detail_rating_zero_count_and_zero_average_is_no_rating() -> None:
+    """Row 5: a zero count with a zero average is "no rating", not a contradiction.
+
+    Plan ``chunk-27`` §3.1 row 5, §9.3 item 3, gate bullet 1. Unity's unrated
+    literal pair is ``(0.0, 0)``; both members are nulled and **no**
+    contradiction code appears in ``validation.issues`` (plan §8: rows 1, 2, 3,
+    5, 7 carry no contradiction issue).
+
+    Hand-derived: ``None``/``None`` exact; the zero pair is a single no-rating
+    state, never two distinct zeros (SRS §1.2).
+    """
+    validation = collector_graphql.validate_product_detail_payload(
+        gqlfx.product_detail_contradiction_payload(
+            rating_average=0, rating_count=0
+        )
+    )
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_average is None
+    assert fields.rating_count is None
+
+    codes = [issue.code for issue in validation.issues]
+    assert RATING_AVERAGE_WITHOUT_COUNT_CODE not in codes
+    assert RATING_AVERAGE_ZERO_WITH_COUNT_CODE not in codes
+    assert codes == []
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_product_detail_rating_zero_count_with_absent_average_is_no_rating() -> None:
+    """Row 5 variant: a zero count with a null (absent) average is "no rating".
+
+    Plan ``chunk-27`` §3.1 ("A count of ``0`` with an absent (``None``) average
+    is row 5, not row 4 -- an absent member is not a positive average") and §9.3
+    item 4. The average member is present as JSON ``null``, the typed value is
+    ``None``, and the zero count is nulled; no contradiction issue is appended
+    (plan §8 rows 1/2/3/5/7). ``LREQ-GQL-040`` (``SRS-lean-v2.md``:334-339)
+    makes null required data an operation error, so an *omitted* member would be
+    a different, already-pinned case (see
+    ``test_product_detail_missing_required_member_is_an_operation_error``); the
+    row 5 variant here is the null member, which is not a structural failure.
+
+    Hand-derived: ``None``/``None`` exact; the outcome equals the ``(0.0, 0)``
+    row 5 case, because neither state fabricates a zero.
+    """
+    payload = gqlfx.product_detail_contradiction_payload(
+        rating_average=None, rating_count=0
+    )
+    # The JSON ``null`` average member is present but null; the mapping keys the
+    # decision on the typed value (``None``), not on member presence.
+    assert payload["rating"]["average"] is None
+    assert "average" in payload["rating"]
+
+    validation = collector_graphql.validate_product_detail_payload(payload)
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_average is None
+    assert fields.rating_count is None
+
+    codes = [issue.code for issue in validation.issues]
+    assert RATING_AVERAGE_WITHOUT_COUNT_CODE not in codes
+    assert RATING_AVERAGE_ZERO_WITH_COUNT_CODE not in codes
+    assert codes == []
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_product_detail_rating_positive_average_with_absent_count_is_unchanged() -> None:
+    """Q5 (row 3): a positive average with an absent count keeps the average.
+
+    Plan ``chunk-27`` §3.1 row 3, §3.6 Q5, §8, §9.3 item 5. An absent count is
+    not a contradiction: the returned average is genuine and the count stays
+    ``None`` -- no issue is appended (SRS §1.2's "contradictory" applies to
+    values that actually conflict, not to a missing peer). The retained average
+    is carried as a ``float`` (frozen ``ProductDetailFields.rating_average:
+    float | None``, ``interfaces/chunk-05.md`` §5.6).
+
+    Hand-derived: ``4.5`` is exactly representable (9/2), so the ``1e-9``
+    tolerance is slack, not a fudge.
+    """
+    payload = gqlfx.product_detail_contradiction_payload(
+        rating_average=4.5, rating_count=None
+    )
+    assert payload["rating"]["count"] is None
+    assert "count" in payload["rating"]
+
+    validation = collector_graphql.validate_product_detail_payload(payload)
+
+    assert validation.is_valid is True
+    assert validation.failure_class is collector_graphql.GraphQLFailureClass.NONE
+    fields = validation.product_detail
+    assert fields is not None
+    assert fields.rating_count is None
+    assert fields.rating_average == pytest.approx(4.5, abs=1e-9)
+    assert fields.rating_average is not None
+    assert isinstance(fields.rating_average, float)
+
+    codes = [issue.code for issue in validation.issues]
+    assert codes == []
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_row_six_pair_keeps_validated_position_correlation_mode() -> None:
+    """Q3 collateral (plan §3.3): the row 6 pair does not flip the correlation mode.
+
+    Plan ``chunk-27`` §3.3 (load-bearing) and §9.3 item 6: the two new codes
+    must not appear in ``_classify_product_detail_failure``'s membership tests,
+    so a keyless two-item body carrying the row 6 pair still has **every**
+    payload validate and ``select_operation_correlation_mode`` must keep
+    returning ``GraphQLOperationCorrelationMode.VALIDATED_POSITION``. Marking
+    the payload invalid would silently flip the persisted
+    ``runs.graphql_operation_correlation_mode`` to ``EXPLICIT_KEY``.
+
+    Hand-derived: item 0 is the keyless ``{"data":{"product":<row 6 pair>}}``
+    envelope and item 1 the valid ``{"data":{"pageViews":20}}`` envelope, i.e.
+    the fixed two-operation shape the LREQ-GQL-030 fallback requires.
+    """
+    product = gqlfx.product_detail_contradiction_payload(
+        rating_average=0, rating_count=210
+    )
+    # Precondition: the row 6 pair really is a contradiction, i.e. the same pair
+    # the validation nodes above assert stays ``is_valid``/``NONE``. Keeping
+    # this guard here is what makes the correlation assertion below a statement
+    # about *a validating* contradiction payload, not about an arbitrary one.
+    pair = collector_graphql.validate_product_detail_payload(product)
+    assert pair.is_valid is True
+    assert pair.failure_class is collector_graphql.GraphQLFailureClass.NONE
+
+    body_text = gqlfx.body_json_for_items(
+        [
+            {"data": {"product": product}},
+            {"data": {"pageViews": 20}},
+        ]
+    )
+
+    mode = collector_graphql.select_operation_correlation_mode(
+        (gql_batch_response(body_text),)
+    )
+    assert mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION

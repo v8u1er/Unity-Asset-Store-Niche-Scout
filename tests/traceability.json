@@ -293,6 +293,26 @@
   "tests/test_collector.py::test_product_detail_rating_average_container_values_are_rejected": [
     "LREQ-GQL-040"
   ],
+  "tests/test_collector.py::test_product_detail_rating_average_zero_with_positive_count_is_unavailable": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_positive_average_with_absent_count_is_unchanged": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_positive_average_with_zero_count_is_contradictory": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_zero_count_and_zero_average_is_no_rating": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
+  "tests/test_collector.py::test_product_detail_rating_zero_count_with_absent_average_is_no_rating": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
   "tests/test_collector.py::test_product_page_views_request_alias_is_page_views": [
     "LREQ-GQL-020"
   ],
@@ -327,6 +347,10 @@
   "tests/test_collector.py::test_reversed_response_order_correlates_by_explicit_key": [
     "LREQ-GQL-030",
     "LREQ-TST-040"
+  ],
+  "tests/test_collector.py::test_row_six_pair_keeps_validated_position_correlation_mode": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
   ],
   "tests/test_collector.py::test_select_operation_correlation_mode_rejects_empty_evidence": [
     "LREQ-GQL-030"

@@ -141,6 +141,7 @@ __all__ = [
     "null_product_body",
     "operation_errors_body",
     "partial_success_body",
+    "product_detail_contradiction_payload",
     "product_detail_is_list_body",
     "product_detail_payload",
     "recording_call_counter_body",
@@ -395,6 +396,40 @@ IDENTITY_AGREEMENT_PRODUCT_DETAIL_PAYLOAD: dict[str, Any] = product_detail_paylo
 IDENTITY_MISMATCH_PRODUCT_DETAIL_PAYLOAD: dict[str, Any] = product_detail_payload(
     GQL_FIXTURE_ASSET_ID_OTHER
 )
+
+
+def product_detail_contradiction_payload(
+    *,
+    rating_average: object,
+    rating_count: object,
+    asset_identity_key: str = GQL_FIXTURE_ASSET_ID,
+) -> dict[str, Any]:
+    """Return a ``ProductDetail`` payload carrying an explicit rating pair.
+
+    Plan ``chunk-27`` §9.2: a **new** helper for the rating-missingness
+    contradiction bodies. ``product_detail_payload``'s defaults
+    (``rating_average=4.5`` / ``rating_count=210``) are deliberately left
+    untouched so every existing golden stays byte-identical; this helper takes
+    the exact pair the case needs and uses the same otherwise-valid members as
+    ``product_detail_payload`` (``id``/``productId`` are ``asset_identity_key``,
+    ``reviewCount`` 34, ``firstPublishedDate`` 2019-03-04T12:30:00Z, ``state``
+    published). Members are emitted verbatim -- the helper performs no
+    normalization, and it accepts ``None`` (JSON ``null``) for either member.
+
+    Both members are present in the returned mapping; a case that needs one
+    *absent* must ``del`` it from the returned dict itself.
+    """
+    return {
+        "id": asset_identity_key,
+        "productId": asset_identity_key,
+        "rating": {"average": rating_average, "count": rating_count},
+        "reviewCount": 34,
+        "firstPublishedDate": "2019-03-04T12:30:00Z",
+        "state": "published",
+        "category": "Tools/Level Design/Tilemap",
+        "publisher": "Fixture Publisher",
+    }
+
 
 #: The live container shape of ``category`` (plan ``chunk-17`` §9 node 4). The
 #: IDs and names are hand-derived from the plan's own example values; they are
