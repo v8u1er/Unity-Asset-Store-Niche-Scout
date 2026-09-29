@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import ast
 import inspect
+import json
 import re
+from html import escape as html_escape
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -199,7 +201,9 @@ def test_load_run_report_view_reads_primary_rows(tmp_path):
 
         rows = _rows_by_category(view)
         first = rows[rf.CATEGORY_ALPHA]
-        # SRS §10: rank comes from the persisted balanced candidate order.
+        # SRS §9.3 LREQ-SEN-020 + §10 LREQ-RPT-020 (plan §6.2): the displayed
+        # rank is the persisted ``rank_balanced``, not a ``ranked_categories``
+        # list position.
         assert first.rank == 1
         assert rows[rf.CATEGORY_BRAVO].rank == 2
         assert first.market_opportunity_score == pytest.approx(0.63)
@@ -243,7 +247,8 @@ def test_load_run_report_view_reads_primary_rows(tmp_path):
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_load_run_report_view_orders_ranked_then_unranked(tmp_path):
-    """Ordering is explicit: ranked rows by (-rank, category), then unranked."""
+    """Ordering is explicit: ranked rows ascending by (rank, category), then
+    unranked rows ascending by category (best-first, plan §14.1 OQ-8)."""
     repository = _repository(tmp_path)
     categories = (
         rf.CATEGORY_ZULU,
@@ -259,9 +264,11 @@ def test_load_run_report_view_orders_ranked_then_unranked(tmp_path):
         _seed(repository, run, (alpha, bravo, charlie, zulu))
         view = report.load_run_report_view(repository, rf.RUN_ID)
         names = [row.category for row in view.categories]
+        # Best-first: rank 1 (the best balanced score) renders first, then rank
+        # 2, then the unranked rows in ascending category order.
         assert names == [
-            rf.CATEGORY_BRAVO,
             rf.CATEGORY_ALPHA,
+            rf.CATEGORY_BRAVO,
             rf.CATEGORY_CHARLIE,
             rf.CATEGORY_ZULU,
         ]
@@ -458,6 +465,204 @@ def test_explicit_zero_overlap_is_measured_zero(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# LREQ-RPT-020 / LREQ-SEN-020 — D4: the displayed rank is the balanced rank
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_rank_from_sensitivity_reads_rank_balanced_not_position():
+    """The displayed rank is the matching ``categories`` entry's ``rank_balanced``.
+
+    Plan §6/§14.1 (D4, OQ-8): ``ranked_categories`` records the base-candidate
+    (requested) order, so its list position is not the balanced-score rank.
+    SRS §9.3 ``LREQ-SEN-020`` ranks categories by descending balanced composite
+    score (ties broken by ascending lexical category), and the persisted
+    ``categories`` entries carry that 1-based ``rank_balanced``. This vector
+    stores BRAVO first but ranks ALPHA first, so a position-derived rank would
+    answer 2 for ALPHA.
+    """
+    payload = rf.ranking_sensitivity_json(
+        (rf.CATEGORY_BRAVO, rf.CATEGORY_ALPHA),
+        balanced_ranks={rf.CATEGORY_ALPHA: 1, rf.CATEGORY_BRAVO: 2},
+    )
+    assert report._rank_from_sensitivity(payload, rf.CATEGORY_ALPHA) == 1
+    assert report._rank_from_sensitivity(payload, rf.CATEGORY_BRAVO) == 2
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_rank_from_sensitivity_returns_none_without_matching_categories_entry():
+    """A missing/empty ``categories`` list yields ``None``, never a position.
+
+    Plan §6.2: fall back to ``None`` when the category is absent from
+    ``categories``; the old ``ranked_categories`` position is no longer a rank
+    source. The ``{}`` payload is the failed-preflight shape.
+    """
+    empty_object = rf.EMPTY_RANKING_SENSITIVITY_JSON
+    assert report._rank_from_sensitivity(empty_object, rf.CATEGORY_ALPHA) is None
+    # ``ranked_categories`` lists ALPHA but ``categories`` is empty.
+    listed_without_entries = rf.ranking_sensitivity_json((rf.CATEGORY_ALPHA,))
+    assert (
+        report._rank_from_sensitivity(listed_without_entries, rf.CATEGORY_ALPHA)
+        is None
+    )
+    # Entries exist, but only for another category.
+    other_only = rf.ranking_sensitivity_json(
+        (rf.CATEGORY_BRAVO,), balanced_ranks={rf.CATEGORY_BRAVO: 1}
+    )
+    assert report._rank_from_sensitivity(other_only, rf.CATEGORY_ALPHA) is None
+    # No ``categories`` key at all.
+    no_categories_key = json.dumps({"ranked_categories": [rf.CATEGORY_ALPHA]})
+    assert report._rank_from_sensitivity(no_categories_key, rf.CATEGORY_ALPHA) is None
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_rank_from_sensitivity_returns_none_for_malformed_payload():
+    """Invalid JSON, a non-object value, or a non-list ``categories`` is ``None``.
+
+    A malformed ``categories`` must not fall back to the ``ranked_categories``
+    position (the old contract), so the third vector also lists ALPHA there.
+    """
+    assert report._rank_from_sensitivity("{not json", rf.CATEGORY_ALPHA) is None
+    assert report._rank_from_sensitivity("[1, 2]", rf.CATEGORY_ALPHA) is None
+    assert (
+        report._rank_from_sensitivity(
+            json.dumps(
+                {
+                    "ranked_categories": [rf.CATEGORY_ALPHA],
+                    "categories": "not-a-list",
+                }
+            ),
+            rf.CATEGORY_ALPHA,
+        )
+        is None
+    )
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_display_rank_is_rank_balanced_not_stored_position(tmp_path):
+    """The run-maximum score prints rank 1 though it is stored second.
+
+    Plan §6/§14.1 (D4, OQ-8): rank is the persisted ``rank_balanced`` and the
+    primary table renders best-first, so the rank column is monotone with the
+    adjacent composite-score column (SRS §9.3 ``LREQ-SEN-020``; SRS §10
+    ``LREQ-RPT-020``). The stored ``ranked_categories`` order is untouched
+    (display-only fix).
+    """
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_LOW_INPUT_FIRST, rf.CATEGORY_HIGH_INPUT_SECOND))
+    low, high = rf.input_order_rank_flip_rows()
+    try:
+        _seed(repository, run, (low, high))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        rows = _rows_by_category(view)
+        assert rows[rf.CATEGORY_HIGH_INPUT_SECOND].rank == 1
+        assert rows[rf.CATEGORY_LOW_INPUT_FIRST].rank == 2
+        # Verbatim round-trip of the stored scores (the report derives none).
+        assert (
+            rows[rf.CATEGORY_HIGH_INPUT_SECOND].market_opportunity_score
+            == pytest.approx(0.854457, abs=1e-9)
+        )
+        assert (
+            rows[rf.CATEGORY_LOW_INPUT_FIRST].market_opportunity_score
+            == pytest.approx(0.32, abs=1e-9)
+        )
+
+        scored = [row for row in view.categories if row.rank is not None]
+        assert [row.category for row in scored] == [
+            rf.CATEGORY_HIGH_INPUT_SECOND,
+            rf.CATEGORY_LOW_INPUT_FIRST,
+        ]
+        # Rank is monotone with the score column: both descend.
+        assert [row.rank for row in scored] == [1, 2]
+        assert [row.market_opportunity_score for row in scored] == pytest.approx(
+            [0.854457, 0.32], abs=1e-9
+        )
+
+        text = report.render_run_report_text(view)
+        assert _text_primary_row(text, rf.CATEGORY_HIGH_INPUT_SECOND)["rank"] == "1"
+        assert _text_primary_row(text, rf.CATEGORY_LOW_INPUT_FIRST)["rank"] == "2"
+        html = report.render_run_report_html(view)
+        # The rank cell renders immediately before the composite-score cell
+        # (LREQ-RPT-020 column order), so the max-score row shows rank 1.
+        assert f"<td>{rf.CATEGORY_HIGH_INPUT_SECOND}</td><td>1</td>" in html
+        assert f"<td>{rf.CATEGORY_LOW_INPUT_FIRST}</td><td>2</td>" in html
+
+        # Display-only: the stored base-candidate order is unchanged (low first).
+        stored = {
+            record.category: json.loads(record.ranking_sensitivity_json)
+            for record in repository.get_category_scores(rf.RUN_ID)
+        }
+        for category in (
+            rf.CATEGORY_LOW_INPUT_FIRST,
+            rf.CATEGORY_HIGH_INPUT_SECOND,
+        ):
+            assert stored[category]["ranked_categories"] == [
+                rf.CATEGORY_LOW_INPUT_FIRST,
+                rf.CATEGORY_HIGH_INPUT_SECOND,
+            ]
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_order_rows_ties_fall_back_to_ascending_category(tmp_path):
+    """Equal displayed ranks keep a total order: ascending lexical category.
+
+    A tie in ``rank_balanced`` cannot occur in a scored run (ranks are 1..n),
+    but the display order must stay deterministic for any decodeable payload
+    (AGENTS.md "Determinism"): the sort key is ``(rank, category)``.
+    """
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ZULU, rf.CATEGORY_ALPHA))
+    tied = rf.ranking_sensitivity_json(
+        (rf.CATEGORY_ZULU, rf.CATEGORY_ALPHA),
+        balanced_ranks={rf.CATEGORY_ZULU: 3, rf.CATEGORY_ALPHA: 3},
+    )
+    zulu = rf.category_score_record(rf.CATEGORY_ZULU, ranking_sensitivity_json=tied)
+    alpha = rf.category_score_record(rf.CATEGORY_ALPHA, ranking_sensitivity_json=tied)
+    try:
+        _seed(repository, run, (zulu, alpha))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        assert [row.category for row in view.categories] == [
+            rf.CATEGORY_ALPHA,
+            rf.CATEGORY_ZULU,
+        ]
+        assert [row.rank for row in view.categories] == [3, 3]
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_rank_none_renders_no_rank_recorded_note(tmp_path):
+    """An empty sensitivity payload keeps ``rank`` null and says so.
+
+    Plan §6.2: the ``None`` fallback contract is unchanged — the primary table
+    prints ``unavailable`` and the detail panel carries the explicit
+    ``no rank recorded in ranking_sensitivity_json`` note.
+    """
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,))
+    row = rf.category_score_record(
+        rf.CATEGORY_ALPHA, ranking_sensitivity_json=rf.EMPTY_RANKING_SENSITIVITY_JSON
+    )
+    try:
+        _seed(repository, run, (row,))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        assert view.categories[0].rank is None
+        text = report.render_run_report_text(view)
+        assert _text_primary_row(text, rf.CATEGORY_ALPHA)["rank"] == "unavailable"
+        html = report.render_run_report_html(view)
+        for rendered in (html, text):
+            assert "no rank recorded in ranking_sensitivity_json" in rendered
+    finally:
+        repository.close()
+
+
+# --------------------------------------------------------------------------
 # LREQ-RPT-030 — category detail
 # --------------------------------------------------------------------------
 
@@ -520,6 +725,47 @@ def test_detail_labels_observed_versus_inferred(tmp_path):
         assert "component D/C/R/Q (inferred)" in html
         assert "discovered population (observed)" in text
         assert "demand per asset raw (inferred)" in text
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-030")
+@pytest.mark.lreq("LREQ-SCR-010")
+def test_demand_formula_text_does_not_claim_rating_inputs(tmp_path):
+    """D's fixed formula text consumes the page-view index, never ratings.
+
+    SRS §8.2 ``LREQ-SCR-010`` defines
+    ``D0 = 0.60 * P_ref(DemandPerAssetRaw) + 0.40 * P_ref(DemandMedianRaw)``;
+    neither raw metric consumes ``rating_average``/``rating_count``. The fixed D
+    line previously claimed "rating signals" (plan §2 item 2, defect D5); OQ-10
+    (plan §14.1) corrects the text in this chunk. The corrected line is rendered
+    by both detail panels (LREQ-RPT-030).
+    """
+    demand_lines = [
+        line for line in report._FORMULA_EXPLANATIONS if line.startswith("D (demand)")
+    ]
+    assert len(demand_lines) == 1
+    demand_line = demand_lines[0]
+    assert "page-view index" in demand_line
+    assert "rating" not in demand_line.lower()
+
+    # The correction is scoped to D: Q still truthfully names its rating input.
+    quality_lines = [
+        line for line in report._FORMULA_EXPLANATIONS if line.startswith("Q (quality)")
+    ]
+    assert len(quality_lines) == 1
+    assert "rating" in quality_lines[0].lower()
+
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,))
+    row = rf.category_score_record(rf.CATEGORY_ALPHA)
+    try:
+        _seed(repository, run, (row,))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        html = report.render_run_report_html(view)
+        text = report.render_run_report_text(view)
+        assert html_escape(demand_line, quote=True) in html
+        assert demand_line in text
     finally:
         repository.close()
 

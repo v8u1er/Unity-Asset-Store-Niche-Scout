@@ -22,6 +22,7 @@ Datetimes are fixed aware-UTC literals, never ``now()``.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from niche_scout.models import CategoryScoreRecord, RunRecord
@@ -50,6 +51,11 @@ CATEGORY_ZERO_POPULATION = "Render/ZeroPopulation"
 CATEGORY_FALLBACK_ONE = "Fallback/One"
 CATEGORY_FALLBACK_TWO = "Fallback/Two"
 CATEGORY_PRIMARY = CATEGORY_ALPHA
+#: D4 vector: the run declares the low scorer first, but the balanced rank is
+#: high 1 / low 2 (SRS §9.3 LREQ-SEN-020), mirroring the stored input order that
+#: is inverse to the balanced score (plan §6.1).
+CATEGORY_LOW_INPUT_FIRST = "Defect/LowScoreInputFirst"
+CATEGORY_HIGH_INPUT_SECOND = "Defect/HighScoreInputSecond"
 
 # --------------------------------------------------------------------------
 # Frozen ``stratum_statistics_json`` payloads (one per vector).
@@ -149,6 +155,7 @@ EMPTY_STRATUM_STATISTICS_JSON = "[]"
 def ranking_sensitivity_json(
     ranked_categories: tuple[str, ...],
     *,
+    balanced_ranks: Mapping[str, int] | None = None,
     top_3_stability: float | None = None,
     top_5_stability: float | None = None,
     maximum_score_delta: float | None = None,
@@ -157,14 +164,26 @@ def ranking_sensitivity_json(
 ) -> str:
     """Return a ``ranking_sensitivity_json`` payload with the frozen key set.
 
-    ``ranked_categories`` is recorded in the supplied order; a category absent
-    from it has no displayed rank. The empty-candidate case is the explicit
-    ``{}`` object Chunk 10 persists on a failed-preflight row.
+    ``ranked_categories`` is the base-candidate (requested-category) order, which
+    is **not** the balanced-score rank order; a category absent from it has no
+    entry. When ``balanced_ranks`` is supplied, ``categories`` carries one
+    ``{"category": ..., "rank_balanced": ...}`` entry per ranked category in the
+    same order: the persisted 1-based rank by descending balanced composite score
+    (SRS §9.3 ``LREQ-SEN-020``), which the report displays. When it is ``None``
+    the payload keeps ``"categories": []``. The empty-candidate case is the
+    explicit ``{}`` object Chunk 10 persists on a failed-preflight row.
     """
+    if balanced_ranks is None:
+        categories: list[dict[str, object]] = []
+    else:
+        categories = [
+            {"category": category, "rank_balanced": balanced_ranks[category]}
+            for category in ranked_categories
+        ]
     payload = {
         "policies": ["balanced", "demand_heavy", "competition_heavy"],
         "ranked_categories": list(ranked_categories),
-        "categories": [],
+        "categories": categories,
         "reference_set_size": len(ranked_categories),
         "displacement_threshold": 3.0,
         "top_3_stability": top_3_stability,
@@ -289,10 +308,14 @@ def run_record(
 def scored_rows_for(
     first: str, second: str
 ) -> tuple[CategoryScoreRecord, CategoryScoreRecord]:
-    """Return two rankable rows whose sensitivity payload ranks ``first`` then
-    ``second`` (golden ``rank`` 1 and 2)."""
+    """Return two rankable rows whose persisted balanced ranks are 1 and 2.
+
+    ``ranked_categories`` records the base-candidate (requested) order; the
+    displayed rank comes from the ``categories`` entries' ``rank_balanced``
+    (SRS §9.3 ``LREQ-SEN-020``)."""
     payload = ranking_sensitivity_json(
         (first, second),
+        balanced_ranks={first: 1, second: 2},
         top_3_stability=1.0,
         top_5_stability=0.8,
         maximum_score_delta=0.05,
@@ -302,6 +325,36 @@ def scored_rows_for(
     return (
         category_score_record(first, ranking_sensitivity_json=payload),
         category_score_record(second, ranking_sensitivity_json=payload),
+    )
+
+
+def input_order_rank_flip_rows() -> tuple[CategoryScoreRecord, CategoryScoreRecord]:
+    """Return two rankable rows whose stored input order is inverse to rank.
+
+    Models the D4 defect (plan §6.1): the run-declared / base-candidate order
+    (``ranked_categories``) is ``(low, high)``, while the balanced-score rank
+    (SRS §9.3 ``LREQ-SEN-020``) is ``high`` 1, ``low`` 2, and ``high`` carries
+    the run-maximum composite score. The stored order deliberately stays the
+    input order; only the display rank and display order may change.
+    """
+    payload = ranking_sensitivity_json(
+        (CATEGORY_LOW_INPUT_FIRST, CATEGORY_HIGH_INPUT_SECOND),
+        balanced_ranks={CATEGORY_HIGH_INPUT_SECOND: 1, CATEGORY_LOW_INPUT_FIRST: 2},
+    )
+    # Scores mirror the observed D4 inversion (plan §6.1): the live run-max
+    # 0.854457 was stored at ``ranked_categories`` index 21 while its persisted
+    # ``rank_balanced`` was 1; 0.32 is a low scorer in the same run.
+    return (
+        category_score_record(
+            CATEGORY_LOW_INPUT_FIRST,
+            market_opportunity_score=0.32,
+            ranking_sensitivity_json=payload,
+        ),
+        category_score_record(
+            CATEGORY_HIGH_INPUT_SECOND,
+            market_opportunity_score=0.854457,
+            ranking_sensitivity_json=payload,
+        ),
     )
 
 
@@ -413,6 +466,8 @@ __all__ = [
     "CATEGORY_CHARLIE",
     "CATEGORY_FALLBACK_ONE",
     "CATEGORY_FALLBACK_TWO",
+    "CATEGORY_HIGH_INPUT_SECOND",
+    "CATEGORY_LOW_INPUT_FIRST",
     "CATEGORY_NON_RANKABLE",
     "CATEGORY_PRIMARY",
     "CATEGORY_ZERO_POPULATION",
@@ -429,6 +484,7 @@ __all__ = [
     "STRATUM_STATISTICS_JSON",
     "TAXONOMY_CAPTURED_AT_UTC",
     "category_score_record",
+    "input_order_rank_flip_rows",
     "non_rankable_row",
     "pre_scoring_default_row",
     "ranking_sensitivity_json",

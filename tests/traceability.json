@@ -1355,8 +1355,16 @@
   "tests/test_report.py::test_category_detail_shows_formulas_inputs_strata_and_timestamps": [
     "LREQ-RPT-030"
   ],
+  "tests/test_report.py::test_demand_formula_text_does_not_claim_rating_inputs": [
+    "LREQ-RPT-030",
+    "LREQ-SCR-010"
+  ],
   "tests/test_report.py::test_detail_labels_observed_versus_inferred": [
     "LREQ-RPT-030"
+  ],
+  "tests/test_report.py::test_display_rank_is_rank_balanced_not_stored_position": [
+    "LREQ-RPT-020",
+    "LREQ-SEN-020"
   ],
   "tests/test_report.py::test_explicit_zero_overlap_is_measured_zero": [
     "LREQ-RPT-020"
@@ -1379,6 +1387,9 @@
   "tests/test_report.py::test_non_rankable_category_remains_visible": [
     "LREQ-RPT-040"
   ],
+  "tests/test_report.py::test_order_rows_ties_fall_back_to_ascending_category": [
+    "LREQ-RPT-020"
+  ],
   "tests/test_report.py::test_pre_scoring_defaults_render_as_unavailable": [
     "LREQ-RPT-020"
   ],
@@ -1387,6 +1398,21 @@
   ],
   "tests/test_report.py::test_public_report_functions_have_hints_and_docstrings": [
     "LREQ-NFR-040"
+  ],
+  "tests/test_report.py::test_rank_from_sensitivity_reads_rank_balanced_not_position": [
+    "LREQ-RPT-020",
+    "LREQ-SEN-020"
+  ],
+  "tests/test_report.py::test_rank_from_sensitivity_returns_none_for_malformed_payload": [
+    "LREQ-RPT-020",
+    "LREQ-SEN-020"
+  ],
+  "tests/test_report.py::test_rank_from_sensitivity_returns_none_without_matching_categories_entry": [
+    "LREQ-RPT-020",
+    "LREQ-SEN-020"
+  ],
+  "tests/test_report.py::test_rank_none_renders_no_rank_recorded_note": [
+    "LREQ-RPT-020"
   ],
   "tests/test_report.py::test_render_dashboard_html_is_database_read_only": [
     "LREQ-CLI-020"
