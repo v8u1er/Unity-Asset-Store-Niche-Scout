@@ -4623,3 +4623,57 @@ def test_row_six_pair_keeps_validated_position_correlation_mode() -> None:
         (gql_batch_response(body_text),)
     )
     assert mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION
+
+
+@pytest.mark.lreq("LREQ-GQL-050")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_row_six_pair_persists_none_average_with_retained_count() -> None:
+    """Row 6 round-trips through the real adapter into the persisted record.
+
+    Plan ``chunk-27`` §3.4 (issue channel = option (a): the contradiction issue
+    rides the operation's ``issues`` tuple), §8 (null/edge behavior: row 6 maps
+    to ``rating_average is None`` and a retained ``int`` ``rating_count``), and
+    gate bullet 2 (the observation row persists ``rating_average=None`` with the
+    integer count). Unlike the validation-only nodes above, this node drives the
+    real ``collector_graphql.enrich_asset`` exchange and then the real draft
+    ``to_record`` path, so the mapping is proven to survive both the adapter's
+    success result and persistence. ``gql_exchange`` supplies the fixed
+    ``retrieved_at_utc`` (no clock is read); the body is the keyless two-item
+    live shape, correlated under ``VALIDATED_POSITION`` (plan §3.3).
+
+    Hand-derived (plan §9.3 item 1): ``float(210)`` is retained as the exact
+    ``int`` 210, ``0.0`` is the exact placeholder the mapping nulls, and exactly
+    one contradiction issue rides the operation issue channel.
+    """
+    body_text = gqlfx.body_json_for_items(
+        [
+            {
+                "data": {
+                    "product": gqlfx.product_detail_contradiction_payload(
+                        rating_average=0, rating_count=210
+                    )
+                }
+            },
+            {"data": {"pageViews": 20}},
+        ]
+    )
+
+    _transport, _sleeper, (result, draft) = gql_exchange(
+        [{"http_status": 200, "body_text": body_text}],
+        correlation_mode=GraphQLOperationCorrelationMode.VALIDATED_POSITION,
+    )
+
+    assert result.product_detail.status is OperationStatus.SUCCESS
+    assert result.product_detail.is_success
+    assert [issue.code for issue in result.product_detail.issues] == [
+        RATING_AVERAGE_ZERO_WITH_COUNT_CODE
+    ]
+
+    assert draft.rating_average is None
+    assert draft.rating_count == 210
+    assert isinstance(draft.rating_count, int)
+    assert not isinstance(draft.rating_count, bool)
+
+    record = draft.to_record("run-chunk-27")
+    assert record.rating_average is None
+    assert record.rating_count == 210

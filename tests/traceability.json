@@ -352,6 +352,10 @@
     "LREQ-GQL-050",
     "LREQ-TST-010"
   ],
+  "tests/test_collector.py::test_row_six_pair_persists_none_average_with_retained_count": [
+    "LREQ-GQL-050",
+    "LREQ-TST-010"
+  ],
   "tests/test_collector.py::test_select_operation_correlation_mode_rejects_empty_evidence": [
     "LREQ-GQL-030"
   ],
