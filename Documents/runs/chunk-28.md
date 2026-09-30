@@ -143,3 +143,36 @@ re-running into a fresh DB or `initialize_schema(check_version=False)` (plan §8
 - The plan's D/Q/rankability re-baseline list is explicitly a **minimum**, not a completeness
   claim (§9.3 "to be discovered at implementation"); the exact re-baseline values come from a
   captured run at implementation (chunk-24/25 precedent).
+
+## Gate
+
+Branch `chunk-28`, base `main` (`db47a5c`). Commits: `6ee94ab` plan · `70cf6e0` tests ·
+`1f42aee` implementation · `8d95ef0` review fixes (round 1) · `4524553` review fixes (round 2).
+Changed set vs `main`: the plan, the run log, the five allowlisted `src/` files, eleven `tests/**`
+files, and `tests/traceability.json` — **no** `Documents/SRS-lean-v2.md`, no
+`Documents/interfaces/**`, no `scoring.py`/`sampling.py`/`collector*.py`/`config.py`/`cli.py`.
+
+Held-out verification (final HEAD `4524553`): `python -m pytest -q -p no:cacheprovider` → **711 passed in
+26.76s**; `validate_traceability` → exit 0 (89 IDs, 690 matrix nodes); `check_import_boundaries`,
+`check_scope_prohibitions`, `check_secrets` → exit 0; `ruff check` on the changed source/test files → clean
+(the pre-existing `database.py` 6 E501 and `test_contracts.py` 11 E501 are byte-count-identical to `main`).
+
+| Bullet (plan §10) | Evidence (command output / file:line) | Status |
+|---|---|---|
+| 1. `metrics.age_normalized_page_view_index` returns `product_page_views` (no `*7`, no `/age`); explicit 0 stays usable 0; age/state/identity reasons unchanged | `metrics.py:495` → `MetricValue(value=float(product_page_views), unavailable_reason=None)`; the only change to the function is the docstring and those two lines; `test_page_view_index_equals_weekly_view_count`, `::test_page_view_index_is_independent_of_age_above_threshold`, `::test_page_view_index_zero_views_is_usable_zero`, and the six reason-precedence nodes pass | PASS |
+| 2. enum has `validated_windowed_weekly`; a new `runs` row seeds it; DB allow-list accepts it; `SCHEMA_VERSION == "1.3.0"`; old-DB handling documented and tested | `models.py:130` member, `:135-137` `PAGE_VIEW_SEMANTICS_CONTRACT`; `pipeline.py:3341` seed; `pipeline.py:1001-1005` non-clobber preserves it; `_ENUM_COLUMNS` (`database.py:399-401`) extends via the enum; `database.py:54` `"1.3.0"`; plan §8.2 documents `SchemaVersionError` default + `check_version=False` rewrite; nodes `test_run_seeds_validated_windowed_weekly_semantics`, `::test_preflight_preserves_validated_windowed_weekly_status`, `::test_enum_allow_list_accepts_validated_windowed_weekly`, `::test_schema_version_is_1_3_0`, `::test_open_older_schema_raises_unless_check_version_false` pass; pre-change live DB was 1.2.0 (verified) | PASS |
+| 3. `ENDPOINT_CONTRACT_VERSION == "1.1.0"`; every fixture pinning `"1.0.0"` re-baselined | `models.py:25` `"1.1.0"`; endpoint pins updated at `identity_preflight_vectors.py:324`, `report_fixtures.py:295`, `sampling_persistence_fixtures.py:231`, `test_collector.py:242`, `test_contracts.py`; `test_contracts.py::test_endpoint_contract_version_is_1_1_0` passes; surviving `"1.0.0"` strings are taxonomy / sampling-digest / unrelated-schema values, not the endpoint contract | PASS |
+| 4. report caveats no longer say "cumulative" / "not a weekly traffic rate" | `report.py:55` and `:128` reworded; `test_report_caveats_describe_trailing_seven_day_views` and `::test_report_states_heuristic_and_six_distinctions` pass | PASS |
+| 5. All D/Q/rankability goldens re-baselined from a captured run; pytest + four validators exit 0; ruff no new lint | the index-consuming DEMAND/QUALITY goldens re-baselined from the offline run (`metric_estimator_fixtures.py`, `test_metrics.py`); the acceptance/scoring goldens are status/component-driven and do not move (round-2 verified); `pytest` 711 passed; four validators exit 0; ruff no new lint | PASS |
+| 6. SRS D1-S1…D1-S7 applied by the operator, with diff/sha256 evidence in the run log — else the gate is FAILED and the chunk BLOCKED | **NOT APPLIED.** `Documents/SRS-lean-v2.md` sha256 == main's (`417860f40bef33645b270128e0f10f9a92342b7506ffc2495b5a17cefaee380b` on both revisions); `git diff main..HEAD -- Documents/SRS-lean-v2.md` → empty; the file still carries the pre-edit formula at `:133`/`:741-750`/`:1442`, the three-member enum at `:675-680`, and the old caveat wording at `:1163-1170`/`:1385`. No agent edit (correct); the operator has not applied the edits. | **FAIL** |
+
+**Gate: FAILED** — bullets 1–5 PASS, bullet 6 FAILS (operator-only). The chunk is **BLOCKED** on the human
+checkpoint. No implementation or test defect remains (round 2: 0 Blocker other than this checkpoint, 0 Major).
+
+### Operator action required before any merge
+
+1. Apply D1-S1…D1-S7 (chunk-26 plan §13.4; reproduced in the chunk-28 plan §13) to
+   `Documents/SRS-lean-v2.md`.
+2. Record here the resulting `git hash-object Documents/SRS-lean-v2.md` (or `sha256sum`) and the diff.
+3. If the applied D1-S4/D1-S5 wording differs from the current `report.py:55`/`:128` substance, re-wording
+   `report.py` + `test_report.py` is a short follow-up (plan §12 OQ-2).
