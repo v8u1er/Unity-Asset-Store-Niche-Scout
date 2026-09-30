@@ -7,8 +7,8 @@
 | Document type | Software Requirements Specification (SRS) |
 | Parent specification | `SRS-revision2.md`, effective revision 2.3.0 |
 | Variant | Lean, sample-based, decision-grade MVP |
-| Version | Lean 1.0.3 |
-| Status | Decision-grade lean variant (v2, Lean 1.0.3; supersedes `SRS-lean.md`) |
+| Version | Lean 1.0.4 |
+| Status | Decision-grade lean variant (v2, Lean 1.0.4; supersedes `SRS-lean.md`) |
 | Target release | v0.1.0-lean |
 
 ## Revision history
@@ -19,21 +19,28 @@
 | Lean 1.0.1 | Clarifies deterministic-sample interpretation, makes quality stratum-expanded, removes sensitivity/rankability circularity, completes result persistence keys, freezes Lean v1 scoring weights, and specifies zero-population and GraphQL-correlation behavior. |
 | Lean 1.0.2 | Replaces the four contiguous ordinal strata of `LREQ-SMP-050` with a systematic (interleaved) partition over the same stable discovery ordinal (deterministic per-category offset; `stratum_index(i) = (i - 1 + offset) mod SAMPLE_STRATA`), and changes the persisted stratum geometry from an ordinal interval to `(offset, stride)`. All other Lean 1.0.1 behavior is unchanged. |
 | Lean 1.0.3 | Lowers the default `MIN_USABLE_SAMPLES_PER_STRATUM` from 5 to 1 (§5.1, §14), re-baselining per-stratum usability, the three stratum eligibility coverages, the usable component sample counts, evidence grades, and rankability for runs scored under the default policy. The constant remains Configurable = Yes and no formula, weight, partition rule, or other constant changes. |
+| Lean 1.0.4 | Corrects the page-view semantics (§1.4, §7.2 `LREQ-MET-040`, §6.3, §10 `LREQ-RPT-050`, §16, Appendix A): the field is a validated trailing-7-day (weekly) view count (`age_normalized_page_view_index = product_page_views`), replacing the refuted age-normalized cumulative-rate assumption; adds the `validated_windowed_weekly` run status; `MIN_AGE_DAYS_FOR_RATE` becomes an eligibility floor only. No other formula, weight, partition rule, or constant changes. |
 
 ## Document status and relationship to the parent SRS
 
 **Lean v2 (this file) supersedes `SRS-lean.md` (Lean 1.0.1).** The prior file is
 retired to `Documents/retired-documents/` and retained for history only; where this
-file and the retired `SRS-lean.md` differ, this file is normative. The only
-behavioral change in Lean 1.0.2 is the systematic (interleaved) sampling-stratum
-geometry and its persistence representation (`LREQ-SMP-050`, `LREQ-SMP-080`, §1.4,
-§5.1, §6.3, §14); all other Lean 1.0.1 requirement text is carried forward
-unchanged. Lean 1.0.3 supersedes Lean 1.0.2 and changes exactly one default:
+file and the retired `SRS-lean.md` differ, this file is normative. The Lean 1.0.2
+behavioral change is the systematic (interleaved) sampling-stratum geometry and its
+persistence representation (`LREQ-SMP-050`, `LREQ-SMP-080`, §1.4, §5.1, §6.3, §14);
+all other Lean 1.0.1 requirement text is carried forward unchanged. Lean 1.0.3
+supersedes Lean 1.0.2 and changes exactly one default:
 `MIN_USABLE_SAMPLES_PER_STRATUM` is lowered from 5 to 1 (§5.1, §14), which
 re-baselines per-stratum usability, the three stratum eligibility coverages, the
 usable component sample counts, evidence grades, and rankability for runs scored
 under the default policy. No formula, weight, partition rule, or other constant
-changes. Tooling that reads the SRS by path (`src/niche_scout/tools/`,
+changes. Lean 1.0.4 supersedes Lean 1.0.3 and corrects the page-view field
+semantics (§1.4, §7.2 `LREQ-MET-040`, §6.3, §10 `LREQ-RPT-050`, §16, Appendix A):
+the field is a validated trailing-7-day (weekly) view count and
+`age_normalized_page_view_index = product_page_views`; the `validated_windowed_weekly`
+run status is added and `MIN_AGE_DAYS_FOR_RATE` becomes an eligibility floor only.
+No other formula, weight, partition rule, or constant changes.
+Tooling that reads the SRS by path (`src/niche_scout/tools/`,
 `AGENTS.md`) must be re-pointed to this file when the prior file is retired.
 
 This document is a separate implementation target. It does not modify or replace
@@ -130,7 +137,7 @@ Out of scope:
 | Usable observation | An observation satisfying the component-specific type, range, state, identity, date, and operation-status rules. |
 | Sample fraction | The proportion of a category's canonical discovered population included in its enrichment sample. It is `1.0` for a census category and is not a measure of statistical representativeness. |
 | Stratum eligibility coverage | The proportion of discovered population weight belonging to strata that meet a component's minimum usable-observation rule. It is a data-support measure, not a probability-sampling coverage estimate or confidence measure. |
-| Age-normalized page-view index | `product_page_views * 7 / age_days_exact`, using an undocumented page-view field. It is an unvalidated index, not a validated weekly traffic measurement or weekly traffic rate. |
+| Age-normalized page-view index | The **weekly (trailing-7-day) page-view count**, `product_page_views`, using an undocumented page-view field. It is a weekly view count, not a lifetime-average count and not a daily-average rate; it is stable within a run and refreshed at most daily. |
 | Midrank relative position | `(L + 0.5E) / m`, where `L` is the number of usable reference values below the target, `E` is the number equal to it, and `m` is the number of usable reference values. It is descriptive, not inferential. |
 | Base-rankable candidate | A category that satisfies every rankability requirement except the final sensitivity thresholds. Sensitivity is evaluated over the fixed set of these candidates before final rankability is assigned. |
 | Rankable | Evidence state indicating that a category may be used in the primary ranking under the policies in §9. |
@@ -673,8 +680,10 @@ indicators, not formal corrections for dependence.
 Raw metrics and scores except counts and status fields SHALL be nullable.
 
 `page_view_semantics_status` SHALL use only `unvalidated`, `validated_cumulative`,
-or `contradicted`. The run-level value describes the endpoint semantic-validation
-state. An individual malformed or failed page-view operation is an asset-level
+`contradicted`, or `validated_windowed_weekly`. `validated_windowed_weekly` records
+that the page-view field is validated as a trailing-7-day (weekly) view count. The
+run-level value describes the endpoint semantic-validation state. An individual
+malformed or failed page-view operation is an asset-level
 `page_views_status = "error"` and SHALL not by itself contradict the endpoint.
 When the run-level status is `contradicted`, D and Q are unavailable for all
 categories, while C and R MAY remain available; no category is final rankable.
@@ -741,13 +750,16 @@ denominator is the sum of population weights for usable strata, not `N` alone.
 **LREQ-MET-040**: The page-view index SHALL be:
 
 ```text
-age_normalized_page_view_index = product_page_views * 7 / age_days_exact
+age_normalized_page_view_index = product_page_views
 ```
 
-It is usable only for a finite non-negative page-view value, a valid UTC date no
-later than cutoff, `age_days_exact >= MIN_AGE_DAYS_FOR_RATE`, and a matched,
-published identity. An explicit valid page-view value of zero is usable and yields
-an index of zero.
+The symbol name `age_normalized_page_view_index` is a historical label: the value
+is the weekly (trailing-7-day) page-view count, and it no longer depends on
+`age_days_exact`. It is usable only for a finite non-negative page-view value, a
+valid UTC date no later than cutoff, `age_days_exact >= MIN_AGE_DAYS_FOR_RATE`, and
+a matched, published identity. `MIN_AGE_DAYS_FOR_RATE` is an eligibility floor
+only, not a rate normalizer. An explicit valid page-view value of zero is usable
+and yields an index of zero.
 
 **LREQ-MET-050**: `DemandMedianRaw` SHALL be a stratum-expanded weighted median of
 usable product indices. Each usable observation in stratum `h` receives weight
@@ -1164,7 +1176,8 @@ sample-based values.
 within-run heuristic based on marketplace signals and, for larger categories, a
 stratified sample; it has not been calibrated against sales, revenue, downloads, or
 conversion. It SHALL distinguish pagination completion from immutable snapshot
-completeness, the page-view index from a weekly traffic rate, descriptive midranks
+completeness, the page-view index (a validated trailing-7-day view count) from a
+lifetime or cumulative count and from a daily-average rate, descriptive midranks
 from inferential percentiles, stratum eligibility coverage from sample fraction,
 deterministic-sample evidence from statistical representativeness, and evidence grade
 from statistical confidence.
@@ -1382,7 +1395,7 @@ The implementation and report SHALL document that:
 2. the sample is stratified by discovery order, not a probability sample from all possible buyers or sales;
 3. discovery order may reflect marketplace ranking or retrieval behavior;
 4. rankings are relative to the selected categories in the same run;
-5. the page-view field is an age-normalized index with unvalidated semantics, not a validated weekly traffic measurement;
+5. the page-view field is a validated trailing-7-day (weekly) view count, stable within a run and refreshed at most daily, not a lifetime or cumulative count and not a daily-average rate;
 6. ratings are marketplace observations, not objective product-quality measurements;
 7. recent share measures catalog composition, not sales or publication velocity;
 8. categories with incomplete discovery are lower-confidence or non-rankable;
@@ -1439,7 +1452,7 @@ only by explicitly exhaustive wildcard range) to a primary module and required t
 
 ```text
 age_days_exact = (scoring_cutoff_utc - first_published_date_utc).total_seconds() / 86400
-age_normalized_page_view_index = product_page_views * 7 / age_days_exact
+age_normalized_page_view_index = product_page_views
 stratum_weight_h = N_h / N
 DemandPerAssetRaw = sum(stratum_weight_h * stratum_view_mean_h for usable strata)
                     / sum(stratum_weight_h for usable strata)
