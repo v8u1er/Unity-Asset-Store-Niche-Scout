@@ -853,6 +853,7 @@ def test_status_values_and_mandatory_fields_are_typed() -> None:
         assert all(isinstance(item, str) for item in actual)
     expected_warnings = {
         "DISCOVERY_TRUNCATED",
+        "DISCOVERY_INCOMPLETE",
         "DISCOVERY_PAGE_FAILED",
         "DISCOVERY_FILTER_UNVERIFIED",
         "CATEGORY_MISMATCH",
@@ -908,6 +909,22 @@ def test_status_values_and_mandatory_fields_are_typed() -> None:
         0.40,
     )
     assert (models.RECENT_SUBWEIGHT_SHARE, models.RECENT_SUBWEIGHT_AGE) == (0.70, 0.30)
+
+
+@pytest.mark.lreq("LREQ-ARCH-010")
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_discovery_incomplete_warning_is_distinct_from_discovery_truncated() -> None:
+    """``DISCOVERY_INCOMPLETE`` is a separate Appendix C warning code.
+
+    SRS Appendix C lists ``DISCOVERY_TRUNCATED`` and ``DISCOVERY_INCOMPLETE``
+    as two codes, and the Lean 1.0.5 LREQ-EXT-050 addendum records the
+    unreconciled-total shortfall as its own condition. The enum must carry both
+    members and they must not collapse to one value.
+    """
+    assert WarningCode.DISCOVERY_INCOMPLETE.value == "DISCOVERY_INCOMPLETE"
+    assert WarningCode.DISCOVERY_TRUNCATED.value == "DISCOVERY_TRUNCATED"
+    assert WarningCode.DISCOVERY_INCOMPLETE != WarningCode.DISCOVERY_TRUNCATED
+    assert len({WarningCode.DISCOVERY_INCOMPLETE, WarningCode.DISCOVERY_TRUNCATED}) == 2
 
 
 @pytest.mark.lreq("LREQ-ARCH-010")

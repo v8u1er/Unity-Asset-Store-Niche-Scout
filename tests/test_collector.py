@@ -4676,3 +4676,95 @@ def test_row_six_pair_persists_none_average_with_retained_count() -> None:
     record = draft.to_record("run-chunk-27")
     assert record.rating_average is None
     assert record.rating_count == 210
+
+
+# ---------------------------------------------------------------------------
+# LREQ-EXT-050 (Lean 1.0.5) — unreconciled verified total records a shortfall
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_empty_page_with_unreconciled_verified_total_is_truncated(
+    repository: SqliteRepository,
+) -> None:
+    """An empty terminal page before the verified total is ``truncated``.
+
+    SRS §4.1 LREQ-EXT-050 (Lean 1.0.5, line 288): the endpoint is exhausted
+    only when the records read reconcile against the verified ``totalCount``.
+    Vector A (plan §7): one full page of ``PAGE_SIZE`` = 96 records, then an
+    empty page, both reporting ``totalCount = totalCountFiltered = 8294``.
+    Persisted = 96, so the shortfall is ``8294 - 96 = 8198``; the empty page is
+    never read as zero assets.
+    """
+    verified_total = 8294
+    pages = [
+        page_response(
+            fx.records(PAGE_SIZE),
+            total_count=verified_total,
+            filtered_count=verified_total,
+        ),
+        page_response([], total_count=verified_total, filtered_count=verified_total),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.TRUNCATED
+    assert result.discovery_status is not DiscoveryStatus.COMPLETE
+    assert DiscoveryStatus.TRUNCATED in result.conditions
+    assert result.total_count == verified_total
+    assert result.observations_emitted == PAGE_SIZE
+    # 8294 - 96 = 8198 (strict materiality, Q2 option (a)).
+    assert result.unreconciled_total_shortfall == verified_total - PAGE_SIZE == 8198
+    assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == PAGE_SIZE
+    assert statuses_by_category(repository)[CATEGORY] == (
+        DiscoveryStatus.TRUNCATED.value
+    )
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_exhausted_category_with_consistent_total_is_complete(
+    repository: SqliteRepository,
+) -> None:
+    """A read that reconciles with the verified total stays ``complete``.
+
+    Vector C (plan §7): pages ``[96, 4]`` with ``totalCount = 100``; persisted
+    ``100 >= 100``, so the shortfall helper returns ``None`` and no extra
+    condition is added. Normal small categories are unchanged.
+    """
+    total = PAGE_SIZE + 4
+    pages = [
+        page_response(fx.records(PAGE_SIZE), total_count=total, filtered_count=total),
+        page_response(
+            fx.records(4, start=PAGE_SIZE),
+            total_count=total,
+            filtered_count=total,
+        ),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    assert DiscoveryStatus.TRUNCATED not in result.conditions
+    assert result.observations_emitted == total
+    assert result.unreconciled_total_shortfall is None
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_cap_truncation_preserves_existing_truncated_behavior(
+    repository: SqliteRepository,
+) -> None:
+    """The ``MAX_DISCOVERY_RESULTS_PER_CATEGORY`` branch is unchanged.
+
+    Vector F (plan §7): the cap stops the traversal with ``truncated`` recorded
+    by the existing branch. That is ``DISCOVERY_TRUNCATED``, not an
+    unreconciled total, so no shortfall amount is recorded
+    (``persisted >= max_results``).
+    """
+    available = MAX_DISCOVERY_RESULTS_PER_CATEGORY + PAGE_SIZE
+    opener = paging_opener(PAGE_SIZE, available)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.TRUNCATED
+    assert DiscoveryStatus.TRUNCATED in result.conditions
+    assert result.observations_emitted == MAX_DISCOVERY_RESULTS_PER_CATEGORY
+    assert result.unreconciled_total_shortfall is None

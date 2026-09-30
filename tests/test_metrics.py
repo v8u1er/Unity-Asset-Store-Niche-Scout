@@ -1184,3 +1184,31 @@ def test_demand_explicit_zero_page_views_are_usable() -> None:
         mfx.make_breadth_input(None, 0),
     )
     assert aggregate.usable_demand_sample_count == 10
+
+
+# ---------------------------------------------------------------------------
+# LREQ-MET-070 (Chunk 29) — the truncated shortfall uses the fallback breadth
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-MET-070")
+def test_truncated_shortfall_breadth_uses_distinct_canonical_fallback() -> None:
+    """A shortfall-classified category takes the fallback breadth triple.
+
+    SRS §7.3 LREQ-MET-070: without a structurally verified total,
+    ``BreadthRaw`` is the distinct canonical discovered count,
+    ``breadth_source`` is ``distinct_canonical_discovered_count``, and
+    ``breadth_completeness_status`` is ``incomplete_estimate``. The truncated
+    shortfall case passes ``verified_total_count = None`` (the reported total
+    did not reconcile), never a fabricated numeric total.
+    ``mfx.BREADTH_FALLBACK_INPUT`` is ``(None, 250)``, so ``breadth_raw == 250``
+    (not 0 — missing is not zero).
+    """
+    result = m.breadth_raw(mfx.BREADTH_FALLBACK_INPUT)
+
+    assert result.breadth_raw == 250
+    assert result.breadth_source is BreadthSource.DISTINCT_CANONICAL_DISCOVERED_COUNT
+    assert (
+        result.breadth_completeness_status
+        is BreadthCompletenessStatus.INCOMPLETE_ESTIMATE
+    )

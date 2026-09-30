@@ -1000,3 +1000,70 @@ def test_scoring_outputs_are_deterministic() -> None:
     assert scoring.midrank(2.0, (1.0, 2.0, 3.0)) == scoring.midrank(
         2.0, (1.0, 2.0, 3.0)
     )
+
+
+# ---------------------------------------------------------------------------
+# LREQ-SCR-020 / LREQ-MET-070 (Chunk 29) — fallback breadth disables C
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-SCR-020")
+@pytest.mark.lreq("LREQ-MET-070")
+def test_incomplete_breadth_fallback_disables_c_and_is_not_rankable() -> None:
+    """``incomplete_estimate`` breadth yields no ``C`` and no rankable result.
+
+    SRS §8.2 LREQ-SCR-020 with §7.3 LREQ-MET-070: ``C`` requires
+    ``verified_total_count`` breadth with ``complete`` provenance. Golden: with
+    ``P_ref(BreadthRaw) = 0.5`` a verified+complete breadth gives
+    ``C = clamp(1 - 0.5, 0, 1) = 0.5``, while the fallback triple gives
+    ``None``. ``not_rankable_reasons`` then reports
+    ``COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE`` for the fallback score and
+    none for the healthy verified score (Chunk 9A reason vocabulary; plan §2
+    step 6).
+    """
+    from fixtures.scoring_evidence_fixtures import (
+        make_pre_sensitivity_input,
+        make_score_result,
+    )
+    from niche_scout.models import IdentityPreflightStatus
+
+    fallback_source = BreadthSource.DISTINCT_CANONICAL_DISCOVERED_COUNT
+    fallback_status = BreadthCompletenessStatus.INCOMPLETE_ESTIMATE
+
+    fallback_c = scoring.competition_component(
+        _normalized(breadth_raw=0.5),
+        breadth_source=fallback_source,
+        breadth_completeness_status=fallback_status,
+    )
+    assert fallback_c is None
+
+    fallback_reasons = scoring.not_rankable_reasons(
+        make_score_result(component_c=fallback_c),
+        make_pre_sensitivity_input(
+            "c-0",
+            breadth_source=fallback_source,
+            breadth_completeness_status=fallback_status,
+            discovery_bounded_by_verified_total=False,
+        ),
+        identity_preflight_status=IdentityPreflightStatus.PASSED,
+    )
+    assert (
+        scoring.NotRankableReason.COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE
+        in fallback_reasons
+    )
+
+    healthy_c = scoring.competition_component(
+        _normalized(breadth_raw=0.5),
+        breadth_source=COMPETITION_VERIFIED,
+        breadth_completeness_status=COMPETITION_COMPLETE,
+    )
+    assert healthy_c == pytest.approx(0.5, abs=1e-9)
+    healthy_reasons = scoring.not_rankable_reasons(
+        make_score_result(component_c=healthy_c),
+        make_pre_sensitivity_input("c-0"),
+        identity_preflight_status=IdentityPreflightStatus.PASSED,
+    )
+    assert (
+        scoring.NotRankableReason.COMPETITION_UNBOUNDED_OR_MATERIAL_FAILURE
+        not in healthy_reasons
+    )

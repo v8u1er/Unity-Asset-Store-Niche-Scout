@@ -254,6 +254,15 @@
   "tests/test_collector.py::test_pagination_truncates_at_max_results_and_retains_api_count": [
     "LREQ-EXT-050"
   ],
+  "tests/test_collector.py::test_cap_truncation_preserves_existing_truncated_behavior": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_empty_page_with_unreconciled_verified_total_is_truncated": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_exhausted_category_with_consistent_total_is_complete": [
+    "LREQ-EXT-050"
+  ],
   "tests/test_collector.py::test_parent_path_does_not_match_child_path": [
     "LREQ-EXT-080"
   ],
@@ -470,6 +479,10 @@
   ],
   "tests/test_contracts.py::test_status_values_and_mandatory_fields_are_typed": [
     "LREQ-ARCH-010"
+  ],
+  "tests/test_contracts.py::test_discovery_incomplete_warning_is_distinct_from_discovery_truncated": [
+    "LREQ-ARCH-010",
+    "LREQ-EXT-050"
   ],
   "tests/test_contracts.py::test_taxonomy_contract": [
     "LREQ-EXT-020"
@@ -1060,6 +1073,9 @@
     "LREQ-MET-070"
   ],
   "tests/test_metrics.py::test_breadth_verified_zero_result_is_zero": [
+    "LREQ-MET-070"
+  ],
+  "tests/test_metrics.py::test_truncated_shortfall_breadth_uses_distinct_canonical_fallback": [
     "LREQ-MET-070"
   ],
   "tests/test_metrics.py::test_compute_category_raw_metrics_reports_coverages_and_counts": [
@@ -1727,6 +1743,10 @@
     "LREQ-SCR-020"
   ],
   "tests/test_scoring.py::test_competition_component_requires_verified_complete_breadth": [
+    "LREQ-SCR-020"
+  ],
+  "tests/test_scoring.py::test_incomplete_breadth_fallback_disables_c_and_is_not_rankable": [
+    "LREQ-MET-070",
     "LREQ-SCR-020"
   ],
   "tests/test_scoring.py::test_contradicted_page_views_disable_demand_and_quality": [
