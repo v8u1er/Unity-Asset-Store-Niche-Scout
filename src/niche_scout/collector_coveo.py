@@ -479,6 +479,14 @@ class CategoryDiscoveryResult:
     filter_status: CategoryFilterValidationStatus
     conditions: tuple[DiscoveryStatus, ...]
     issues: tuple[ValidationIssue, ...]
+    #: ``verified_total - persisted`` when the endpoint reported a verified
+    #: ``totalCount`` the traversal could not reconcile, else ``None``. Always
+    #: ``> 0`` when not ``None``; never ``0``. ``None`` for a reconciled read, a
+    #: cap truncation, a page/request failure, or an absent verified total. Not a
+    #: ``DiscoveryStatus`` and never selected as ``discovery_status`` (SRS §4.1
+    #: LREQ-EXT-050 Lean 1.0.5 addendum). Additive field carrying default
+    #: ``None``, so external construction stays source-compatible.
+    unreconciled_total_shortfall: int | None = None
 
 
 # --------------------------------------------------------------------------
@@ -1572,6 +1580,10 @@ class _CategoryCounters:
     #: from the terminal failure datum (Chunk 23 R2). ``None`` when the category
     #: recorded no page failure, so the persisted column stays ``NULL``.
     failure_cause_json: str | None = None
+    #: The positive unreconciled-total shortfall, set by the post-loop
+    #: reconciliation (LREQ-EXT-050 Lean 1.0.5). ``None`` when the read
+    #: reconciled, was cap-truncated, or recorded a page/request failure.
+    unreconciled_total_shortfall: int | None = None
 
 
 def _condition_precedence_rank(condition: DiscoveryStatus) -> int:
@@ -2141,6 +2153,30 @@ def _discover_category_in_transaction(
     ):
         counters.conditions.append(DiscoveryStatus.TRUNCATED)
 
+    # The endpoint is exhausted only when the records read reconcile against the
+    # verified ``totalCount`` (LREQ-EXT-050 Lean 1.0.5 addendum): an empty or
+    # short terminal page that leaves the verified total unaccounted for is
+    # ``truncated`` with the shortfall recorded as its own condition, never a
+    # silent ``complete``. The reconciliation compares against
+    # ``counters.total_count`` — the endpoint's own verified total seen anywhere
+    # in the traversal — so a terminal empty page that omits the member still
+    # reconciles against the total read earlier. A page/request failure is its
+    # own recorded condition and must not additionally fabricate a shortfall.
+    failure_recorded = (
+        DiscoveryStatus.PAGE_FAILED in counters.conditions
+        or DiscoveryStatus.REQUEST_FAILED in counters.conditions
+    )
+    if not failure_recorded and last_page is not None:
+        shortfall = _verified_total_shortfall(
+            verified_total=counters.total_count,
+            persisted=persisted,
+            max_results=max_results,
+            terminal_page_short=len(last_page.records) < page_size,
+        )
+        if shortfall is not None:
+            counters.conditions.append(DiscoveryStatus.TRUNCATED)
+            counters.unreconciled_total_shortfall = shortfall
+
     # Every applicable condition is recorded (LREQ-EXT-090); which one is
     # *terminal* is decided afterwards by the fixed severity precedence. A record
     # whose response ``ec_category`` does not match the requested category is a
@@ -2221,6 +2257,36 @@ def _endpoint_may_hold_more(
     if page.total_count is not None and persisted >= page.total_count:
         return False
     return len(page.records) >= page_size
+
+
+def _verified_total_shortfall(
+    *,
+    verified_total: int | None,
+    persisted: int,
+    max_results: int,
+    terminal_page_short: bool,
+) -> int | None:
+    """Return the positive unreconciled shortfall, or ``None``.
+
+    ``None`` when ``verified_total is None`` (no verified total to reconcile),
+    ``persisted >= max_results`` (the read cap already recorded truncation, which
+    is ``DISCOVERY_TRUNCATED``, never ``DISCOVERY_INCOMPLETE``),
+    ``terminal_page_short is False`` (a full terminal page is not an exhaustion
+    signal), or ``persisted >= verified_total`` (the read reconciled, including
+    the verified zero-result case ``0 >= 0``). Otherwise ``verified_total -
+    persisted``, which is strictly positive; a returned value is never ``0``
+    (missing-not-zero). Pure: reads no clock, performs no I/O
+    (LREQ-ARCH-010/020; SRS §4.1 LREQ-EXT-050 Lean 1.0.5 addendum).
+    """
+    if verified_total is None:
+        return None
+    if persisted >= max_results:
+        return None
+    if not terminal_page_short:
+        return None
+    if persisted >= verified_total:
+        return None
+    return verified_total - persisted
 
 
 def _filter_status_for_records(
@@ -2422,4 +2488,5 @@ def _finalize_result(
         filter_status=counters.filter_status,
         conditions=conditions,
         issues=issues,
+        unreconciled_total_shortfall=counters.unreconciled_total_shortfall,
     )

@@ -2697,6 +2697,14 @@ def _warning_codes(
                     codes.append(WarningCode.IDENTITY_UNRESOLVED.value)
                 if discovery.conflict_identity_count:
                     codes.append(WarningCode.IDENTITY_CONFLICT.value)
+        # An unreconciled verified total is its own Appendix C code, distinct
+        # from ``DISCOVERY_TRUNCATED`` (SRS Appendix C, LREQ-EXT-050 Lean 1.0.5
+        # addendum). The condition loop above already appends
+        # ``DISCOVERY_TRUNCATED`` for the ``truncated`` status, so the
+        # unreconciled case carries both codes; only a *recorded shortfall*
+        # emits this one, never a cap truncation or a page failure.
+        if discovery.unreconciled_total_shortfall is not None:
+            codes.append(WarningCode.DISCOVERY_INCOMPLETE.value)
     if preflight_status in (
         IdentityPreflightStatus.FAILED.value,
         IdentityPreflightStatus.INSUFFICIENT.value,

@@ -198,6 +198,11 @@ class CategoryFilterValidationStatus(str, Enum):
 
 class WarningCode(str, Enum):
     DISCOVERY_TRUNCATED = "DISCOVERY_TRUNCATED"
+    #: The endpoint reported a verified ``totalCount`` the traversal could not
+    #: reconcile; distinct from ``DISCOVERY_TRUNCATED`` (SRS Appendix C, Lean
+    #: 1.0.5 LREQ-EXT-050 addendum). The materiality is strict
+    #: ``persisted < verified_total``; never emitted for a cap truncation.
+    DISCOVERY_INCOMPLETE = "DISCOVERY_INCOMPLETE"
     DISCOVERY_PAGE_FAILED = "DISCOVERY_PAGE_FAILED"
     DISCOVERY_FILTER_UNVERIFIED = "DISCOVERY_FILTER_UNVERIFIED"
     CATEGORY_MISMATCH = "CATEGORY_MISMATCH"
