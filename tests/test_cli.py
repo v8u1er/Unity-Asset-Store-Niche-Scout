@@ -627,8 +627,9 @@ def test_dashboard_selects_completed_and_failed_runs(tmp_path: Path) -> None:
     """Both a completed and a failed persisted run render through the dashboard.
 
     Run selection is the explicit ``--run-id``, never a default or ``--latest``
-    (Ruling 3), so a failed run is selectable and renders through the persisted
-    failed-run fallback without a scored row of its own.
+    (Ruling 3, amended by Chunk 30 D-3: an absent id selects the latest run), so
+    a failed run is selectable and renders through the persisted failed-run
+    fallback without a scored row of its own.
     """
     rf = _report_fixtures()
     db_path = tmp_path / "both.sqlite3"
@@ -671,32 +672,69 @@ def test_dashboard_selects_completed_and_failed_runs(tmp_path: Path) -> None:
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_dashboard_requires_run_id(tmp_path: Path) -> None:
-    """A missing ``--run-id`` is a usage error and calls no renderer (Ruling 3).
+def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
+    """An absent ``--run-id`` selects the most recent run by ``run_started_at_utc``.
 
-    ``dashboard`` has no default run id and no ``--latest`` flag.
+    Chunk 30 D-3 (amending Ruling 3): ``dashboard_command`` resolves
+    ``repository.get_latest_run_id()`` when ``options.run_id`` is ``None``. The
+    repository holds two completed runs with distinct fixed start instants, so
+    the renderer must be called exactly once with the later run id.
     """
-    config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="req.toml")
-    recorder = cf.ReportRecorder()
-    stderr = io.StringIO()
-    code = cli.dashboard_command(
-        cf.dashboard_options(config_path, tmp_path / "none.sqlite3", run_id=None),
-        repository=cf.empty_repository(tmp_path / "none.sqlite3"),
-        report_renderer=recorder,
-        stdout=io.StringIO(),
-        stderr=stderr,
+    db_path = tmp_path / "latest.sqlite3"
+    config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="latest.toml")
+    repository = cf.multi_run_dashboard_repository(
+        db_path, earlier_run_id="run-earlier", later_run_id="run-later"
     )
+    recorder = cf.ReportRecorder()
+    stdout, stderr = _buffers()
+    try:
+        code = cli.dashboard_command(
+            cf.dashboard_options(config_path, db_path, run_id=None),
+            repository=repository,
+            report_renderer=recorder,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    finally:
+        repository.close()
 
-    assert code == cli.EXIT_USAGE_ERROR
-    assert recorder.call_count == 0
+    assert code == cli.EXIT_OK
+    assert recorder.call_count == 1
+    _, run_id = recorder.calls[0]
+    assert run_id == "run-later"
+    assert recorder.html in stdout.getvalue()
+    assert stderr.getvalue() == ""
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_parser_rejects_dashboard_without_run_id() -> None:
-    """``dashboard`` without ``--run-id`` is an argparse usage error (Ruling 3)."""
-    with pytest.raises(SystemExit) as excinfo:
-        cli.parse_options(["dashboard"])
-    assert excinfo.value.code == cli.EXIT_USAGE_ERROR
+def test_dashboard_without_run_id_on_empty_database_is_nonzero(tmp_path: Path) -> None:
+    """An empty ``runs`` table is a runtime failure that calls no renderer."""
+    config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="empty.toml")
+    repository = cf.empty_repository(tmp_path / "empty.sqlite3")
+    recorder = cf.ReportRecorder()
+    stdout, stderr = _buffers()
+    try:
+        code = cli.dashboard_command(
+            cf.dashboard_options(config_path, tmp_path / "empty.sqlite3", run_id=None),
+            repository=repository,
+            report_renderer=recorder,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    finally:
+        repository.close()
+
+    assert code == cli.EXIT_RUNTIME_ERROR
+    assert recorder.call_count == 0
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue().strip() != ""
+
+
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_parser_accepts_dashboard_without_run_id() -> None:
+    """``dashboard`` without ``--run-id`` parses with ``run_id is None`` (D-3)."""
+    parsed = cli.parse_options(["dashboard"])
+    assert parsed.run_id is None
 
 
 # --------------------------------------------------------------------------

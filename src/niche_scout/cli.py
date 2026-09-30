@@ -197,8 +197,9 @@ def build_parser() -> argparse.ArgumentParser:
     Unset options default to ``None`` so ``load_config`` sees absence and no
     in-code default can be shadowed (chunk-00 §5). ``--page-size`` is not
     exposed as an override point; the frozen 96 validation stays in
-    ``load_config``. ``dashboard`` requires ``--run-id``: no default and no
-    ``--latest`` (Ruling 3). ``run`` accepts ``--report PATH`` and
+    ``load_config``. ``dashboard --run-id`` is optional and defaults to the most
+    recent run by ``run_started_at_utc`` (Chunk 30 D-3, amending Ruling 3); there
+    is still no ``--latest`` flag. ``run`` accepts ``--report PATH`` and
     ``--report-format html|text`` (default ``html``, Ruling 5).
     """
     parser = argparse.ArgumentParser(
@@ -238,9 +239,9 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_parser.add_argument(
         "--run-id",
         dest="run_id",
-        required=True,
+        required=False,
         default=None,
-        help="the persisted run to render (required; no default)",
+        help="the persisted run to render (default: the most recent run)",
     )
 
     return parser
@@ -486,21 +487,20 @@ def dashboard_command(
 ) -> int:
     """Render one persisted run through the read-only dashboard renderer.
 
-    ``options.run_id`` is required; a missing or blank id is a usage error
-    (``EXIT_USAGE_ERROR``) and calls no renderer (Ruling 3). Otherwise
-    ``report_renderer(repository, run_id)`` is called once and its HTML printed
-    to ``stdout`` — no file write and no browser launch (Ruling 6). Database
-    reads only: no transport is constructed and no discovery or enrichment is
-    initiated. ``RunNotFoundError`` is a runtime failure.
+    ``options.run_id`` is the optional selector: when it is ``None`` the most
+    recent run by ``run_started_at_utc`` is resolved through
+    ``repository.get_latest_run_id()`` (Chunk 30 D-3, amending Ruling 3). An
+    empty ``runs`` table (``get_latest_run_id() is None``) prints a redacted
+    error to ``stderr`` and returns ``EXIT_RUNTIME_ERROR`` without calling the
+    renderer. Otherwise ``report_renderer(repository, run_id)`` is called once
+    and its HTML printed to ``stdout`` — no file write and no browser launch
+    (Ruling 6). Database reads only: no transport is constructed and no
+    discovery or enrichment is initiated. A given-but-unknown run id and a
+    ``RunNotFoundError`` are runtime failures.
 
     ``report_renderer`` is an injection seam that defaults to
     ``report.render_dashboard_html``; production callers never pass it.
     """
-    run_id = options.run_id
-    if run_id is None or not str(run_id).strip():
-        print("error: --run-id is required", file=stderr)
-        return EXIT_USAGE_ERROR
-
     owns_repository = repository is None
     if repository is None:
         try:
@@ -508,6 +508,20 @@ def dashboard_command(
         except (OSError, database.DatabaseError) as exc:
             print(f"error: {exc}", file=stderr)
             return EXIT_RUNTIME_ERROR
+
+    run_id = options.run_id
+    if run_id is None or not str(run_id).strip():
+        try:
+            run_id = repository.get_latest_run_id()
+        except (OSError, database.DatabaseError) as exc:
+            print(f"error: {exc}", file=stderr)
+            _close_if_owned(owns_repository, repository)
+            return EXIT_RUNTIME_ERROR
+        if run_id is None:
+            print("error: no runs recorded in the database", file=stderr)
+            _close_if_owned(owns_repository, repository)
+            return EXIT_RUNTIME_ERROR
+
     try:
         html = report_renderer(repository, str(run_id))
     except report.ReportError as exc:
@@ -517,14 +531,20 @@ def dashboard_command(
         print(f"error: {exc}", file=stderr)
         return EXIT_RUNTIME_ERROR
     finally:
-        if owns_repository:
-            try:
-                repository.close()
-            except database.DatabaseError:
-                pass
+        _close_if_owned(owns_repository, repository)
 
     print(html, file=stdout)
     return EXIT_OK
+
+
+def _close_if_owned(owns_repository: bool, repository: Any) -> None:
+    """Close a repository this function opened; never one a caller owns."""
+    if not owns_repository:
+        return
+    try:
+        repository.close()
+    except database.DatabaseError:
+        pass
 
 
 def main(argv: Sequence[str] | None = None) -> int:

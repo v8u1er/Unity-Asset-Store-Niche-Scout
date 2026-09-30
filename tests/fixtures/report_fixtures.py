@@ -156,6 +156,7 @@ def ranking_sensitivity_json(
     ranked_categories: tuple[str, ...],
     *,
     balanced_ranks: Mapping[str, int] | None = None,
+    policy_ranks: Mapping[str, Mapping[str, int]] | None = None,
     top_3_stability: float | None = None,
     top_5_stability: float | None = None,
     maximum_score_delta: float | None = None,
@@ -169,17 +170,29 @@ def ranking_sensitivity_json(
     entry. When ``balanced_ranks`` is supplied, ``categories`` carries one
     ``{"category": ..., "rank_balanced": ...}`` entry per ranked category in the
     same order: the persisted 1-based rank by descending balanced composite score
-    (SRS §9.3 ``LREQ-SEN-020``), which the report displays. When it is ``None``
-    the payload keeps ``"categories": []``. The empty-candidate case is the
-    explicit ``{}`` object Chunk 10 persists on a failed-preflight row.
+    (SRS §9.3 ``LREQ-SEN-020``), which the report displays. When ``policy_ranks``
+    is supplied, each category's mapping may add ``rank_demand_heavy`` and
+    ``rank_competition_heavy`` (Chunk 30 §8.1); the existing ``balanced_ranks``
+    path stays byte-compatible so older vectors are unchanged. When
+    ``balanced_ranks`` is ``None`` the payload keeps ``"categories": []``. The
+    empty-candidate case is the explicit ``{}`` object Chunk 10 persists on a
+    failed-preflight row.
     """
     if balanced_ranks is None:
         categories: list[dict[str, object]] = []
     else:
-        categories = [
-            {"category": category, "rank_balanced": balanced_ranks[category]}
-            for category in ranked_categories
-        ]
+        categories = []
+        for category in ranked_categories:
+            entry: dict[str, object] = {
+                "category": category,
+                "rank_balanced": balanced_ranks[category],
+            }
+            if policy_ranks is not None:
+                extra = policy_ranks.get(category, {})
+                for key in ("rank_demand_heavy", "rank_competition_heavy"):
+                    if key in extra:
+                        entry[key] = extra[key]
+            categories.append(entry)
     payload = {
         "policies": ["balanced", "demand_heavy", "competition_heavy"],
         "ranked_categories": list(ranked_categories),
@@ -415,6 +428,54 @@ def non_rankable_row(category: str) -> CategoryScoreRecord:
     )
 
 
+def dashboard_rows() -> tuple[CategoryScoreRecord, ...]:
+    """Return three rankable rows plus one refused row for the chart tests.
+
+    The first rankable row carries all four components present (``D=0.70``,
+    ``C=0.55``, ``R=0.60``, ``Q=0.65``) so the contribution stack sums to the
+    persisted composite ``0.63`` (Chunk 30 §8.2); the second carries only ``D``
+    and ``C`` (renormalised over ``0.65``), the third is a lower scorer, and the
+    fourth is a not-rankable refused row with no rank and no score. The
+    ``ranking_sensitivity_json`` payload carries all three per-policy ranks so
+    the bump chart and the KPI tiles have fixed persisted inputs.
+    """
+    first = CATEGORY_ALPHA
+    second = CATEGORY_BRAVO
+    third = CATEGORY_CHARLIE
+    refused = CATEGORY_NON_RANKABLE
+    payload = ranking_sensitivity_json(
+        (first, second, third),
+        balanced_ranks={first: 1, second: 2, third: 3},
+        policy_ranks={
+            first: {"rank_demand_heavy": 1, "rank_competition_heavy": 1},
+            second: {"rank_demand_heavy": 3, "rank_competition_heavy": 2},
+            third: {"rank_demand_heavy": 2, "rank_competition_heavy": 3},
+        },
+        top_3_stability=1.0,
+        top_5_stability=0.8,
+        maximum_score_delta=0.05,
+        maximum_rank_displacement=2,
+        warning=False,
+    )
+    return (
+        category_score_record(first, ranking_sensitivity_json=payload),
+        category_score_record(
+            second,
+            component_r=None,
+            component_q=None,
+            missing_components_json='["R","Q"]',
+            market_opportunity_score=0.6,
+            ranking_sensitivity_json=payload,
+        ),
+        category_score_record(
+            third,
+            market_opportunity_score=0.41,
+            ranking_sensitivity_json=payload,
+        ),
+        non_rankable_row(refused),
+    )
+
+
 def zero_population_row(category: str) -> CategoryScoreRecord:
     """Return the zero-population census-exempt vector.
 
@@ -484,6 +545,7 @@ __all__ = [
     "STRATUM_STATISTICS_JSON",
     "TAXONOMY_CAPTURED_AT_UTC",
     "category_score_record",
+    "dashboard_rows",
     "input_order_rank_flip_rows",
     "non_rankable_row",
     "pre_scoring_default_row",

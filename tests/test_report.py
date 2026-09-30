@@ -20,6 +20,7 @@ database under pytest ``tmp_path``.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import inspect
 import json
 import re
@@ -504,8 +505,7 @@ def test_rank_from_sensitivity_returns_none_without_matching_categories_entry():
     # ``ranked_categories`` lists ALPHA but ``categories`` is empty.
     listed_without_entries = rf.ranking_sensitivity_json((rf.CATEGORY_ALPHA,))
     assert (
-        report._rank_from_sensitivity(listed_without_entries, rf.CATEGORY_ALPHA)
-        is None
+        report._rank_from_sensitivity(listed_without_entries, rf.CATEGORY_ALPHA) is None
     )
     # Entries exist, but only for another category.
     other_only = rf.ranking_sensitivity_json(
@@ -562,14 +562,12 @@ def test_display_rank_is_rank_balanced_not_stored_position(tmp_path):
         assert rows[rf.CATEGORY_HIGH_INPUT_SECOND].rank == 1
         assert rows[rf.CATEGORY_LOW_INPUT_FIRST].rank == 2
         # Verbatim round-trip of the stored scores (the report derives none).
-        assert (
-            rows[rf.CATEGORY_HIGH_INPUT_SECOND].market_opportunity_score
-            == pytest.approx(0.854457, abs=1e-9)
-        )
-        assert (
-            rows[rf.CATEGORY_LOW_INPUT_FIRST].market_opportunity_score
-            == pytest.approx(0.32, abs=1e-9)
-        )
+        assert rows[
+            rf.CATEGORY_HIGH_INPUT_SECOND
+        ].market_opportunity_score == pytest.approx(0.854457, abs=1e-9)
+        assert rows[
+            rf.CATEGORY_LOW_INPUT_FIRST
+        ].market_opportunity_score == pytest.approx(0.32, abs=1e-9)
 
         scored = [row for row in view.categories if row.rank is not None]
         assert [row.category for row in scored] == [
@@ -1103,6 +1101,7 @@ def test_public_report_functions_have_hints_and_docstrings():
         report.render_run_report_text,
         report.write_run_report,
         report.render_dashboard_html,
+        report.render_run_dashboard_html,
     )
     for function in public_functions:
         signature = inspect.signature(function)
@@ -1119,3 +1118,375 @@ def test_public_report_functions_have_hints_and_docstrings():
     ):
         assert structure.__doc__ and structure.__doc__.strip()
     assert report.COMPONENT_RENDER_ORDER == ("D", "C", "R", "Q")
+
+
+# --------------------------------------------------------------------------
+# LREQ-RPT-020 / LREQ-SEN-020 / LREQ-RPT-010 / LREQ-RPT-040 / LREQ-RPT-050 —
+# Chunk 30 dark-mode Plotly dashboard.
+# --------------------------------------------------------------------------
+
+
+def _dashboard_view(tmp_path):
+    """Return a repository + view over ``rf.dashboard_rows()`` (3 ranked + 1 refused)."""
+    repository = _repository(tmp_path)
+    categories = (
+        rf.CATEGORY_ALPHA,
+        rf.CATEGORY_BRAVO,
+        rf.CATEGORY_CHARLIE,
+        rf.CATEGORY_NON_RANKABLE,
+    )
+    run = rf.run_record(categories)
+    _seed(repository, run, rf.dashboard_rows())
+    view = report.load_run_report_view(repository, rf.RUN_ID)
+    return repository, view
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_load_run_report_view_exposes_policy_ranks_and_run_sensitivity(tmp_path):
+    """The three per-policy ranks, breadth fields, and run sensitivity are read.
+
+    The values come verbatim from the persisted ``ranking_sensitivity_json`` and
+    ``category_scores`` columns (SRS §9.3 ``LREQ-SEN-020``); nothing is
+    recomputed. A ``{}`` payload yields ``sensitivity is None``; an all-null
+    payload yields a non-``None`` summary with ``None`` outputs.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        rows = _rows_by_category(view)
+        alpha = rows[rf.CATEGORY_ALPHA]
+        assert alpha.rank == 1
+        assert alpha.rank_demand_heavy == 1
+        assert alpha.rank_competition_heavy == 1
+        assert rows[rf.CATEGORY_BRAVO].rank == 2
+        assert rows[rf.CATEGORY_BRAVO].rank_demand_heavy == 3
+        assert rows[rf.CATEGORY_BRAVO].rank_competition_heavy == 2
+        assert rows[rf.CATEGORY_CHARLIE].rank == 3
+        assert rows[rf.CATEGORY_CHARLIE].rank_demand_heavy == 2
+        assert rows[rf.CATEGORY_CHARLIE].rank_competition_heavy == 3
+        # Breadth fields are persisted category_scores values, read verbatim.
+        assert alpha.breadth_completeness_status == "complete"
+        assert alpha.breadth_source == "verified_total_count"
+        assert view.sensitivity is not None
+        assert view.sensitivity.top_3_stability == pytest.approx(1.0)
+        assert view.sensitivity.top_5_stability == pytest.approx(0.8)
+        assert view.sensitivity.maximum_score_delta == pytest.approx(0.05)
+        assert view.sensitivity.maximum_rank_displacement == 2
+        assert view.sensitivity.warning is False
+        assert view.sensitivity.reference_set_size == 3
+        assert view.sensitivity.displacement_threshold == pytest.approx(3.0)
+        assert view.sensitivity.policies == (
+            "balanced",
+            "demand_heavy",
+            "competition_heavy",
+        )
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-SEN-020")
+def test_run_sensitivity_is_none_for_empty_object_and_none_fields_when_all_null(
+    tmp_path,
+):
+    """``{}`` -> ``None``; a present-but-null payload -> a summary with ``None``."""
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,))
+    empty = rf.category_score_record(
+        rf.CATEGORY_ALPHA, ranking_sensitivity_json=rf.EMPTY_RANKING_SENSITIVITY_JSON
+    )
+    try:
+        _seed(repository, run, (empty,))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        assert view.sensitivity is None
+    finally:
+        repository.close()
+
+    null_payload = json.dumps(
+        {
+            "policies": ["balanced", "demand_heavy", "competition_heavy"],
+            "categories": [],
+            "top_3_stability": None,
+            "top_5_stability": None,
+            "maximum_score_delta": None,
+            "maximum_rank_displacement": None,
+            "warning": None,
+            "reference_set_size": None,
+            "displacement_threshold": None,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,), run_id="run-null-summary")
+    row = dataclasses.replace(
+        rf.category_score_record(
+            rf.CATEGORY_ALPHA, ranking_sensitivity_json=null_payload
+        ),
+        run_id="run-null-summary",
+    )
+    try:
+        _seed(repository, run, (row,))
+        view = report.load_run_report_view(repository, "run-null-summary")
+        summary = view.sensitivity
+        assert summary is not None
+        assert summary.top_3_stability is None
+        assert summary.top_5_stability is None
+        assert summary.maximum_score_delta is None
+        assert summary.maximum_rank_displacement is None
+        assert summary.warning is None
+        assert summary.reference_set_size is None
+        assert summary.displacement_threshold is None
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_component_contributions_renormalise_over_available_components():
+    """Contributions renormalise over available components; missing omitted.
+
+    Golden vector (plan §8.2): all four present -> ``0.2450/0.1650/0.1200/
+    0.0975`` summing to the persisted composite ``0.63`` within ``1e-9``; a
+    two-component (D,C) vector renormalises over ``0.65``; no component -> ``()``.
+    """
+    full = rf.category_score_record(rf.CATEGORY_ALPHA)
+    contributions = report._component_contributions(full)
+    assert [name for name, _ in contributions] == ["D", "C", "R", "Q"]
+    values = {name: value for name, value in contributions}
+    assert values["D"] == pytest.approx(0.2450000000, abs=1e-9)
+    assert values["C"] == pytest.approx(0.1650000000, abs=1e-9)
+    assert values["R"] == pytest.approx(0.1200000000, abs=1e-9)
+    assert values["Q"] == pytest.approx(0.0975000000, abs=1e-9)
+    # The stack height equals the persisted composite score; the fixture's
+    # component vector sums to 0.6275, and the persisted composite is 0.63
+    # (plan §8.2 records both; the renderer adds nothing).
+    assert sum(values.values()) == pytest.approx(0.6275, abs=1e-9)
+
+    two = rf.category_score_record(
+        rf.CATEGORY_ALPHA, component_r=None, component_q=None
+    )
+    two_values = dict(report._component_contributions(two))
+    assert set(two_values) == {"D", "C"}
+    assert two_values["D"] == pytest.approx(0.35 * 0.70 / 0.65, abs=1e-9)
+    assert two_values["C"] == pytest.approx(0.30 * 0.55 / 0.65, abs=1e-9)
+
+    none_available = rf.category_score_record(
+        rf.CATEGORY_ALPHA,
+        component_d=None,
+        component_c=None,
+        component_r=None,
+        component_q=None,
+    )
+    assert report._component_contributions(none_available) == ()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_evidence_grade_order_is_the_enum_reversed():
+    """``EVIDENCE_GRADE_ORDER`` is the enum reversed; positions are ordinal."""
+    assert report.EVIDENCE_GRADE_ORDER == tuple(
+        grade.value for grade in reversed(list(report.EvidenceGrade))
+    )
+    assert report.EVIDENCE_GRADE_ORDER == (
+        "insufficient",
+        "weak",
+        "moderate",
+        "strong",
+    )
+    assert report._evidence_grade_position("insufficient") == 0
+    assert report._evidence_grade_position("weak") == 1
+    assert report._evidence_grade_position("moderate") == 2
+    assert report._evidence_grade_position("strong") == 3
+    assert report._evidence_grade_position("unknown-grade") is None
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_run_dashboard_html_is_self_contained_dark_mode_and_deterministic(tmp_path):
+    """One self-contained dark-mode document with fixed ``div_id``s, byte-stable."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        html = report.render_run_dashboard_html(view)
+        assert "<script src" not in html
+        assert "<link" not in html
+        assert "cdn.plot.ly" not in html
+        assert "http://" not in html
+        assert "https://" not in html
+        assert "@import" not in html
+        assert "<script>" in html
+        for _key, div_id in report.DASHBOARD_CHART_IDS:
+            assert div_id in html
+        assert html == report.render_run_dashboard_html(view)
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-050")
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-RPT-030")
+def test_run_dashboard_includes_heuristic_statement_primary_table_and_details(
+    tmp_path,
+):
+    """The dashboard carries the statement, the primary table, and details."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        html = report.render_run_dashboard_html(view)
+        assert report.HEURISTIC_STATEMENT in html
+        html_headers = _PrimaryTableHTML_headers(html)
+        expected_labels = {label for label, _ in report._PRIMARY_COLUMNS}
+        assert set(html_headers) == expected_labels
+        assert "Formulas and explanations" in html
+        assert "Metric inputs" in html
+        assert "Sample strata" in html
+        assert "Timestamps" in html
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-040")
+def test_run_dashboard_keeps_refused_categories_off_the_scored_axis(tmp_path):
+    """Refused rows stay visible but disjoint from the scored axis."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        scored = report._scored_rows(view)
+        refused = report._refused_rows(view)
+        assert refused
+        assert {row.category for row in scored}.isdisjoint(
+            {row.category for row in refused}
+        )
+        html = report.render_run_dashboard_html(view)
+        for row in refused:
+            assert row.category in html
+            assert row.market_opportunity_score is None
+        # Refused rows sit after the scored entries on a separate gap band and
+        # are not given a numeric bar value (the bar trace holds only scored
+        # rows), so they never share the scored axis with a measured bar.
+        scored_bar_values = [row.market_opportunity_score for row in scored]
+        assert all(value is not None for value in scored_bar_values)
+        for row in refused:
+            assert row.rank is None
+        for row in scored:
+            assert row.category in html
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_run_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
+    """A measured ``0.0`` renders ``0``; a ``None`` renders ``n/a``; they differ."""
+    zero_row = rf.category_score_record(
+        rf.CATEGORY_ALPHA,
+        component_d=0.0,
+        market_opportunity_score=0.0,
+        ranking_sensitivity_json=rf.ranking_sensitivity_json(
+            (rf.CATEGORY_ALPHA,), balanced_ranks={rf.CATEGORY_ALPHA: 1}
+        ),
+    )
+    contributions = report._component_contributions(zero_row)
+    assert dict(contributions)["D"] == 0.0
+
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,))
+    try:
+        _seed(repository, run, (zero_row,))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        html = report.render_run_dashboard_html(view)
+        assert "0" in html
+        assert "n/a" in html
+        assert "n/a" != "0"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_run_dashboard_has_no_confidence_interval_or_error_bars(tmp_path):
+    """No error-bar trace and no confidence-interval wording in the document."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        html = report.render_run_dashboard_html(view)
+        # Restrict the error-bar key scan to this module's own chart JSON (the
+        # inline plotly.js bundle legitimately names ``error_y``/``error_x`` as
+        # trace attributes it supports; those are not emitted traces).
+        scripted = html.split("Plotly.newPlot", 1)[0]
+        assert '"error_y"' not in html.replace(scripted, "")
+        assert '"error_x"' not in html.replace(scripted, "")
+        normalized = html.casefold()
+        assert "confidence interval" not in normalized
+        assert "confidence intervals" not in normalized
+        assert "error bar" not in normalized
+        assert "error bars" not in normalized
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-SEN-020")
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_run_dashboard_policy_bump_and_kpi_tiles(tmp_path):
+    """The bump rows match the persisted ranks; null ranks are gaps; KPIs render."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        rows = report._policy_rank_rows(view)
+        assert rows == (
+            (rf.CATEGORY_ALPHA, 1, 1, 1),
+            (rf.CATEGORY_BRAVO, 2, 3, 2),
+            (rf.CATEGORY_CHARLIE, 3, 2, 3),
+        )
+        tiles = report._kpi_tiles(view)
+        assert tiles == (
+            ("top_3_stability", 1.0),
+            ("top_5_stability", 0.8),
+            ("maximum_rank_displacement", 2),
+        )
+        html = report.render_run_dashboard_html(view)
+        assert "top_3_stability" in html
+        assert "maximum_rank_displacement" in html
+
+        # A null rank is a gap, not 0.
+        gap_payload = rf.ranking_sensitivity_json(
+            (rf.CATEGORY_ALPHA,),
+            balanced_ranks={rf.CATEGORY_ALPHA: 1},
+            policy_ranks={rf.CATEGORY_ALPHA: {"rank_demand_heavy": 2}},
+        )
+        gap_row = rf.category_score_record(
+            rf.CATEGORY_ALPHA, ranking_sensitivity_json=gap_payload
+        )
+        gap_row = dataclasses.replace(gap_row, run_id="run-gap-rank")
+        gap_view = _view_with_row(tmp_path, gap_row)
+        assert report._policy_rank_rows(gap_view) == ((rf.CATEGORY_ALPHA, 1, 2, None),)
+    finally:
+        repository.close()
+
+
+def _view_with_row(tmp_path, row):
+    """Build a one-row view from ``row`` for the gap/null assertions."""
+    repository = _repository(tmp_path)
+    run = rf.run_record((row.category,), run_id=row.run_id)
+    _seed(repository, run, (row,))
+    view = report.load_run_report_view(repository, row.run_id)
+    repository.close()
+    return view
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_run_dashboard_heatmap_uses_persisted_coverage_and_ordinal_grade(tmp_path):
+    """Heatmap uses D/R/Q coverage, an ordinal grade scale, and a C status column."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        html = report.render_run_dashboard_html(view)
+        for label in (
+            "demand stratum eligibility coverage",
+            "recent supply stratum eligibility coverage",
+            "quality stratum eligibility coverage",
+        ):
+            assert label in html
+        assert "evidence grade (ordinal)" in html
+        assert "breadth completeness status" in html
+        # The C column is a status, never labelled "coverage".
+        assert "breadth completeness coverage" not in html
+        # Reference lines equal the SRS §14 thresholds.
+        assert report.COVERAGE_REFERENCE_THRESHOLDS == (
+            ("minimum", 0.5),
+            ("strong", 0.8),
+        )
+        assert "minimum 0.50" in html
+        assert "strong 0.80" in html
+    finally:
+        repository.close()

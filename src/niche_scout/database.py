@@ -307,6 +307,8 @@ class Repository(Protocol):
 
     def get_category_scores(self, run_id: str) -> Sequence[CategoryScoreRecord]: ...
 
+    def get_latest_run_id(self) -> Optional[str]: ...
+
 
 def _validate_specification() -> None:
     for table, primary_key in TABLE_PRIMARY_KEYS.items():
@@ -1703,6 +1705,36 @@ class SqliteRepository:
             )
             for row in rows
         )
+
+    def get_latest_run_id(self) -> Optional[str]:
+        """Return the ``run_id`` of the run with the greatest ``run_started_at_utc``.
+
+        Reads ``SELECT run_id, run_started_at_utc FROM runs`` and selects in
+        Python: the greatest decoded timezone-aware UTC ``run_started_at_utc``; a
+        tie is broken by the lexicographically smallest ``run_id``. Returns
+        ``None`` when ``runs`` is empty. Read-only, deterministic, no clock read,
+        no network.
+
+        Python-side selection (not a SQL ``ORDER BY`` on the TEXT column) is
+        required because :func:`_encode_column` writes ``datetime.isoformat()``,
+        whose fractional-second part is present only when non-zero, so
+        lexicographic TEXT order is not reliably chronological.
+        """
+        self._check_open()
+        rows = self._connection.execute(
+            "SELECT run_id, run_started_at_utc FROM runs"
+        ).fetchall()
+        latest_run_id: Optional[str] = None
+        latest_started: Optional[datetime] = None
+        for row in rows:
+            decoded = _decode_column("runs", "run_started_at_utc", row[1])
+            run_id = str(row[0])
+            if latest_started is None or decoded > latest_started:
+                latest_started = decoded
+                latest_run_id = run_id
+            elif decoded == latest_started and run_id < str(latest_run_id):
+                latest_run_id = run_id
+        return latest_run_id
 
     def count_raw_discovery_observations(self, run_id: str, category: str) -> int:
         self._check_open()

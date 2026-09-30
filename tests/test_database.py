@@ -2401,3 +2401,83 @@ def test_runs_taxonomy_sha256_empty_is_rejected(
         # A nullable text column is untouched by the guard: supplying None is
         # not this error and must not be turned into one.
         assert stored.scoring_cutoff_utc is not None
+
+
+# ---------------------------------------------------------------------------
+# Chunk 30 — Repository.get_latest_run_id (LREQ-CLI-020, D-3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_get_latest_run_id_selects_greatest_started_at(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """Three distinct start instants -> the row with the greatest one.
+
+    The comparison is on the decoded timezone-aware UTC value, not the stored
+    TEXT, because ``datetime.isoformat()`` omits a zero fractional part. The
+    fixed literals are ``…:05Z``, ``…:06Z``, and ``2024-12-31T23:59:59Z``.
+    """
+    repository = SqliteRepository(tmp_path / "latest.sqlite3")
+    try:
+        runs = (
+            dataclasses.replace(
+                run_record,
+                run_id="run-mid",
+                run_started_at_utc=datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc),
+            ),
+            dataclasses.replace(
+                run_record,
+                run_id="run-late",
+                run_started_at_utc=datetime(2025, 1, 2, 3, 4, 6, tzinfo=timezone.utc),
+            ),
+            dataclasses.replace(
+                run_record,
+                run_id="run-old",
+                run_started_at_utc=datetime(
+                    2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc
+                ),
+            ),
+        )
+        with repository.transaction():
+            for run in runs:
+                repository.insert_run(run)
+        assert repository.get_latest_run_id() == "run-late"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_get_latest_run_id_tie_break_is_deterministic(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """Equal start instants tie-break to the lexicographically smallest run_id."""
+    repository = SqliteRepository(tmp_path / "tie.sqlite3")
+    try:
+        same_start = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+        with repository.transaction():
+            repository.insert_run(
+                dataclasses.replace(
+                    run_record, run_id="b-run", run_started_at_utc=same_start
+                )
+            )
+            repository.insert_run(
+                dataclasses.replace(
+                    run_record, run_id="a-run", run_started_at_utc=same_start
+                )
+            )
+        assert repository.get_latest_run_id() == "a-run"
+        # Stable across two calls (no dependence on row/set ordering).
+        assert repository.get_latest_run_id() == "a-run"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_get_latest_run_id_none_when_no_runs(tmp_path: Path) -> None:
+    """An empty ``runs`` table yields ``None`` (never a fabricated id)."""
+    repository = SqliteRepository(tmp_path / "none.sqlite3")
+    try:
+        assert repository.get_latest_run_id() is None
+    finally:
+        repository.close()

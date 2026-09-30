@@ -39,7 +39,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,7 @@ __all__ = [
     "graphql_body",
     "graphql_headers",
     "graphql_request",
+    "multi_run_dashboard_repository",
     "run_options",
     "scenario_artifacts",
     "seed_run",
@@ -289,6 +291,56 @@ def dashboard_repository(path: Path, *categories: str) -> database.SqliteReposit
         else (report_fixtures.category_score_record(names[0]),)
     )
     seed_run(repository, report_fixtures.run_record(names), rows)
+    return repository
+
+
+#: Two fixed, distinct ``run_started_at_utc`` instants for the latest-run test.
+EARLIER_RUN_STARTED_AT_UTC = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+LATER_RUN_STARTED_AT_UTC = datetime(2025, 1, 2, 3, 4, 6, tzinfo=timezone.utc)
+
+
+def multi_run_dashboard_repository(
+    path: Path,
+    *,
+    earlier_run_id: str = "run-earlier",
+    later_run_id: str = "run-later",
+) -> database.SqliteRepository:
+    """Seed two completed runs with distinct fixed start instants.
+
+    Both runs carry one rankable ``Alpha/Ranked`` score row; the later run has
+    the greater ``run_started_at_utc``, so ``get_latest_run_id`` selects it. All
+    timestamps are fixed aware-UTC literals (no clock read).
+    """
+    repository = empty_repository(path)
+    earlier = report_fixtures.run_record(
+        (report_fixtures.CATEGORY_ALPHA,),
+        run_id=earlier_run_id,
+        run_started_at_utc=EARLIER_RUN_STARTED_AT_UTC,
+    )
+    later = report_fixtures.run_record(
+        (report_fixtures.CATEGORY_ALPHA,),
+        run_id=later_run_id,
+        run_started_at_utc=LATER_RUN_STARTED_AT_UTC,
+    )
+    with repository.transaction():
+        repository.insert_run(earlier)
+        repository.insert_run(later)
+        repository.insert_category_scores(
+            [
+                replace(
+                    report_fixtures.category_score_record(
+                        report_fixtures.CATEGORY_ALPHA
+                    ),
+                    run_id=earlier_run_id,
+                ),
+                replace(
+                    report_fixtures.category_score_record(
+                        report_fixtures.CATEGORY_ALPHA
+                    ),
+                    run_id=later_run_id,
+                ),
+            ]
+        )
     return repository
 
 
