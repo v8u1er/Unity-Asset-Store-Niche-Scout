@@ -285,6 +285,8 @@ rules, and category predicate. It SHALL stop when the verified `totalCount` is
 reached, the endpoint returns a natural terminal page, or
 `MAX_DISCOVERY_RESULTS_PER_CATEGORY` is reached. The discovery status SHALL be one of `complete`, `truncated`, `page_failed`, `filter_unverified`, `category_mismatch`, `identity_incomplete`, or `request_failed`; a failed or truncated page SHALL never be interpreted as zero assets.
 
+The endpoint SHALL be treated as *exhausted* only when the records actually read reconcile against the verified `totalCount`, or the endpoint returns a natural terminal page whose verified total is consistent with the records read. When the endpoint reports a verified `totalCount` that the traversal cannot reconcile — because the endpoint will not page to it, or a page returned no records before the total was accounted for — the category SHALL be marked `truncated`, never `complete`, and the shortfall SHALL be a recorded condition (Lean 1.0.5).
+
 **LREQ-EXT-060**: Each discovery record SHALL retain all non-empty identity
 candidates from `ec_product_id`, `permanentid`, response-level `clickUri`, and
 response-level `uri`. Candidates SHALL be canonicalized under one versioned mapping
@@ -1517,6 +1519,7 @@ The implementation SHOULD use these stable warning codes:
 
 ```text
 DISCOVERY_TRUNCATED
+DISCOVERY_INCOMPLETE
 DISCOVERY_PAGE_FAILED
 DISCOVERY_FILTER_UNVERIFIED
 CATEGORY_MISMATCH
