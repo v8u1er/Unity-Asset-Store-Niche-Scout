@@ -4768,3 +4768,107 @@ def test_cap_truncation_preserves_existing_truncated_behavior(
     assert DiscoveryStatus.TRUNCATED in result.conditions
     assert result.observations_emitted == MAX_DISCOVERY_RESULTS_PER_CATEGORY
     assert result.unreconciled_total_shortfall is None
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_terminal_empty_page_without_total_still_reconciles_against_seen_total(
+    repository: SqliteRepository,
+) -> None:
+    """An empty terminal page that omits ``totalCount`` reconciles against page 1.
+
+    SRS §4.1 LREQ-EXT-050 (Lean 1.0.5): the shortfall reconciles against the
+    verified total seen earlier in the traversal, not only against the terminal
+    page's own member. Page 1 reports ``totalCount = totalCountFiltered = 196``
+    (``PAGE_SIZE + 100``) with 96 records; page 2 is empty and omits the count.
+    Persisted = 96, so the shortfall is ``196 - 96 = 100``.
+    """
+    seen_total = PAGE_SIZE + 100
+    pages = [
+        page_response(
+            fx.records(PAGE_SIZE), total_count=seen_total, filtered_count=seen_total
+        ),
+        page_response([], total_count=None),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.TRUNCATED
+    assert DiscoveryStatus.TRUNCATED in result.conditions
+    assert result.total_count == seen_total
+    assert result.observations_emitted == PAGE_SIZE
+    # 196 - 96 = 100.
+    assert result.unreconciled_total_shortfall == seen_total - PAGE_SIZE == 100
+    assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == PAGE_SIZE
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_short_page_reconciling_verified_total_stays_complete(
+    repository: SqliteRepository,
+) -> None:
+    """Vector C: a short terminal page that reconciles stays ``complete``.
+
+    Pages ``[96, 4]`` with ``totalCount = totalCountFiltered = 100``; persisted
+    ``100 >= 100``, so no shortfall is recorded and no extra condition is added.
+    """
+    total = PAGE_SIZE + 4
+    pages = [
+        page_response(fx.records(PAGE_SIZE), total_count=total, filtered_count=total),
+        page_response(
+            fx.records(4, start=PAGE_SIZE),
+            total_count=total,
+            filtered_count=total,
+        ),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    assert DiscoveryStatus.TRUNCATED not in result.conditions
+    assert result.observations_emitted == total
+    assert result.unreconciled_total_shortfall is None
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_natural_terminal_page_without_verified_total_stays_complete(
+    repository: SqliteRepository,
+) -> None:
+    """Vector D: a natural terminal page with no verified total stays complete.
+
+    No page reports a usable ``totalCount``, so there is nothing to reconcile
+    against; the short terminal page (7 records) ends the traversal naturally
+    and no shortfall is recorded.
+    """
+    pages = [
+        page_response(fx.records(PAGE_SIZE), total_count=None),
+        page_response(fx.records(7, start=PAGE_SIZE), total_count=None),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    assert result.total_count is None
+    assert DiscoveryStatus.TRUNCATED not in result.conditions
+    assert result.observations_emitted == PAGE_SIZE + 7
+    assert result.unreconciled_total_shortfall is None
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_verified_zero_result_yields_no_shortfall(
+    repository: SqliteRepository,
+) -> None:
+    """Vector E: a verified zero result is a value, not a shortfall.
+
+    ``totalCount = totalCountFiltered = 0`` with no records: ``0 >= 0``, so the
+    reconciliation records no shortfall and the category stays ``complete``
+    (SRS §4.1 LREQ-EXT-050; the LREQ-MET-070 verified-zero case).
+    """
+    opener = RecordingOpener(
+        lambda index: page_response([], total_count=0, filtered_count=0)
+    )
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.COMPLETE
+    assert result.total_count == 0
+    assert result.observations_emitted == 0
+    assert result.unreconciled_total_shortfall is None
+    assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == 0

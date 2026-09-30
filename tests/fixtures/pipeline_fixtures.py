@@ -88,6 +88,7 @@ __all__ = [
     "EXPECTED_PREFLIGHT_ATTEMPTS",
     "EXPECTED_PROJECTED_MINIMUM_SECONDS",
     "EXPECTED_RAW_DISCOVERY_ROWS",
+    "EXPECTED_RAW_DISCOVERY_ROWS_UNRECONCILED",
     "EXPECTED_SAMPLE_MEMBER_ROWS",
     "EXPECTED_TAXONOMY_SHA256",
     "EXPECTED_UNION_IDENTITY_COUNT",
@@ -109,6 +110,9 @@ __all__ = [
     "TRANSPORT_FAILED_CATEGORY",
     "TRANSPORT_TRUNCATED_CATEGORY",
     "TRANSPORT_VERIFIED_TOTAL_CATEGORY",
+    "UNRECONCILED_PERSISTED_ROWS",
+    "UNRECONCILED_TOTAL_SHORTFALL",
+    "UNRECONCILED_VERIFIED_TOTAL",
     "EndToEndScenario",
     "ErrorCoveoTransport",
     "FailingGraphQLTransport",
@@ -260,6 +264,15 @@ SCENARIO_DISCOVERY_CAP = 3
 EXPECTED_UNION_IDENTITY_COUNT = 13
 EXPECTED_RAW_DISCOVERY_ROWS = 15
 EXPECTED_SAMPLE_MEMBER_ROWS = 14
+
+#: The Chunk 29 unreconciled-terminal variant (plan §6.2): the truncated
+#: category's scripted pages end on an empty page while the verified total stays
+#: 2000, so the traversal persists only the first page's two rows; the recorded
+#: shortfall is 2000 - 2 = 1998 and the persisted row total drops 15 -> 14.
+UNRECONCILED_VERIFIED_TOTAL = 2000
+UNRECONCILED_PERSISTED_ROWS = 2
+UNRECONCILED_TOTAL_SHORTFALL = 1998
+EXPECTED_RAW_DISCOVERY_ROWS_UNRECONCILED = 14
 EXPECTED_PREFLIGHT_ATTEMPTS = 3
 EXPECTED_PENDING_ENRICHMENT_IDENTITIES = 10
 EXPECTED_PROJECTED_MINIMUM_SECONDS = (
@@ -1022,8 +1035,18 @@ def failed_enrichment_identity() -> str:
     return "C1"
 
 
-def end_to_end_scenario(*, template_path: Path | None = None) -> EndToEndScenario:
+def end_to_end_scenario(
+    *, template_path: Path | None = None, unreconciled_terminal: bool = False
+) -> EndToEndScenario:
     """Return the eight-category scenario: verified, truncated, unverified + 5.
+
+    ``unreconciled_terminal=True`` selects the Chunk 29 variant (plan §6.2):
+    the truncated category's scripted terminal page is empty while the verified
+    ``totalCount`` stays :data:`UNRECONCILED_VERIFIED_TOTAL`, so the traversal
+    cannot reconcile — persisted = :data:`UNRECONCILED_PERSISTED_ROWS` (2) and
+    the recorded shortfall is :data:`UNRECONCILED_TOTAL_SHORTFALL`
+    (2000 - 2 = 1998). The default ``False`` keeps the cap-truncation script
+    every earlier node pins (raw discovery rows = 15).
 
     ``template_path`` is the run-local discovery template the caller wrote with
     :func:`write_run_local_template`; it is threaded into the GraphQL fixture's
@@ -1090,11 +1113,22 @@ def end_to_end_scenario(*, template_path: Path | None = None) -> EndToEndScenari
         ],
         total_count=2000,
     )
+    if unreconciled_terminal:
+        # Chunk 29 variant (plan §6.2): the terminal page is empty while the
+        # verified total stays 2000, so the read cannot reconcile. The read cap
+        # is not reached; the shortfall branch records ``truncated`` with
+        # ``2000 - 2 = 1998`` (SRS §4.1 LREQ-EXT-050 addendum).
+        truncated_script = (
+            truncated_page,
+            coveo_page([], total_count=UNRECONCILED_VERIFIED_TOTAL),
+        )
+    else:
+        truncated_script = (truncated_page, truncated_terminal_page)
     unverified_page = coveo_page([], total_count=None)
     coveo = RecordingCoveoTransport(
         {
             TRANSPORT_VERIFIED_TOTAL_CATEGORY: (verified_page,),
-            TRANSPORT_TRUNCATED_CATEGORY: (truncated_page, truncated_terminal_page),
+            TRANSPORT_TRUNCATED_CATEGORY: truncated_script,
             TRANSPORT_FAILED_CATEGORY: (unverified_page,),
             SYNTHETIC_COMPLETE_CATEGORIES[0]: (
                 coveo_page(
@@ -1167,7 +1201,11 @@ def end_to_end_scenario(*, template_path: Path | None = None) -> EndToEndScenari
         summary_key_set=SUMMARY_JSON_KEY_SET,
         preflight_attempted_unique_identities=EXPECTED_PREFLIGHT_ATTEMPTS,
         union_identity_count=EXPECTED_UNION_IDENTITY_COUNT,
-        raw_discovery_rows=EXPECTED_RAW_DISCOVERY_ROWS,
+        raw_discovery_rows=(
+            EXPECTED_RAW_DISCOVERY_ROWS_UNRECONCILED
+            if unreconciled_terminal
+            else EXPECTED_RAW_DISCOVERY_ROWS
+        ),
         removed_category=TRANSPORT_TRUNCATED_CATEGORY,
         observed_sentinels=RECORDED_SENTINELS,
     )

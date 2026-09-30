@@ -1025,6 +1025,7 @@ def test_incomplete_breadth_fallback_disables_c_and_is_not_rankable() -> None:
         make_pre_sensitivity_input,
         make_score_result,
     )
+
     from niche_scout.models import IdentityPreflightStatus
 
     fallback_source = BreadthSource.DISTINCT_CANONICAL_DISCOVERED_COUNT

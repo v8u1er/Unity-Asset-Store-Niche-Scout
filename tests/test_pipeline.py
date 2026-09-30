@@ -137,6 +137,7 @@ def _run_end_to_end(
     clock=None,
     on_call_capture: fx.LogCapture | None = None,
     config_overrides: dict[str, Any] | None = None,
+    unreconciled_terminal: bool = False,
 ):
     """Run one full e2e pipeline against the in-memory scenario.
 
@@ -144,7 +145,9 @@ def _run_end_to_end(
     and the repository is closed before returning.
     """
     template_path = fx.write_run_local_template(tmp_path, fx.END_TO_END_CATEGORIES)
-    scenario = fx.end_to_end_scenario(template_path=template_path)
+    scenario = fx.end_to_end_scenario(
+        template_path=template_path, unreconciled_terminal=unreconciled_terminal
+    )
     overrides = {**SIX_CATEGORY_CONFIG, **(config_overrides or {})}
     config = _config(tmp_path, scenario.categories, cap=cap, **overrides)
     fx.install_projection_observer(on_call_capture)
@@ -1582,3 +1585,76 @@ def test_preflight_preserves_validated_windowed_weekly_status(tmp_path: Path) ->
         )
     finally:
         repository.close()
+
+
+# ---------------------------------------------------------------------------
+# Chunk 29 — the unreconciled-terminal variant (LREQ-EXT-050 / LREQ-EXT-090 /
+# LREQ-MET-070)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+@pytest.mark.lreq("LREQ-EXT-090")
+def test_unreconciled_total_emits_discovery_incomplete_distinct_from_truncated(
+    tmp_path: Path,
+) -> None:
+    """The unreconciled variant emits ``DISCOVERY_INCOMPLETE`` beside truncated.
+
+    The variant scenario (``unreconciled_terminal=True``) ends the truncated
+    category's traversal on an **empty** page while the verified total stays
+    2000: persisted = 2, recorded shortfall = 1998 (SRS §4.1 LREQ-EXT-050
+    addendum, Lean 1.0.5). Appendix C lists ``DISCOVERY_INCOMPLETE`` and
+    ``DISCOVERY_TRUNCATED`` as separate codes, so the persisted row carries
+    both, deduplicated and distinct.
+    """
+    _result, _scenario, stored = _run_end_to_end(
+        tmp_path, run_id="run-29-unreconciled-warning", unreconciled_terminal=True
+    )
+    rows = {row.category: row for row in stored["rows"]}
+    row = rows[fx.TRANSPORT_TRUNCATED_CATEGORY]
+
+    assert row.discovery_status == DiscoveryStatus.TRUNCATED.value
+    codes = json.loads(row.warnings_json)
+    assert "DISCOVERY_INCOMPLETE" in codes
+    assert "DISCOVERY_TRUNCATED" in codes
+    assert "DISCOVERY_INCOMPLETE" != "DISCOVERY_TRUNCATED"
+    assert codes.count("DISCOVERY_INCOMPLETE") == 1
+    assert codes.count("DISCOVERY_TRUNCATED") == 1
+
+    # Control: the healthy category of the same run is still complete.
+    healthy = rows[fx.TRANSPORT_VERIFIED_TOTAL_CATEGORY]
+    assert healthy.discovery_status == DiscoveryStatus.COMPLETE.value
+
+
+@pytest.mark.lreq("LREQ-MET-070")
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_unreconciled_total_falls_back_to_incomplete_breadth_and_is_not_rankable(
+    tmp_path: Path,
+) -> None:
+    """The shortfall row takes the fallback breadth chain and is not rankable.
+
+    SRS §7.3 LREQ-MET-070: the unreconciled verified total is not usable, so
+    ``BreadthRaw`` is the distinct canonical discovered count (900, 902 -> 2),
+    ``breadth_source`` is ``distinct_canonical_discovered_count``, and
+    ``breadth_completeness_status`` is ``incomplete_estimate``. ``C`` requires
+    verified+complete breadth (SRS §8.2 LREQ-SCR-020) and is therefore
+    unavailable, and the category is not rankable (LREQ-EVD-020/030).
+    """
+    _result, _scenario, stored = _run_end_to_end(
+        tmp_path, run_id="run-29-unreconciled-breadth", unreconciled_terminal=True
+    )
+    rows = {row.category: row for row in stored["rows"]}
+    row = rows[fx.TRANSPORT_TRUNCATED_CATEGORY]
+
+    assert row.discovery_status == DiscoveryStatus.TRUNCATED.value
+    assert row.breadth_source == (
+        models.BreadthSource.DISTINCT_CANONICAL_DISCOVERED_COUNT.value
+    )
+    assert row.breadth_completeness_status == (
+        models.BreadthCompletenessStatus.INCOMPLETE_ESTIMATE.value
+    )
+    assert row.breadth_raw == fx.UNRECONCILED_PERSISTED_ROWS
+    assert row.component_c is None
+    assert "C" in json.loads(row.missing_components_json)
+    assert row.rankability_status == models.RankabilityStatus.NOT_RANKABLE.value
+    assert row.evidence_grade == models.EvidenceGrade.INSUFFICIENT.value
