@@ -961,7 +961,8 @@ def persist_preflight(
       3. ``mark_preflight_selected`` to flip the sampling placeholders to ``True``.
       4. Non-clobbering page-view-semantics write: read the run via ``get_run``;
          iff the current ``page_view_semantics_status`` is neither
-         ``validated_cumulative`` nor ``contradicted``, write ``unvalidated``.
+         ``validated_cumulative``, ``contradicted``, nor
+         ``validated_windowed_weekly``, write ``unvalidated``.
 
     A row is written for every non-``insufficient`` attempt, including failures;
     zero-attempted (``insufficient``) writes zero observation rows, which is

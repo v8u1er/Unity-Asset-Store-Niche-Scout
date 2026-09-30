@@ -74,6 +74,23 @@ Review round 1 fix scope: `tests/fixtures/metric_estimator_fixtures.py`, `tests/
 After the fixes: `pytest` **711 passed**; `validate_traceability` exit 0 (89 IDs, 690 nodes);
 `ruff check` clean on the changed files (the pre-existing `database.py`/`test_contracts.py` E501 are unchanged).
 
+### Review round 2
+
+`ses_f0efc0738ffeXKnNKR4g16rbOb` (+ the one-line fix via `ses_f0ef8f448ffeCO3KkK9Ta7BGmh`; a truncated
+duplicate dispatch `ses_f0f01ea92ffe8Hkg2GKE1x72lx` produced no verdict). Outcome: **FAIL**, again driven
+solely by the operator-only SRS Blocker; **0 Major**; one new Minor plus the standing accepted placement
+deviation.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 8 | Minor (round 2) | `pipeline.py:962-964` `persist_preflight` docstring step 4 omits `validated_windowed_weekly` from the preserved set, contradicting the code at `:1001-1005` | **Fixed** — docstring now lists the exact preserved set. |
+
+Round 2 independently re-confirmed: 711 passed; four validators exit 0; changed-file `ruff check` clean;
+`test_contracts.py` E501 count **11 == `main`** (pre-existing, same docstring lines); `never_divides_by_zero`
+key absent and the renamed node key present with the same LREQ value; and the acceptance D/Q/rankability
+goldens are status/component-driven (`test_end_to_end.py:455-457, :972-987`), so their not moving is
+genuine, not a loose tolerance.
+
 ### Implementation stage — lead-reproduced (step 6, real output)
 
 Changed source: `models.py` (enum + `PAGE_VIEW_SEMANTICS_CONTRACT` + `ENDPOINT_CONTRACT_VERSION`→"1.1.0"),
