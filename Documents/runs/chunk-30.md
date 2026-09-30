@@ -84,4 +84,33 @@ contracts it must satisfy). None of these may be re-opened by an agent.
 | Review — `spec-reviewer` | FAIL (round 1) | 1 Blocker (`_neutralize_plotly_urls` rewrote `http://www.w3.org/...` namespace URIs → would break SVG chart creation) + 4 Majors (missing-component rendered as `0.0` stack; heatmap omitted `rankability_status`; `_run_sensitivity` read only `scores[0]` so a failed-first category nulled the KPI tiles; lollipop collapsed `0` and `None`). Minors recorded. |
 | Fix round 1 — `impl-fast` | DONE | Namespace-preserving neutralization; contribution stack gaps missing components; heatmap adds the `rankability` column; `_run_sensitivity` scans for a usable payload; lollipop draws an explicit-zero marker vs an `n/a` annotation; scatter `n/a` text; duplicate `_SORT_SCRIPT` removed; null-vs-zero test de-tautologised. |
 | Lead re-verification + interface correction | DONE | `pytest` **741 passed**; validators valid; `ruff check`/`format --check` clean on changed files; independent probe: `http://www.w3.org/2000/svg` and `.../1999/xhtml` preserved, 0 fetchable URLs, no `cdn.plot.ly`, idempotent. Corrected the stale rank locant at `interfaces/chunk-11.md:72` and `:197` per plan §2 item 3 (reviewer Minor). |
-| Review — `spec-reviewer` | IN_PROGRESS | round 2 re-dispatch pending |
+| Review — `spec-reviewer` | PASS (round 2) | Round 1 FAIL (1 Blocker + 4 Majors), fixed in `729985a`. Round 2: **VERDICT: PASS**, no Blocker, no Major. One Minor raised (a suspected `_SORT_SCRIPT` NameError) that the lead refuted: AST count shows exactly one module-level `_SORT_SCRIPT` definition (`report.py:275`), used at `:987` and `:1791`; rendering and tests already proved it resolves. Residual round-1 Minors recorded below. |
+| Gate | IN_PROGRESS | walking plan §9 bullets |
+
+## Gate walk (plan §9)
+
+| Bullet | Evidence | Result |
+|---|---|---|
+| `python -m pytest -q` whole suite | `741 passed in 27.54s` (lead, post-fix) | PASS |
+| `validate_traceability` exit 0, no orphan | `89 required/defined LREQ IDs mapped, 720 matrix nodes, 0 unmarked (3 exempted)`; new nodes present, two superseded CLI keys removed | PASS |
+| `check_import_boundaries` exit 0 | `Import boundaries valid for metrics.py, scoring.py` | PASS |
+| `check_scope_prohibitions` exit 0 | `no retired token found … (6 tokens checked)` | PASS |
+| Formatter/linter per `pyproject.toml` | `ruff check` clean on all chunk-30 files; `ruff format --check` clean on `report.py`/`test_report.py`; four new E501s wrapped in `5dfc33f`; remaining repo findings pre-exist at `092e55f` | PASS (no new findings) |
+| `plotly` declared and importable | `pyproject.toml:10` `dependencies = ["plotly>=7.1,<8"]`; `pip show plotly` → 7.1.0 | PASS |
+| `report.py` boundary held | imports only stdlib/`plotly`/`.database`/`.models`; `check_import_boundaries` exit 0; no clock read | PASS |
+| Byte-identical + self-contained | `test_run_dashboard_html_is_self_contained_dark_mode_and_deterministic` asserts `html == render(view)`, no `<script src`/`<link`/`@import`/`cdn.plot.ly`, namespaces preserved; independent probe: 0 fetchable URLs, `cdn.plot.ly` absent, idempotent | PASS |
+| Latest-run default + empty DB | `test_dashboard_without_run_id_renders_latest_run`, `…_on_empty_database_is_nonzero`, `test_parser_accepts_dashboard_without_run_id`, three `get_latest_run_id` nodes → 9 passed | PASS |
+| Refused off scored axis; ordinal grade; `n/a` ≠ `0`; no CI/error bars; coverage vs sample fraction | `test_run_dashboard_keeps_refused_categories_off_the_scored_axis`, `…_distinguishes_null_from_explicit_zero` (parses score-bar JSON), `…_has_no_confidence_interval_or_error_bars`, `…_heatmap_uses_persisted_coverage_and_ordinal_grade`, `…_policy_bump_and_kpi_tiles` | PASS |
+| `HEURISTIC_STATEMENT` present | `test_run_dashboard_includes_heuristic_statement_primary_table_and_details`; constant length 816 | PASS |
+| No file outside §1.4 changed; interfaces amended | changed set = `pyproject.toml`, 3 src, 3 test, 2 fixtures, `traceability.json`, 4 interfaces, plan, run log | PASS |
+| Run log updated with gate result | this document | PASS |
+
+**GATE: PASSED** (reviewer round 2 PASS; no Blocker/Major surviving).
+
+## Review Minors recorded (do not trigger a loop)
+
+1. `report.py:1791`/`:987` `_SORT_SCRIPT` — reviewer suspected a NameError after the duplicate removal; **refuted** by the lead: exactly one module-level definition (`report.py:275`), AST count 1, renders and tests pass. No fix.
+2. `report.py:1465-1472` — coverage reference lines drawn via `add_vline` on a categorical x-axis land between columns rather than on the numeric coverage domain. Cosmetic; noted for a future iteration.
+3. Plan §8.2 prose says the four contributions "equal 0.63"; the correct sum is 0.6275 (the fixture's composite 0.63 differs). The test asserts 0.6275 and documents the gap; plan prose left as-is (frozen).
+4. Boundary note: `report.py` grew to ~1959 lines and carries two renderers; a future split is proposed per project-rules but is out of this chunk's scope.
+5. `tests/test_cli.py:929` formatting reflow is pre-existing (untouched code), not introduced here.
