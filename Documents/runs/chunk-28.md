@@ -164,23 +164,22 @@ Held-out verification (final HEAD `4524553`): `python -m pytest -q -p no:cachepr
 | 3. `ENDPOINT_CONTRACT_VERSION == "1.1.0"`; every fixture pinning `"1.0.0"` re-baselined | `models.py:25` `"1.1.0"`; endpoint pins updated at `identity_preflight_vectors.py:324`, `report_fixtures.py:295`, `sampling_persistence_fixtures.py:231`, `test_collector.py:242`, `test_contracts.py`; `test_contracts.py::test_endpoint_contract_version_is_1_1_0` passes; surviving `"1.0.0"` strings are taxonomy / sampling-digest / unrelated-schema values, not the endpoint contract | PASS |
 | 4. report caveats no longer say "cumulative" / "not a weekly traffic rate" | `report.py:55` and `:128` reworded; `test_report_caveats_describe_trailing_seven_day_views` and `::test_report_states_heuristic_and_six_distinctions` pass | PASS |
 | 5. All D/Q/rankability goldens re-baselined from a captured run; pytest + four validators exit 0; ruff no new lint | the index-consuming DEMAND/QUALITY goldens re-baselined from the offline run (`metric_estimator_fixtures.py`, `test_metrics.py`); the acceptance/scoring goldens are status/component-driven and do not move (round-2 verified); `pytest` 711 passed; four validators exit 0; ruff no new lint | PASS |
-| 6. SRS D1-S1…D1-S7 applied by the operator, with diff/sha256 evidence in the run log — else the gate is FAILED and the chunk BLOCKED | **APPLIED** (operator-authorized 2026-09-30, see the section above). `git status --porcelain` → ` M Documents/SRS-lean-v2.md`; `git diff --numstat` → 32 insertions / 19 deletions; sha256 `6903b8da…f43f55b` (pre-edit `417860f4…ee380b`). The seven edits D1-S1…D1-S7 are present at §1.4, §7.2, §6.3, §10, §16, App. A, and the header/revision history (Lean 1.0.4). | **PASS** |
+| 6. SRS D1-S1…D1-S7 applied by the operator, with diff/sha256 evidence in the run log — else the gate is FAILED and the chunk BLOCKED | **APPLIED** (operator-authorized 2026-09-30, see the section above). Committed `987bec7`; `git diff --numstat` → 32 insertions / 19 deletions; sha256 `6903b8da…f43f55b` (pre-edit `417860f4…ee380b`). The seven edits D1-S1…D1-S7 are present at §1.4, §7.2, §6.3, §10, §16, App. A, and the header/revision history (Lean 1.0.4). | **PASS** |
 
 **Gate: PASSED** — all six bullets evidenced. `pytest` 711 passed; four validators exit 0; ruff no new
-lint; the SRS edit is applied with diff/sha256 recorded above. The SRS change is **uncommitted** at the
-operator's direction.
+lint; the SRS edit is applied with diff/sha256 recorded above and committed as `987bec7`.
 
 ### Operator action before any merge
 
-The operator commits `Documents/SRS-lean-v2.md` themselves (the edit is in the working tree, unstaged on
-purpose). No further agent action is required for the gate; a wording-matched `report.py` follow-up is
-unnecessary because the applied D1-S4/D1-S5 text matches the shipped caveats.
+None outstanding for the gate. The SRS edit is committed on `chunk-28` (`987bec7`); merge only when you
+ask. A wording-matched `report.py` follow-up is unnecessary because the applied D1-S4/D1-S5 text matches
+the shipped caveats.
 
 ### Operator-authorized SRS application (2026-09-30) — D1-S1…D1-S7 APPLIED
 
 The operator authorized direct application ("use shell commands to edit the srs, you have permission,
-and i authorize", 2026-09-30). `Documents/SRS-lean-v2.md` is edited in place on branch `chunk-28`; the
-edit is **uncommitted** at the operator's direction (staged separately for their commit).
+and i authorize", 2026-09-30). `Documents/SRS-lean-v2.md` is edited on branch `chunk-28` and committed
+as `987bec7` (`chunk-28: SRS D1-S1..D1-S7 applied (Lean 1.0.4 page-view semantics)`).
 
 Evidence:
 - `git status --porcelain` → ` M Documents/SRS-lean-v2.md` (only that path).
