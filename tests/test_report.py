@@ -1127,7 +1127,10 @@ def test_public_report_functions_have_hints_and_docstrings():
 
 
 def _dashboard_view(tmp_path):
-    """Return a repository + view over ``rf.dashboard_rows()`` (3 ranked + 1 refused)."""
+    """Return a repository + view over ``rf.dashboard_rows()``.
+
+    The fixture holds three ranked rows plus one refused row.
+    """
     repository = _repository(tmp_path)
     categories = (
         rf.CATEGORY_ALPHA,

@@ -681,7 +681,9 @@ def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
     the renderer must be called exactly once with the later run id.
     """
     db_path = tmp_path / "latest.sqlite3"
-    config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="latest.toml")
+    config_path = cf.write_toml_file(
+        tmp_path, cf.DASHBOARD_TOML_BODY, name="latest.toml"
+    )
     repository = cf.multi_run_dashboard_repository(
         db_path, earlier_run_id="run-earlier", later_run_id="run-later"
     )
@@ -709,7 +711,9 @@ def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
 @pytest.mark.lreq("LREQ-CLI-020")
 def test_dashboard_without_run_id_on_empty_database_is_nonzero(tmp_path: Path) -> None:
     """An empty ``runs`` table is a runtime failure that calls no renderer."""
-    config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="empty.toml")
+    config_path = cf.write_toml_file(
+        tmp_path, cf.DASHBOARD_TOML_BODY, name="empty.toml"
+    )
     repository = cf.empty_repository(tmp_path / "empty.sqlite3")
     recorder = cf.ReportRecorder()
     stdout, stderr = _buffers()

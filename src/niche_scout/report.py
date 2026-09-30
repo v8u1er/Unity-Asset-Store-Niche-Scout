@@ -1519,7 +1519,9 @@ def _breadth_cell(row: CategoryReportRow) -> str:
     source = row.breadth_source
     if status is None and source is None:
         return _NA
-    return f"{status if status is not None else _NA} / {source if source is not None else _NA}"
+    status_text = _NA if status is None else status
+    source_text = _NA if source is None else source
+    return f"{status_text} / {source_text}"
 
 
 def _coverage_cell(value: float | None) -> float | None:
