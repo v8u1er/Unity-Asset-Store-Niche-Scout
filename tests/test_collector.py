@@ -4872,3 +4872,73 @@ def test_verified_zero_result_yields_no_shortfall(
     assert result.observations_emitted == 0
     assert result.unreconciled_total_shortfall is None
     assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == 0
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_short_terminal_page_with_unreconciled_verified_total_is_truncated(
+    repository: SqliteRepository,
+) -> None:
+    """A SHORT (non-empty) terminal page is not an exhaustion signal.
+
+    SRS §4.1 LREQ-EXT-050 (Lean 1.0.5): exhaustion needs the records read to
+    reconcile against the verified ``totalCount``. Page 1 reports
+    ``totalCount = 200`` with a full 96-record page; page 2 returns 4 records
+    and omits the count. Persisted = 100, so the shortfall is
+    ``200 - 100 = 100``. A short page stops the loop but is never proof of
+    coverage: an implementation using ``not last_page.records`` in place of
+    ``len(last_page.records) < page_size`` fails the shortfall assertion here.
+    """
+    verified_total = 200
+    pages = [
+        page_response(fx.records(PAGE_SIZE), total_count=verified_total),
+        page_response(fx.records(4, start=PAGE_SIZE), total_count=None),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener)
+
+    assert result.discovery_status is DiscoveryStatus.TRUNCATED
+    assert result.discovery_status is not DiscoveryStatus.COMPLETE
+    assert DiscoveryStatus.TRUNCATED in result.conditions
+    assert result.total_count == verified_total
+    assert result.observations_emitted == PAGE_SIZE + 4
+    # 200 - 100 = 100 (strict materiality, Q2 option (a)).
+    assert result.unreconciled_total_shortfall == verified_total - 100 == 100
+    # No zero-asset reading: both pages' records are persisted.
+    assert result.canonical_identity_count == PAGE_SIZE + 4
+    assert (
+        repository.count_raw_discovery_observations(RUN_ID, CATEGORY)
+        == PAGE_SIZE + 4
+    )
+    assert statuses_by_category(repository)[CATEGORY] == (
+        DiscoveryStatus.TRUNCATED.value
+    )
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_cap_crossed_on_short_page_records_no_unreconciled_shortfall(
+    repository: SqliteRepository,
+) -> None:
+    """The ``persisted >= max_results`` guard wins over a short terminal page.
+
+    With ``max_discovery_results_per_category = 100`` injected, page 1 (96
+    records, ``totalCount = 200``) leaves room for only 4 of page 2's 10
+    records; the cap admits those 4 and records ``truncated``. Persisted = 100
+    equals the cap, so the shortfall helper returns ``None`` before it ever
+    looks at the short terminal page: a cap truncation is
+    ``DISCOVERY_TRUNCATED``, never ``DISCOVERY_INCOMPLETE``.
+    """
+    max_results = 100
+    verified_total = 200
+    config = default_config(max_discovery_results_per_category=max_results)
+    pages = [
+        page_response(fx.records(PAGE_SIZE), total_count=verified_total),
+        page_response(fx.records(10, start=PAGE_SIZE), total_count=None),
+    ]
+    opener = paged_opener(pages)
+    result = discover(repository, opener, config=config)
+
+    assert result.discovery_status is DiscoveryStatus.TRUNCATED
+    assert DiscoveryStatus.TRUNCATED in result.conditions
+    assert result.observations_emitted == max_results
+    assert result.unreconciled_total_shortfall is None
+    assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == max_results

@@ -275,6 +275,12 @@
   "tests/test_collector.py::test_verified_zero_result_yields_no_shortfall": [
     "LREQ-EXT-050"
   ],
+  "tests/test_collector.py::test_short_terminal_page_with_unreconciled_verified_total_is_truncated": [
+    "LREQ-EXT-050"
+  ],
+  "tests/test_collector.py::test_cap_crossed_on_short_page_records_no_unreconciled_shortfall": [
+    "LREQ-EXT-050"
+  ],
   "tests/test_collector.py::test_parent_path_does_not_match_child_path": [
     "LREQ-EXT-080"
   ],
@@ -1357,6 +1363,9 @@
   "tests/test_pipeline.py::test_unreconciled_total_falls_back_to_incomplete_breadth_and_is_not_rankable": [
     "LREQ-EXT-050",
     "LREQ-MET-070"
+  ],
+  "tests/test_pipeline.py::test_cap_truncated_category_warning_excludes_discovery_incomplete": [
+    "LREQ-EXT-050"
   ],
   "tests/test_pipeline.py::test_taxonomy_sha256_is_non_empty_and_matches_golden": [
     "LREQ-ARCH-030"

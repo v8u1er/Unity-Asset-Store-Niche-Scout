@@ -1658,3 +1658,25 @@ def test_unreconciled_total_falls_back_to_incomplete_breadth_and_is_not_rankable
     assert "C" in json.loads(row.missing_components_json)
     assert row.rankability_status == models.RankabilityStatus.NOT_RANKABLE.value
     assert row.evidence_grade == models.EvidenceGrade.INSUFFICIENT.value
+
+
+@pytest.mark.lreq("LREQ-EXT-050")
+def test_cap_truncated_category_warning_excludes_discovery_incomplete(
+    tmp_path: Path,
+) -> None:
+    """Cap truncation is ``DISCOVERY_TRUNCATED`` only, never incomplete.
+
+    The default scenario's truncated category is stopped by the read cap
+    (``SCENARIO_DISCOVERY_CAP``) and its records reconcile with no recorded
+    shortfall amount, so the Lean 1.0.5 ``DISCOVERY_INCOMPLETE`` code must not
+    appear (SRS Appendix C; SRS §4.1 LREQ-EXT-050 addendum). This is the
+    negative of the unreconciled-terminal variant's positive case.
+    """
+    _result, _scenario, stored = _run_end_to_end(tmp_path, run_id="run-29-cap-warning")
+    rows = {row.category: row for row in stored["rows"]}
+    row = rows[fx.TRANSPORT_TRUNCATED_CATEGORY]
+
+    assert row.discovery_status == DiscoveryStatus.TRUNCATED.value
+    codes = json.loads(row.warnings_json)
+    assert "DISCOVERY_TRUNCATED" in codes
+    assert "DISCOVERY_INCOMPLETE" not in codes
