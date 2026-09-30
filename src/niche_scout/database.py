@@ -51,7 +51,7 @@ from .models import (
 )
 from .sampling import CategorySamplingResult, RunSamplingResult, compute_overlap
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 
 # Column types are derived from the logical field types in models.py: SQLite
 # stores timestamps as ISO-8601 UTC TEXT and booleans as INTEGER 0/1.

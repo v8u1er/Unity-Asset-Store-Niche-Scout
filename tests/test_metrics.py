@@ -86,7 +86,7 @@ def test_weighted_median_single_value_and_first_at_or_above_half() -> None:
     ``0.5``, cumulative ``1 >= 0.5`` -> ``7.0``. The demand-strata vector
     ``mfx.WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR`` (plan §9.2) has weights ``3.0``
     five times and ``1.0`` five times: ``T = 20``, half ``10``, cumulative
-    ``3, 6, 9, 12``; the first value at or above half is ``4.0`` (no exact-half
+    ``3, 6, 9, 12``; the first value at or above half is ``40.0`` (no exact-half
     tie, so no averaging). The loop re-checks every fixture vector against its
     hand-derived constant.
     """
@@ -94,7 +94,7 @@ def test_weighted_median_single_value_and_first_at_or_above_half() -> None:
         assert m.weighted_median(vector) == pytest.approx(expected, abs=1e-9)
     assert m.weighted_median(((7.0, 1.0),)) == pytest.approx(7.0, abs=1e-9)
     assert m.weighted_median(mfx.WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR) == pytest.approx(
-        4.0, abs=1e-9
+        40.0, abs=1e-9
     )
 
 
@@ -141,17 +141,19 @@ def test_demand_per_asset_uses_population_weighted_means() -> None:
     """``DemandPerAssetRaw`` renormalizes the ``N_h / N``-weighted usable strata.
 
     SRS §7.2 / LREQ-MET-030: ``sum(w_h * mean_h) / sum(w_h)`` over usable strata,
-    ``w_h = N_h / N`` (plan §9.2 ``DEMAND_UNEQUAL_STRATA``). Stratum 0 has
-    ``N_0 = 75``, ``n_0 = 25`` and usable indices ``[1, 2, 3, 4, 5]``, so
-    ``mean_0 = 15 / 5 = 3.0`` and ``w_0 = 75 / 100 = 0.75``. Stratum 1 has
-    ``N_1 = 25``, ``n_1 = 25`` and usable indices ``[10, 20, 30, 40, 50]``, so
-    ``mean_1 = 150 / 5 = 30.0`` and ``w_1 = 25 / 100 = 0.25``. The result is
-    ``(0.75 * 3.0 + 0.25 * 30.0) / (0.75 + 0.25) = (2.25 + 7.5) / 1.0 = 9.75``.
+    ``w_h = N_h / N`` (plan §9.2 ``DEMAND_UNEQUAL_STRATA``). The page-view index
+    is the weekly view count (chunk-28 D1-S2), so the usable indices are the raw
+    view counts. Stratum 0 has ``N_0 = 75``, ``n_0 = 25`` and usable indices
+    ``[10, 20, 30, 40, 50]``, so ``mean_0 = 150 / 5 = 30.0`` and
+    ``w_0 = 75 / 100 = 0.75``. Stratum 1 has ``N_1 = 25``, ``n_1 = 25`` and
+    usable indices ``[100, 200, 300, 400, 500]``, so ``mean_1 = 1500 / 5 = 300.0``
+    and ``w_1 = 25 / 100 = 0.25``. The result is
+    ``(0.75 * 30.0 + 0.25 * 300.0) / (0.75 + 0.25) = (22.5 + 75.0) / 1.0 = 97.5``.
     The 20 missing-view observations per stratum contribute no weight and no zero
     (SRS §7.2).
     """
     result = m.demand_per_asset_raw(mfx.DEMAND_UNEQUAL_STRATA)
-    assert result.value == pytest.approx(9.75, abs=1e-9)
+    assert result.value == pytest.approx(97.5, abs=1e-9)
     assert result.unavailable_reason is None
 
 
@@ -199,14 +201,15 @@ def test_demand_median_uses_stratum_expansion_weights() -> None:
 
     SRS §7.2 / LREQ-MET-050: each usable observation in stratum ``h`` receives
     weight ``N_h / n_h`` and the first sorted value whose cumulative weight is at
-    least half the total weight is the median. In ``mfx.DEMAND_UNEQUAL_STRATA``
-    (plan §9.2) stratum 0 gives weight ``75 / 25 = 3.0`` to each of ``1, 2, 3, 4,
-    5`` and stratum 1 gives ``25 / 25 = 1.0`` to each of ``10, 20, 30, 40, 50``.
+    least half the total weight is the median. The index is the weekly view count
+    (chunk-28 D1-S2). In ``mfx.DEMAND_UNEQUAL_STRATA`` (plan §9.2) stratum 0
+    gives weight ``75 / 25 = 3.0`` to each of ``10, 20, 30, 40, 50`` and stratum
+    1 gives ``25 / 25 = 1.0`` to each of ``100, 200, 300, 400, 500``.
     Total weight ``T = 15 + 5 = 20``, half ``10``; cumulative weights are ``3, 6,
-    9, 12``, so the first value at or above half is ``4.0`` (no exact-half tie).
+    9, 12``, so the first value at or above half is ``40.0`` (no exact-half tie).
     """
     result = m.demand_median_raw(mfx.DEMAND_UNEQUAL_STRATA)
-    assert result.value == pytest.approx(4.0, abs=1e-9)
+    assert result.value == pytest.approx(40.0, abs=1e-9)
     assert result.unavailable_reason is None
 
 
@@ -218,13 +221,13 @@ def test_demand_median_exact_half_boundary() -> None:
     value boundary, use the arithmetic mean of that value and the next sorted
     value. In ``mfx.DEMAND_MEDIAN_EXACT_HALF`` (plan §9.3) both strata are
     census-like: ``N_0 = N_1 = 25``, ``n_0 = n_1 = 5``, so every usable index
-    weighs ``25 / 25 = 1.0``; stratum 0 holds ``[1, 2, 3, 4, 5]`` and stratum 1
-    holds ``[6, 7, 8, 9, 10]``. ``T = 10``, half ``5``, cumulative weights
-    ``1, 2, 3, 4, 5`` reach exactly ``5`` at value ``5.0``, and the next sorted
-    value is ``6.0`` -> ``(5.0 + 6.0) / 2 = 5.5``.
+    weighs ``25 / 5 = 5.0``; stratum 0 holds ``[10, 20, 30, 40, 50]`` and stratum
+    1 holds ``[60, 70, 80, 90, 100]``. ``T = 50``, half ``25``, cumulative
+    weights ``5, 10, 15, 20, 25`` reach exactly ``25`` at value ``50.0``, and the
+    next sorted value is ``60.0`` -> ``(50.0 + 60.0) / 2 = 55.0``.
     """
     result = m.demand_median_raw(mfx.DEMAND_MEDIAN_EXACT_HALF)
-    assert result.value == pytest.approx(5.5, abs=1e-9)
+    assert result.value == pytest.approx(55.0, abs=1e-9)
     assert result.unavailable_reason is None
 
 
@@ -897,12 +900,12 @@ def test_compute_raw_metric_bundle_maps_all_six_values() -> None:
     ``breadth_raw``, ``recent_share_raw``, ``median_age_raw``, and
     ``quality_raw``. On ``mfx.DEMAND_UNEQUAL_STRATA`` (plan §9.2 arithmetic):
 
-    * ``demand_per_asset_raw``: usable strata means ``3.0`` and ``30.0`` with
+    * ``demand_per_asset_raw``: usable strata means ``30.0`` and ``300.0`` with
       population weights ``0.75`` and ``0.25`` ->
-      ``(0.75 * 3.0 + 0.25 * 30.0) / 1.0 = 9.75`` (SRS §7.2).
+      ``(0.75 * 30.0 + 0.25 * 300.0) / 1.0 = 97.5`` (SRS §7.2).
     * ``demand_median_raw``: expansion weights ``75/25 = 3.0`` and
       ``25/25 = 1.0``; ``T = 20``, half ``10``, cumulative ``3, 6, 9, 12`` ->
-      ``4.0`` (SRS §7.2).
+      ``40.0`` (SRS §7.2).
     * ``breadth_raw`` is ``None``: breadth is not derivable from
       ``CategoryMetricInput``; ``compute_category_raw_metrics`` fills it.
     * ``recent_share_raw``: every observation sits at ``DATE_70D`` (age
@@ -912,14 +915,15 @@ def test_compute_raw_metric_bundle_maps_all_six_values() -> None:
       ``3.0`` and ``1.0``; the weighted median of a constant vector is that
       constant -> ``70.0`` (SRS §7.4).
     * ``quality_raw``: the five index-usable observations per stratum have
-      ``rating_average = 5.0``, so ``rating_average / 5 = 1.0`` and numerator
-      equals denominator: ``(3.0 * 15 + 1.0 * 150) / (3.0 * 15 + 1.0 * 150)
-      = 195 / 195 = 1.0`` (SRS §7.5). The ``None``-view rows are not
+      ``rating_average = 5.0`` and weekly-view index ``100.0``, so
+      ``rating_average / 5 = 1.0`` and numerator equals denominator:
+      ``(3.0 * 500 + 1.0 * 5000) / (3.0 * 500 + 1.0 * 5000)
+      = 6500 / 6500 = 1.0`` (SRS §7.5). The ``None``-view rows are not
       quality-eligible (missing is not zero, SRS §1.2).
     """
     bundle = m.compute_raw_metric_bundle(mfx.DEMAND_UNEQUAL_STRATA)
-    assert bundle.demand_per_asset_raw == pytest.approx(9.75, abs=1e-9)
-    assert bundle.demand_median_raw == pytest.approx(4.0, abs=1e-9)
+    assert bundle.demand_per_asset_raw == pytest.approx(97.5, abs=1e-9)
+    assert bundle.demand_median_raw == pytest.approx(40.0, abs=1e-9)
     assert bundle.breadth_raw is None
     assert bundle.recent_share_raw == pytest.approx(1.0, abs=1e-9)
     assert bundle.median_age_raw == pytest.approx(70.0, abs=1e-9)
@@ -1012,17 +1016,18 @@ def test_estimators_consume_chunk_7a_index_eligibility() -> None:
     SRS §7.2 / LREQ-MET-040: the page-view index is usable only for a finite
     non-negative page-view value, a valid UTC date no later than cutoff,
     ``age_days_exact >= MIN_AGE_DAYS_FOR_RATE``, and a matched, published
-    identity. ``mfx.DEMAND_INELIGIBLE_EXCLUDED`` holds one stratum with
-    ``N_h = 75, n_h = 10``: five usable indices ``[1, 2, 3, 4, 5]`` and five
+    identity. The index is the weekly view count (chunk-28 D1-S2).
+    ``mfx.DEMAND_INELIGIBLE_EXCLUDED`` holds one stratum with
+    ``N_h = 75, n_h = 10``: five usable indices ``[10, 20, 30, 40, 50]`` and five
     Chunk-7A-ineligible observations (negative views, missing views, draft
     state, age ``29 < 30``, identity mismatch). ``u_demand_h = 5``, so
-    ``DemandPerAssetRaw = (1.0 * 3.0) / 1.0 = 3.0``. Treating the ineligible
-    observations as zero-views would give ``15 / 10 = 1.5``, which this test
+    ``DemandPerAssetRaw = (1.0 * 30.0) / 1.0 = 30.0``. Treating the ineligible
+    observations as zero-views would give ``150 / 10 = 15.0``, which this test
     rejects (missing is not zero, SRS §1.2).
     """
     result = m.demand_per_asset_raw(mfx.DEMAND_INELIGIBLE_EXCLUDED)
-    assert result.value == pytest.approx(3.0, abs=1e-9)
-    assert abs(result.value - 1.5) > 1e-9
+    assert result.value == pytest.approx(30.0, abs=1e-9)
+    assert abs(result.value - 15.0) > 1e-9
 
 
 @pytest.mark.lreq("LREQ-MET-030")
@@ -1077,7 +1082,7 @@ def test_estimators_raise_valueerror_only_for_caller_contract() -> None:
             )
 
     assert m.demand_per_asset_raw(mfx.DEMAND_UNEQUAL_STRATA).value == pytest.approx(
-        9.75, abs=1e-9
+        97.5, abs=1e-9
     )
 
 

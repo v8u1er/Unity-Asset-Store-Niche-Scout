@@ -188,9 +188,10 @@ def make_observation(**overrides: object) -> MetricObservation:
     """Build one ``MetricObservation`` (plan §5.2).
 
     Defaults describe a fully usable asset: published, matched identity, both
-    operations successful, ``product_page_views = 100`` at ``DATE_70D`` (so
-    ``age_normalized_page_view_index == 100 * 7 / 70 == 10.0``), a rating
-    average of 5.0, and a rating count at ``QUALITY_MIN_RATING_COUNT``.
+    operations successful, ``product_page_views = 100`` at ``DATE_70D`` (so the
+    page-view index is the weekly view count ``100.0``; SRS §7.2 / chunk-28),
+    a rating average of 5.0, and a rating count at
+    ``QUALITY_MIN_RATING_COUNT``.
     """
     kwargs: dict[str, object] = {
         "product_page_views": 100,
@@ -313,21 +314,21 @@ WEIGHTED_MEDIAN_TIE_VECTOR: tuple[tuple[float, float], ...] = (
 
 #: The 10-element vector of plan §9.2, which is exactly the DEMAND_UNEQUAL_STRATA
 #: usable-index population with ``N_h / n_h`` weights: stratum 0 values
-#: ``1, 2, 3, 4, 5`` each weighted ``75 / 25 == 3.0`` and stratum 1 values
-#: ``10, 20, 30, 40, 50`` each weighted ``25 / 25 == 1.0``.
+#: ``10, 20, 30, 40, 50`` each weighted ``75 / 25 == 3.0`` and stratum 1 values
+#: ``100, 200, 300, 400, 500`` each weighted ``25 / 25 == 1.0``.
 #: ``T = 20``, cumulative ``3, 6, 9, 12``; the first value whose cumulative
-#: weight is ``>= 10`` is ``4.0`` (no exact-half tie) -> ``4.0``.
+#: weight is ``>= 10`` is ``40.0`` (no exact-half tie) -> ``40.0``.
 WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR: tuple[tuple[float, float], ...] = (
-    (1.0, 3.0),
-    (2.0, 3.0),
-    (3.0, 3.0),
-    (4.0, 3.0),
-    (5.0, 3.0),
-    (10.0, 1.0),
-    (20.0, 1.0),
-    (30.0, 1.0),
-    (40.0, 1.0),
-    (50.0, 1.0),
+    (10.0, 3.0),
+    (20.0, 3.0),
+    (30.0, 3.0),
+    (40.0, 3.0),
+    (50.0, 3.0),
+    (100.0, 1.0),
+    (200.0, 1.0),
+    (300.0, 1.0),
+    (400.0, 1.0),
+    (500.0, 1.0),
 )
 
 #: ``(values_and_weights, expected)``, hand-derived from the SRS boundary rule
@@ -343,8 +344,8 @@ WEIGHTED_MEDIAN_VECTORS: tuple[tuple[tuple[tuple[float, float], ...], float], ..
     (((1.0, 2.0), (2.0, 2.0)), 1.5),
     # T = 4, half = 2; cumulative 1, 2 == half at the second 1.0, next 2.0 -> 1.5.
     (((1.0, 1.0), (1.0, 1.0), (2.0, 2.0)), 1.5),
-    # Plan §9.2's 10-element vector: T = 20, half = 10 -> 4.0.
-    (WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR, 4.0),
+    # Plan §9.2's 10-element vector: T = 20, half = 10 -> 40.0.
+    (WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR, 40.0),
 )
 
 #: Caller-contract breaches: a non-finite value or weight, or a negative weight,
@@ -364,19 +365,20 @@ WEIGHTED_MEDIAN_INVALID_VECTORS: tuple[
 #
 # Two strata, N_0 = 75, n_0 = 25, N_1 = 25, n_1 = 25, N = 100.
 #
-# Index arithmetic: every observation sits at DATE_70D (age_days_exact = 70.0),
-# so index = views * 7 / 70 = views / 10.
-#   Stratum 0 usable indices: views 10, 20, 30, 40, 50 -> [1.0, 2.0, 3.0, 4.0, 5.0]
-#     mean_0 = (1+2+3+4+5)/5 = 15/5 = 3.0; u_demand_0 = 5; w_0 = N_0/N = 0.75.
-#   Stratum 1 usable indices: views 100..500 -> [10, 20, 30, 40, 50]
-#     mean_1 = 150/5 = 30.0; u_demand_1 = 5; w_1 = N_1/N = 0.25.
+# Index arithmetic (D1-S2; the index IS the daily page-view count): every
+# observation sits at DATE_70D (age_days_exact = 70.0), and the index no longer
+# depends on age, so index = product_page_views.
+#   Stratum 0 usable indices: views 10, 20, 30, 40, 50 -> [10.0, 20.0, 30.0, 40.0, 50.0]
+#     mean_0 = (10+20+30+40+50)/5 = 150/5 = 30.0; u_demand_0 = 5; w_0 = N_0/N = 0.75.
+#   Stratum 1 usable indices: views 100..500 -> [100, 200, 300, 400, 500]
+#     mean_1 = 1500/5 = 300.0; u_demand_1 = 5; w_1 = N_1/N = 0.25.
 #   20 unusable observations per stratum (product_page_views = None) contribute
 #   no weight and no zero.
 #
-# DemandPerAssetRaw = (0.75 * 3.0 + 0.25 * 30.0) / (0.75 + 0.25)
-#                   = (2.25 + 7.5) / 1.0
-#                   = 9.75.
-# DemandMedianRaw = weighted median of WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR = 4.0.
+# DemandPerAssetRaw = (0.75 * 30.0 + 0.25 * 300.0) / (0.75 + 0.25)
+#                   = (22.5 + 75.0) / 1.0
+#                   = 97.5.
+# DemandMedianRaw = weighted median of WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR = 40.0.
 # demand_stratum_eligibility_coverage = 0.75 + 0.25 = 1.0.
 # usable_demand_sample_count = 5 + 5 = 10.
 DEMAND_UNEQUAL_STRATA: CategoryMetricInput = make_category_input(
@@ -466,16 +468,16 @@ RECENT_UNEQUAL_STRATA: CategoryMetricInput = make_category_input(
 #
 # N_0 = N_1 = 50, n_0 = n_1 = 25, N = 100, quality_weight_h = N_h/n_h = 2.0.
 # Every quality-eligible observation sits at DATE_70D with views 100, so its index
-# is exactly 10.0.
+# (the weekly view count; chunk-28) is exactly 100.0.
 #
 #   Stratum 0: 5 quality-eligible, each rating_average = 2.5 ->
-#     num_0 = 2.0 * sum((2.5/5) * 10.0) = 2.0 * (5 * 5.0) = 50.0;
-#     den_0 = 2.0 * sum(10.0) = 2.0 * 50.0 = 100.0.
+#     num_0 = 2.0 * sum((2.5/5) * 100.0) = 2.0 * (5 * 50.0) = 500.0;
+#     den_0 = 2.0 * sum(100.0) = 2.0 * 500.0 = 1000.0.
 #   Stratum 1: 5 quality-eligible, each rating_average = 5.0 ->
-#     num_1 = 2.0 * (5 * (1.0 * 10.0)) = 100.0; den_1 = 100.0.
+#     num_1 = 2.0 * (5 * (1.0 * 100.0)) = 1000.0; den_1 = 1000.0.
 #   20 quality-ineligible observations per stratum (rating_average = None).
 #
-# QualityRaw = (50.0 + 100.0) / (100.0 + 100.0) = 150.0 / 200.0 = 0.75.
+# QualityRaw = (500.0 + 1000.0) / (1000.0 + 1000.0) = 1500.0 / 2000.0 = 0.75.
 # quality_stratum_eligibility_coverage = 50/100 + 50/100 = 1.0.
 # usable_quality_sample_count = 5 + 5 = 10.
 QUALITY_UNEQUAL_STRATUM_INPUTS: tuple[StratumMetricInput, ...] = (
@@ -529,7 +531,7 @@ ZERO_POPULATION: CategoryMetricInput = make_category_input(
 #
 # One usable stratum, N_h = 25, n_h = 5, and 5 quality-eligible observations with
 # product_page_views = 0 (an explicit valid zero, SRS-lean.md §7.2) at
-# DATE_70D: index_i = 0 * 7 / 70 = 0.0 for each.
+# DATE_70D: index_i = 0.0 for each (the index is the weekly view count; chunk-28).
 #
 #   num_h = (25/5) * sum((5.0/5) * 0.0) = 0.0
 #   den_h = (25/5) * sum(0.0) = 0.0
@@ -648,13 +650,13 @@ SEMANTICS_CONTRADICTED: CategoryMetricInput = make_category_input(
 # Two strata, N_0 = 75, N_1 = 25, n_0 = n_1 = 4; each has only 4 usable indices.
 # The consuming floor-branch test pins ``min_usable_samples_per_stratum = 5``
 # explicitly, so ``u_demand_h = 4 < 5`` and NO stratum is usable.
-#   Stratum 0 indices [1, 2, 3, 4] (views 10..40 / 10)
-#   Stratum 1 indices [10, 20, 30, 40] (views 100..400 / 10)
+#   Stratum 0 indices [10, 20, 30, 40] (weekly view counts, chunk-28)
+#   Stratum 1 indices [100, 200, 300, 400]
 # DemandPerAssetRaw is None (METRIC_REASON_NO_USABLE_STRATUM);
 # demand_stratum_eligibility_coverage = 0.0.
 # Per Q-2, every usable observation still enters DemandMedianRaw regardless of
 # the stratum minimum: weights 75/4 = 18.75 (four values) and 25/4 = 6.25 (four
-# values), T = 100, half = 50, cumulative 18.75, 37.5, 56.25 -> 3.0.
+# values), T = 100, half = 50, cumulative 18.75, 37.5, 56.25 -> 30.0.
 DEMAND_NO_USABLE_STRATUM: CategoryMetricInput = make_category_input(
     (
         make_stratum(
@@ -705,9 +707,9 @@ DEMAND_NO_USABLE_INDEX: CategoryMetricInput = make_category_input(
 #
 # Two strata, N_0 = N_1 = 25, n_0 = n_1 = 5 -> stratum expansion weight
 # N_h / n_h = 25 / 5 = 5.0 each.
-#   Stratum 0 indices [1, 2, 3, 4, 5]; stratum 1 indices [6, 7, 8, 9, 10].
+#   Stratum 0 indices [10, 20, 30, 40, 50]; stratum 1 indices [60, 70, 80, 90, 100].
 # T = 10 * 5.0 = 50, half = 25; cumulative 5, 10, 15, 20, 25 -> exactly half at
-# value 5.0, next sorted value 6.0 -> DemandMedianRaw = (5.0 + 6.0) / 2 = 5.5.
+# value 50.0, next sorted value 60.0 -> DemandMedianRaw = (50.0 + 60.0) / 2 = 55.0.
 DEMAND_MEDIAN_EXACT_HALF: CategoryMetricInput = make_category_input(
     (
         make_stratum(
@@ -740,17 +742,17 @@ DEMAND_MEDIAN_EXACT_HALF: CategoryMetricInput = make_category_input(
 # DEMAND_PARTIAL_COVERAGE — plan §9.3 (LREQ-MET-060)
 # ---------------------------------------------------------------------------
 #
-# Stratum 0: N_0 = 75, n_0 = 25, 5 usable indices [1, 2, 3, 4, 5] (mean 3.0) and
-#   20 unusable -> usable, w_0 = 0.75.
-# Stratum 1: N_1 = 25, n_1 = 25, 4 usable indices [10, 20, 30, 40] and 21
+# Stratum 0: N_0 = 75, n_0 = 25, 5 usable indices [10, 20, 30, 40, 50] (mean 30.0)
+#   and 20 unusable -> usable, w_0 = 0.75.
+# Stratum 1: N_1 = 25, n_1 = 25, 4 usable indices [100, 200, 300, 400] and 21
 #   unusable -> u_demand_1 = 4, which meets the default minimum 1, so the
 #   stratum is usable at the default and w_1 = 0.25 contributes.
 # demand_stratum_eligibility_coverage = 0.75 + 0.25 = 1.0 at the default.
-# DemandPerAssetRaw at the default = (0.75 * 3.0 + 0.25 * 25.0) / 1.0 = 8.5,
+# DemandPerAssetRaw at the default = (0.75 * 30.0 + 0.25 * 250.0) / 1.0 = 85.0,
 #   the population-weighted mean of the two usable stratum means.
 # DemandMedianRaw = weighted median of the 9 usable observations: weights 3.0
 #   (stratum 0) and 1.0 (stratum 1); T = 19, half = 9.5; cumulative 3, 6, 9, 12
-#   -> first value with cumulative >= 9.5 is 4.0.
+#   -> first value with cumulative >= 9.5 is 40.0.
 DEMAND_PARTIAL_COVERAGE: CategoryMetricInput = make_category_input(
     (
         make_stratum(
@@ -822,7 +824,8 @@ DEMAND_EXPLICIT_ZERO: CategoryMetricInput = make_category_input(
 # ---------------------------------------------------------------------------
 #
 # One stratum, N_h = 75, n_h = 10:
-#   5 usable observations give indices [1, 2, 3, 4, 5] (views 10..50 at age 70);
+#   5 usable observations give indices [10, 20, 30, 40, 50] (the weekly view
+#     counts, chunk-28);
 #   5 observations are ineligible per Chunk 7A and must not become zeros:
 #     - negative page views (-10)
 #     - missing page views (None)
@@ -830,8 +833,8 @@ DEMAND_EXPLICIT_ZERO: CategoryMetricInput = make_category_input(
 #     - age below MIN_AGE_DAYS_FOR_RATE (DATE_29D, age 29.0 < 30)
 #     - id_mapping_mismatch = True
 # u_demand_h = 5 -> usable, w_0 = 75/75 = 1.0 (single stratum, N = 75).
-# DemandPerAssetRaw = 1.0 * 3.0 / 1.0 = 3.0. Treating the five ineligible
-# observations as zero would instead give 15/10 = 1.5, which is the bug this
+# DemandPerAssetRaw = 1.0 * 30.0 / 1.0 = 30.0. Treating the five ineligible
+# observations as zero would instead give 150/10 = 15.0, which is the bug this
 # fixture guards against.
 DEMAND_INELIGIBLE_EXCLUDED: CategoryMetricInput = make_category_input(
     (

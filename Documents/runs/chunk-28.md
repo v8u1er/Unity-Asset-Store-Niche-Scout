@@ -54,6 +54,43 @@ pre-change audit snapshot. Page-view semantics status = `unvalidated`; no writer
 
 The 25 failures are the accepted missing-implementation set (formula, enum token, both version bumps, report caveats, seed + non-clobber). The broad D/Q/rankability captured-run re-baseline is deferred to implementation (chunk-24/25 precedent); the test-author enumerated the affected nodes/fixtures in its report and left their numeric expectations untouched except hand-derivable vectors.
 
+| Implement — `impl-deep` | DONE | Dispatch `ses_f0f3beda5ffehSxcDqmmtsy1nZ` saw a shell denial and stopped correctly. Re-dispatched `ses_f0f39b21dffePKX5gcACzsZCph` (intermittent tool denial). Source changes landed (`models.py`, `metrics.py`, `pipeline.py`, `database.py`, `report.py`) plus numeric re-baseline in `tests/fixtures/metric_estimator_fixtures.py` and `tests/test_metrics.py`. One full-suite failure was a **pre-existing test-isolation defect**: `tests/test_contracts.py::test_repository_protocol_and_schema_specification` deletes/reimports `niche_scout.database`, rebinding the parent-package attribute; the lead fixed it by restoring both `sys.modules` and the `niche_scout.database` package attribute. Lead-reproduced below. |
+
+### Implementation stage — lead-reproduced (step 6, real output)
+
+Changed source: `models.py` (enum + `PAGE_VIEW_SEMANTICS_CONTRACT` + `ENDPOINT_CONTRACT_VERSION`→"1.1.0"),
+`metrics.py` (step 13 `float(product_page_views)` + docstring), `pipeline.py` (import, non-clobber
+tuple, seed), `database.py` (`SCHEMA_VERSION`→"1.3.0"), `report.py` (two caveats). Changed tests:
+`tests/fixtures/metric_estimator_fixtures.py`, `tests/test_metrics.py`, `tests/test_contracts.py`
+(isolation fix + the 1.3.0 docstring/node from the tests stage).
+
+| Command | Real result |
+|---|---|
+| `python -m pytest -q -p no:cacheprovider` | **711 passed in 28.83s** (was 25 failed / 686 passed at the tests stage) |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — 89 LREQ IDs, **690 matrix nodes**, 0 unmarked analytical outside exemption (3 exempted) |
+| `python -m niche_scout.tools.check_import_boundaries` | exit 0 — "Import boundaries valid for metrics.py, scoring.py" |
+| `python -m niche_scout.tools.check_scope_prohibitions` | exit 0 — 6 tokens checked, none retired |
+| `python -m niche_scout.tools.check_secrets` | exit 0 — no literal credential under src/tests/config/pyproject.toml |
+| `python -m ruff check` (models, metrics, pipeline, report, metric_estimator_fixtures, test_metrics) | `All checks passed!` |
+| `python -m ruff check database.py` / `test_contracts.py` | **6 / 11 E501** — byte-identical to HEAD (re-run via `git show HEAD:<file> | ruff check --stdin-filename`), so **no new lint** |
+| `python -m ruff format --check` (models/metrics/report) | 3 files already formatted; `pipeline.py` would reformat — the deviation is **pre-existing** (HEAD pipeline.py piped to `ruff format --check --stdin-filename` exits 1 at `:3413`; chunk-28's pipeline hunks are `+86`, `+1004`, `+3341`, none at the deviation site) |
+| `python -m pytest -q` after the isolation fix | 711 passed (same count) |
+
+**Captured measurement (offline run):** the index is now the weekly count. Move measured:
+`DEMAND_UNEQUAL_STRATA` → `demand_per_asset_raw 97.5`, `demand_median_raw 40.0`;
+`DEMAND_MEDIAN_EXACT_HALF` → `55.0`; `DEMAND_INELIGIBLE_EXCLUDED` → `30.0`;
+`WEIGHTED_MEDIAN_DEMAND_STRATA_VECTOR` → `40.0`; `quality_raw` unchanged at `1.0`
+(index-scale-invariant ratio). The `acceptance_fixtures.py` / `scoring_evidence_fixtures.py` /
+`test_end_to_end.py` D/Q/rankability goldens were **not** re-baselined and the suite is green,
+so they do not move (verified by the full-suite pass, not assumed).
+
+**Pre-change live-DB snapshot (lead, read-only `file:runtime/niche_scout.sqlite3?mode=ro`):**
+`schema_metadata = [('schema_version','1.2.0'), ('applied_at_utc','2026-09-29T05:33:21.661518+00:00')]`;
+latest `runs` row `('run-2026-09-29T05:33:21.664034+00:00', 'unvalidated', '1.0.0')`. So the operator's
+existing audit DB is 1.2.0 and will raise `SchemaVersionError` on default open under 1.3.0 — handled by
+re-running into a fresh DB or `initialize_schema(check_version=False)` (plan §8.2, tested by
+`test_open_older_schema_raises_unless_check_version_false`).
+
 ### Plan stage notes (lead-read)
 
 - The plan is freezeable; the two §12 open questions are recorded, not resolved: (1) LREQ

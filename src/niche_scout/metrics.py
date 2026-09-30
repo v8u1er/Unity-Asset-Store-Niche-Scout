@@ -412,16 +412,22 @@ def age_normalized_page_view_index(
     id_mapping_mismatch: bool,
     min_age_days_for_rate: int = MIN_AGE_DAYS_FOR_RATE,
 ) -> MetricValue:
-    """The age-normalized page-view index for one observation (LREQ-MET-040).
+    """The page-view index for one observation (LREQ-MET-040).
 
-    Computed as ``product_page_views * 7.0 / age_days_exact``. The value is
-    usable only when the page-view value, a valid UTC date no later than cutoff,
-    ``age_days_exact >= min_age_days_for_rate``, a matched identity, and
-    ``state == "published"`` all pass; otherwise ``value is None`` with a
+    The value is the trailing-7-day (weekly) page-view count,
+    ``= product_page_views`` (OQ-11). The symbol name
+    ``age_normalized_page_view_index`` is a **historical label** for that weekly
+    count: the index is no longer age-normalized and is not a function of
+    ``age_days_exact`` above the eligibility floor (two observations with the
+    same views and ages ``30`` and ``300`` produce the same index).
+
+    The value is usable only when the page-view value, a valid UTC date no later
+    than cutoff, ``age_days_exact >= min_age_days_for_rate``, a matched identity,
+    and ``state == "published"`` all pass; otherwise ``value is None`` with a
     distinct reason. An explicit ``product_page_views == 0`` is usable and
     yields ``0.0`` (never unavailable). ``min_age_days_for_rate`` is a
     caller/policy parameter, not a product-level value, and must be ``>= 1``,
-    else ``ValueError``, so the division can never be by zero.
+    else ``ValueError``; it is an eligibility floor only.
 
     Deterministic reason precedence (LREQ-MET-010; LREQ-MET-040). Steps 1–5
     classify the product-level page-view value defensively; steps 6–13 follow
@@ -445,7 +451,7 @@ def age_normalized_page_view_index(
     12. state not ``"published"`` → ``METRIC_REASON_STATE_EXCLUDED`` or
         ``METRIC_REASON_STATE_UNKNOWN``, via Chunk 1's
         ``annotate_state_eligibility`` (LREQ-GQL-060/GQL-070).
-    13. otherwise ``value = product_page_views * 7.0 / age_days_exact``.
+    13. otherwise ``value = float(product_page_views)`` — the weekly view count.
 
     Chunk 5's per-operation acceptance decision (``PageViewValue`` /
     ``GraphQLFailureClass``) is **not** re-derived; steps 1–5 are Chunk 7A's
@@ -486,8 +492,7 @@ def age_normalized_page_view_index(
     if state_reason is not None:
         return MetricValue(value=None, unavailable_reason=state_reason)
 
-    index = product_page_views * 7.0 / age
-    return MetricValue(value=index, unavailable_reason=None)
+    return MetricValue(value=float(product_page_views), unavailable_reason=None)
 
 
 def metric_state_eligibility(state: str | None) -> MetricEligibility:

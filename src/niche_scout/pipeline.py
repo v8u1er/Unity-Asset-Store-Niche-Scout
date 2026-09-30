@@ -83,6 +83,7 @@ from niche_scout.models import (
     MIN_AGE_DAYS_FOR_RATE,
     MIN_CATEGORIES_PER_RUN,
     MIN_USABLE_SAMPLES_PER_STRATUM,
+    PAGE_VIEW_SEMANTICS_CONTRACT,
     QUALITY_MIN_RATING_COUNT,
     RECENT_WINDOW_DAYS,
     SAMPLING_RULE_VERSION,
@@ -1000,6 +1001,7 @@ def persist_preflight(
     if current not in (
         PageViewSemanticsStatus.VALIDATED_CUMULATIVE.value,
         PageViewSemanticsStatus.CONTRADICTED.value,
+        PageViewSemanticsStatus.VALIDATED_WINDOWED_WEEKLY.value,
     ):
         repository.update_run_preflight(
             run_id,
@@ -3336,7 +3338,7 @@ def run_pipeline(
             endpoint_contract_version=ENDPOINT_CONTRACT_VERSION,
             identity_mapping_rule_version=IDENTITY_MAPPING_RULE_VERSION,
             sampling_rule_version=SAMPLING_RULE_VERSION,
-            page_view_semantics_status=PageViewSemanticsStatus.UNVALIDATED.value,
+            page_view_semantics_status=PAGE_VIEW_SEMANTICS_CONTRACT.value,
             graphql_operation_correlation_mode=correlation_mode.value,
             identity_preflight_status=IdentityPreflightStatus.INSUFFICIENT.value,
             identity_preflight_summary_json=_seed_preflight_summary(

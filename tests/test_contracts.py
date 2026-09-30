@@ -977,6 +977,13 @@ def test_repository_protocol_and_schema_specification(
     # module must neither open a connection nor touch the filesystem.
     module_name = "niche_scout.database"
     monkeypatch.chdir(tmp_path)
+    # Keep the original module object (and its parent-package attribute) so the
+    # import-innocence check below does not leave ``niche_scout.database``
+    # rebound to a fresh copy; the rest of the shared suite holds references to
+    # the original module's classes/constants by value.
+    package = sys.modules.get("niche_scout")
+    original_module = sys.modules.get(module_name)
+    original_package_attr = getattr(package, "database", None)
     monkeypatch.delitem(sys.modules, module_name, raising=False)
     assert module_name not in sys.modules, "the module under test must be importable"
 
@@ -1002,6 +1009,10 @@ def test_repository_protocol_and_schema_specification(
     assert not list(tmp_path.iterdir()), (
         "importing niche_scout.database must not create any file"
     )
+    if original_module is not None:
+        sys.modules[module_name] = original_module
+    if package is not None:
+        setattr(package, "database", original_package_attr)
 
 
 @pytest.mark.lreq("LREQ-RPT-020")

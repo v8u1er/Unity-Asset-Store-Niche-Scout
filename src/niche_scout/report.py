@@ -52,7 +52,9 @@ HEURISTIC_STATEMENT: str = (
     "and it is not a statistically representative estimate of the marketplace. "
     "The report distinguishes the following, and does not treat the left-hand "
     "value as the right-hand value: pagination completion is not immutable "
-    "snapshot completeness; the page-view index is not a weekly traffic rate; "
+    "snapshot completeness; the page-view index is a trailing-7-day view count, "
+    "stable within a run and refreshed at most daily, not a lifetime or "
+    "daily-average rate; "
     "descriptive midranks are not inferential percentiles; stratum eligibility "
     "coverage is not sample fraction; deterministic-sample evidence is not "
     "statistical representativeness; and evidence grade is not statistical "
@@ -125,7 +127,8 @@ _FORMULA_EXPLANATIONS: tuple[str, ...] = (
     "sample fraction.",
     "Midrank positions are descriptive within-run relative positions, not "
     "inferential percentiles.",
-    "The page-view index is a cumulative page-view signal, not a weekly traffic rate.",
+    "The page-view index is a trailing-7-day view count, stable within a run "
+    "and refreshed at most daily, not a lifetime or daily-average rate.",
     "Pagination completion is not immutable snapshot completeness.",
     "Evidence grade is an operational within-run grade, not statistical confidence.",
 )

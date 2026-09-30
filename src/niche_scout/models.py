@@ -22,7 +22,7 @@ from typing import Any, ClassVar, TypeVar, get_args, get_origin, get_type_hints
 # Policy versions
 # --------------------------------------------------------------------------
 
-ENDPOINT_CONTRACT_VERSION: str = "1.0.0"
+ENDPOINT_CONTRACT_VERSION: str = "1.1.0"
 IDENTITY_MAPPING_RULE_VERSION: str = "1.0.1"
 SAMPLING_RULE_VERSION: str = "2.0.0"
 
@@ -127,6 +127,14 @@ class PageViewSemanticsStatus(str, Enum):
     UNVALIDATED = "unvalidated"
     VALIDATED_CUMULATIVE = "validated_cumulative"
     CONTRADICTED = "contradicted"
+    VALIDATED_WINDOWED_WEEKLY = "validated_windowed_weekly"
+
+
+#: The run-level page-view semantics this build asserts (chunk-26 §14.1 OQ-1).
+#: Seeded at run creation; there is no runtime detector.
+PAGE_VIEW_SEMANTICS_CONTRACT: PageViewSemanticsStatus = (
+    PageViewSemanticsStatus.VALIDATED_WINDOWED_WEEKLY
+)
 
 
 class GraphQLOperationCorrelationMode(str, Enum):
