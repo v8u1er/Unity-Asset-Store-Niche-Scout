@@ -534,7 +534,7 @@ def graphql_endpoint_signature(
     """Build the persisted endpoint signature (LREQ-ID-040 line 388).
 
     Returns ``f"{endpoint}#{endpoint_contract_version}"`` — frozen literal form,
-    e.g. ``https://assetstore.unity.com/api/graphql/batch#1.0.0``. The ``#``
+    e.g. ``https://assetstore.unity.com/api/graphql/batch#1.1.0``. The ``#``
     separator is an assumption, not SRS text. It is derived only from the Chunk 5
     ``GRAPHQL_BATCH_ENDPOINT`` and the models ``ENDPOINT_CONTRACT_VERSION``; no
     new endpoint string, version string, or field name is invented. Never

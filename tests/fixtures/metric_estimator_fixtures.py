@@ -365,7 +365,7 @@ WEIGHTED_MEDIAN_INVALID_VECTORS: tuple[
 #
 # Two strata, N_0 = 75, n_0 = 25, N_1 = 25, n_1 = 25, N = 100.
 #
-# Index arithmetic (D1-S2; the index IS the daily page-view count): every
+# Index arithmetic (D1-S2; the index IS the weekly page-view count): every
 # observation sits at DATE_70D (age_days_exact = 70.0), and the index no longer
 # depends on age, so index = product_page_views.
 #   Stratum 0 usable indices: views 10, 20, 30, 40, 50 -> [10.0, 20.0, 30.0, 40.0, 50.0]

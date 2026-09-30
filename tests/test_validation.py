@@ -1569,7 +1569,7 @@ def test_page_view_index_age_threshold_boundary() -> None:
 
 @pytest.mark.lreq("LREQ-MET-040")
 @pytest.mark.lreq("LREQ-MET-030")
-def test_page_view_index_never_divides_by_zero_at_threshold() -> None:
+def test_page_view_index_min_age_floor_validates_and_enforces_threshold() -> None:
     """``min_age_days_for_rate < 1`` is a breach, so no zero-age division occurs."""
     with pytest.raises(ValueError):
         m.age_normalized_page_view_index(

@@ -2178,7 +2178,7 @@
     "LREQ-MET-040",
     "LREQ-MET-010"
   ],
-  "tests/test_validation.py::test_page_view_index_never_divides_by_zero_at_threshold": [
+  "tests/test_validation.py::test_page_view_index_min_age_floor_validates_and_enforces_threshold": [
     "LREQ-MET-040",
     "LREQ-MET-030"
   ],

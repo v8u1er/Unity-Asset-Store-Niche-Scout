@@ -1981,8 +1981,6 @@ def test_batch_request_has_exactly_two_operations_with_one_identity() -> None:
     assert (
         request.endpoint_contract_version
         == collector_graphql.ENDPOINT_CONTRACT_VERSION
-        if hasattr(collector_graphql, "ENDPOINT_CONTRACT_VERSION")
-        else "1.0.0"
     )
     body_objects = gql_request_objects(request.body_json)
     assert len(body_objects) == 2

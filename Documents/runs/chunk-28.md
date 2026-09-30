@@ -56,6 +56,24 @@ The 25 failures are the accepted missing-implementation set (formula, enum token
 
 | Implement — `impl-deep` | DONE | Dispatch `ses_f0f3beda5ffehSxcDqmmtsy1nZ` saw a shell denial and stopped correctly. Re-dispatched `ses_f0f39b21dffePKX5gcACzsZCph` (intermittent tool denial). Source changes landed (`models.py`, `metrics.py`, `pipeline.py`, `database.py`, `report.py`) plus numeric re-baseline in `tests/fixtures/metric_estimator_fixtures.py` and `tests/test_metrics.py`. One full-suite failure was a **pre-existing test-isolation defect**: `tests/test_contracts.py::test_repository_protocol_and_schema_specification` deletes/reimports `niche_scout.database`, rebinding the parent-package attribute; the lead fixed it by restoring both `sys.modules` and the `niche_scout.database` package attribute. Lead-reproduced below. |
 
+| Review — `spec-reviewer` | FAIL round 1 (operator checkpoint only) | `ses_f0f14d396ffeDxMa1aeef5Ywgh`. Independent verdict: **FAIL**, 1 Blocker (the operator-only SRS D1-S1…D1-S7 checkpoint, plan §10 bullet 6), **0 Major**, 3 Minor, 2 Nit. The reviewer explicitly states the implementation/tests conform to the plan and the chunk-26 §13/§14.1 ruling, 711 passed, four validators green, no new source lint; FAIL is driven solely by the un-applied SRS edit. Fix round 1 applied the 3 Minors + 1 Nit (see below); the Blocker is the human checkpoint and cannot be cleared by any agent. |
+
+### Review round 1 — findings and disposition
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | **Blocker** | `Documents/SRS-lean-v2.md` still pre-edit at `:133`, `:675-680`, `:741-750`, `:1163-1170`, `:1385`, `:1442` — D1-S1…D1-S7 not applied (plan §10 bullet 6 / §13 / chunk-26 §14.6) | **Open — operator-only.** No agent may edit the SRS. Gate bullet 6 is FAILED until the operator applies the edits with diff/sha256 evidence. |
+| 2 | Minor | `models.py:135-137` — `PAGE_VIEW_SEMANTICS_CONTRACT` placed after the enum, not "near the policy versions" (plan §5.1) | Accepted as a recorded deviation: the constant references `PageViewSemanticsStatus`, so it must follow the enum in module order. Functionally correct. |
+| 3 | Minor | `tests/fixtures/metric_estimator_fixtures.py:368` comment says "the index IS the daily page-view count" | **Fixed** — now "weekly page-view count". |
+| 4 | Minor | `tests/test_validation.py::test_page_view_index_never_divides_by_zero_at_threshold` stale name (no division remains; plan §9.3 encouraged a rename) | **Fixed** — renamed to `test_page_view_index_min_age_floor_validates_and_enforces_threshold`; `tests/traceability.json` key swapped to the same LREQ value, no dangling key. |
+| 5 | Nit | `tests/test_collector.py:1985` dead `else "1.0.0"` fallback | **Fixed** — removed; direct equality assertion retained. |
+| 6 | Nit | `pipeline.py:537` docstring example endpoint signature `#1.0.0` | **Fixed** — updated to `#1.1.0`. |
+
+Review round 1 fix scope: `tests/fixtures/metric_estimator_fixtures.py`, `tests/test_validation.py`,
+`tests/test_collector.py`, `tests/traceability.json`, `src/niche_scout/pipeline.py` (docstring only).
+After the fixes: `pytest` **711 passed**; `validate_traceability` exit 0 (89 IDs, 690 nodes);
+`ruff check` clean on the changed files (the pre-existing `database.py`/`test_contracts.py` E501 are unchanged).
+
 ### Implementation stage — lead-reproduced (step 6, real output)
 
 Changed source: `models.py` (enum + `PAGE_VIEW_SEMANTICS_CONTRACT` + `ENDPOINT_CONTRACT_VERSION`→"1.1.0"),
