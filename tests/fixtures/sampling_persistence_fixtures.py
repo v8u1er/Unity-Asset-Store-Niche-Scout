@@ -228,7 +228,7 @@ def run_record(run_id: str) -> RunRecord:
         taxonomy_version="2025.1",
         taxonomy_captured_at_utc=TAXONOMY_CAPTURED_AT_UTC,
         taxonomy_sha256="1" * 64,
-        endpoint_contract_version="1.0.0",
+        endpoint_contract_version="1.1.0",
         identity_mapping_rule_version="1.0.1",
         sampling_rule_version=SAMPLING_RULE_VERSION,
         page_view_semantics_status="unvalidated",

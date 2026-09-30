@@ -463,6 +463,63 @@ def test_schema_initialization_is_versioned_and_idempotent(
         )
 
 
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_schema_version_is_1_3_0() -> None:
+    """Chunk-28 §5.4: the metadata-only bump for the status-token extension."""
+    assert SCHEMA_VERSION == "1.3.0"
+
+
+@pytest.mark.lreq("LREQ-ARCH-030")
+@pytest.mark.lreq("LREQ-MET-040")
+def test_enum_allow_list_accepts_validated_windowed_weekly() -> None:
+    """The runs allow-list admits the new token and still rejects unknown ones."""
+    from niche_scout import database as database_module
+
+    database_module._validate_enum(
+        "runs", "page_view_semantics_status", "validated_windowed_weekly"
+    )
+    with pytest.raises(InvalidRecordValueError):
+        database_module._validate_enum(
+            "runs", "page_view_semantics_status", "unknown_status_value"
+        )
+
+
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_open_older_schema_raises_unless_check_version_false(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    """A stored 1.2.0 schema version is refused; check_version=False re-stamps it."""
+    from niche_scout.database import SchemaVersionError
+
+    database = tmp_path / "older_schema.sqlite3"
+    with SqliteRepository(database) as repository:
+        repository.insert_run(run_record)
+        repository.connection.execute(
+            "UPDATE schema_metadata SET value = ? WHERE key = 'schema_version'",
+            ("1.2.0",),
+        )
+        repository.connection.commit()
+
+    with pytest.raises(SchemaVersionError):
+        SqliteRepository(database)
+
+    reopened = SqliteRepository(database, initialize=False)
+    try:
+        assert reopened.initialize_schema(check_version=False) == SCHEMA_VERSION
+        assert reopened.schema_version == SCHEMA_VERSION
+        metadata = dict(
+            reopened.connection.execute(
+                "SELECT key, value FROM schema_metadata"
+            ).fetchall()
+        )
+        assert metadata["schema_version"] == SCHEMA_VERSION
+        assert reopened.get_run(run_record.run_id) == run_record, (
+            "re-stamping the version must not rewrite committed rows"
+        )
+    finally:
+        reopened.close()
+
+
 # ---------------------------------------------------------------------------
 # LREQ-TST-080 — frozen column set, no alias columns, no import-time DDL
 # ---------------------------------------------------------------------------

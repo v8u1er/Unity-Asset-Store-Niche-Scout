@@ -27,6 +27,7 @@ from typing import Any, Iterator, Sequence
 
 import fixtures.pipeline_fixtures as fx
 import pytest
+from fixtures import identity_preflight_vectors as pf
 from fixtures.scoring_evidence_fixtures import (
     make_pre_sensitivity_input,
     verified_metrics,
@@ -1529,3 +1530,55 @@ def test_run_level_preflight_and_run_status_lines_are_logged(
             assert identity not in message
         for sentinel in fx.RECORDED_SENTINELS:
             assert sentinel not in message
+
+
+# ---------------------------------------------------------------------------
+# Chunk 28 / LREQ-MET-040 — the run-level page-view semantics token
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_run_seeds_validated_windowed_weekly_semantics(tmp_path: Path) -> None:
+    """A new run row records the validated trailing-7-day semantics (D1-S3).
+
+    ``run_pipeline`` seeds ``PAGE_VIEW_SEMANTICS_CONTRACT``; with the extended
+    preflight non-clobber guard the completed run still reads the new token.
+    """
+    _result, _scenario, stored = _run_end_to_end(tmp_path)
+
+    assert stored["run"].page_view_semantics_status == "validated_windowed_weekly"
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-SCR-050")
+def test_preflight_preserves_validated_windowed_weekly_status(tmp_path: Path) -> None:
+    """A run pre-seeded with the new token is not clobbered back to unvalidated.
+
+    Mirrors the ``tests/test_identity_preflight.py`` non-clobber nodes with the
+    chunk-28 token: the guard must preserve ``validated_windowed_weekly``
+    exactly as it preserves ``validated_cumulative``/``contradicted``.
+    """
+    run = pf.two_asset_run()
+    repository = SqliteRepository(tmp_path / "chunk28-non-clobber.sqlite3")
+    try:
+        pf.seed_sampling_and_run(
+            repository,
+            run,
+            page_view_semantics_status="validated_windowed_weekly",
+        )
+        pipeline.run_identity_preflight(
+            repository,
+            run,
+            credentials=pf.GQL_CREDENTIALS,
+            transport=pf.success_transport((pf.A, pf.B)),
+            correlation_mode=pf.EXPLICIT_KEY,
+            retrieved_at_utc=pf.RETRIEVED_AT_UTC,
+            policy=pf.small_policy(),
+        )
+        assert (
+            pf.page_view_semantics_of(repository, run.run_id)
+            == "validated_windowed_weekly"
+        )
+    finally:
+        repository.close()

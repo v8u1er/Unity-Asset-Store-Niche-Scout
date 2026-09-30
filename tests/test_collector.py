@@ -239,7 +239,7 @@ def _insert_run(repo: SqliteRepository, run_id: str = RUN_ID) -> None:
             taxonomy_version="1.0.0",
             taxonomy_captured_at_utc=FIXED_NOW,
             taxonomy_sha256="0" * 64,
-            endpoint_contract_version="1.0.0",
+            endpoint_contract_version="1.1.0",
             identity_mapping_rule_version="1.0.1",
             sampling_rule_version="2.0.0",
             page_view_semantics_status="unvalidated",
@@ -3117,6 +3117,7 @@ def test_adapter_declares_no_metric_eligibility_verdict() -> None:
         "unvalidated",
         "validated_cumulative",
         "contradicted",
+        "validated_windowed_weekly",
     }
 
 

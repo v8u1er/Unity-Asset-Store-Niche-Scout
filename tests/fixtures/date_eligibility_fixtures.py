@@ -8,8 +8,9 @@ Every expected float is hand-derived from the SRS formulas:
 
 * ``age_days_exact = (scoring_cutoff_utc - first_published_date_utc).total_seconds()
   / 86400`` — SRS-lean.md §7.1 (LREQ-MET-020), Appendix A.
-* ``age_normalized_page_view_index = product_page_views * 7 / age_days_exact``
-  — SRS-lean.md §7.2 (LREQ-MET-040).
+* ``age_normalized_page_view_index = product_page_views`` — SRS-lean.md §7.2
+  as amended by D1-S2 (plan §13); the value is the trailing-7-day view count
+  and ``MIN_AGE_DAYS_FOR_RATE`` is an eligibility floor, not a normalizer.
 * Recent-window membership is ``0 <= age_days_exact <= RECENT_WINDOW_DAYS``
   — SRS-lean.md §7.4 (LREQ-MET-080).
 * Quality eligibility is the SRS-lean.md §7.5 conjunction (LREQ-MET-090).
@@ -68,6 +69,7 @@ __all__ = [
     "SEMANTICS_CONTRADICTED",
     "SEMANTICS_UNVALIDATED",
     "SEMANTICS_VALIDATED_CUMULATIVE",
+    "SEMANTICS_VALIDATED_WINDOWED_WEEKLY",
     "STATE_COMING_SOON",
     "STATE_DRAFT",
     "STATE_EXCLUDED_VECTORS",
@@ -146,22 +148,25 @@ AGE_HALF_DAY: float = 0.5
 AGE_ONE_DAY: float = 1.0
 
 # ---------------------------------------------------------------------------
-# Page-view index vectors (SRS-lean.md §7.2: views * 7 / age_days_exact)
+# Page-view index vectors (SRS-lean-v2.md §7.2 as amended by D1-S2, plan §13:
+# index = product_page_views, the trailing-7-day/weekly view count)
 # ---------------------------------------------------------------------------
 
 #: ``(product_page_views, age_days_exact, expected index)`` hand-derived as
-#: ``views * 7 / age``:
-#:   0  * 7 / 30 = 0.0                  (explicit valid zero)
-#:   10 * 7 / 30 = 70/30  = 2.3333333333333335
-#:   7  * 7 / 30 = 49/30  = 1.6333333333333333
-#:   5  * 7 / 30 = 35/30  = 1.1666666666666667
-#:   1.0 * 7 / 30 = 7/30  = 0.23333333333333334
+#: ``index = product_page_views`` (D1-S2; plan §13). The age column stays
+#: because ``MIN_AGE_DAYS_FOR_RATE`` remains an eligibility floor, not a rate
+#: normalizer:
+#:   0   -> 0.0   (explicit valid zero)
+#:   10  -> 10.0
+#:   7   -> 7.0
+#:   5   -> 5.0
+#:   1.0 -> 1.0
 INDEX_VECTORS: tuple[tuple[float, float, float], ...] = (
     (0, AGE_30D, 0.0),
-    (10, AGE_30D, 2.3333333333333335),
-    (7, AGE_30D, 1.6333333333333333),
-    (5, AGE_30D, 1.1666666666666667),
-    (1.0, AGE_30D, 0.23333333333333334),
+    (10, AGE_30D, 10.0),
+    (7, AGE_30D, 7.0),
+    (5, AGE_30D, 5.0),
+    (1.0, AGE_30D, 1.0),
 )
 
 #: Page-view values that must be classified as unavailable, never raised and
@@ -228,6 +233,11 @@ SEMANTICS_VALIDATED_CUMULATIVE: PageViewSemanticsStatus = (
     PageViewSemanticsStatus.VALIDATED_CUMULATIVE
 )
 SEMANTICS_CONTRADICTED: PageViewSemanticsStatus = PageViewSemanticsStatus.CONTRADICTED
+
+#: The D1-S3 token (plan §13). Written as its literal value so this fixture
+#: module imports before the enum member lands; the enum contract test pins the
+#: member to this same value.
+SEMANTICS_VALIDATED_WINDOWED_WEEKLY: str = "validated_windowed_weekly"
 
 # ---------------------------------------------------------------------------
 # Recent-window and usable-stratum vectors (SRS-lean.md §7.4 / §7.2)

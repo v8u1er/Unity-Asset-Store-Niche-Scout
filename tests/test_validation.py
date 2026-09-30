@@ -1399,8 +1399,8 @@ def test_age_days_exact_requires_aware_utc_cutoff() -> None:
 
 
 @pytest.mark.lreq("LREQ-MET-040")
-def test_page_view_index_uses_seven_over_age_days() -> None:
-    """Index = ``product_page_views * 7 / age_days_exact`` (SRS §7.2)."""
+def test_page_view_index_uses_weekly_view_count() -> None:
+    """Index = ``product_page_views``, the trailing-7-day count (D1-S2; §7.2)."""
     for views, age, expected in dfx.INDEX_VECTORS:
         assert age == pytest.approx(dfx.AGE_30D, abs=1e-9)
         result = m.age_normalized_page_view_index(
@@ -1409,6 +1409,50 @@ def test_page_view_index_uses_seven_over_age_days() -> None:
         assert result.is_available is True, views
         assert result.unavailable_reason is None, views
         assert result.value == pytest.approx(expected, abs=1e-9), views
+        # The golden vector itself encodes ``expected = float(views)`` (plan §9.2).
+        assert expected == pytest.approx(float(views), abs=1e-9), views
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-TST-050")
+def test_page_view_index_equals_weekly_view_count() -> None:
+    """The index is the weekly view count itself (D1-S2; plan §13).
+
+    Hand-derived from the amended §7.2 formula
+    ``age_normalized_page_view_index = product_page_views``: ``10 -> 10.0``,
+    ``7 -> 7.0``, ``5 -> 5.0``, ``1.0 -> 1.0``. ``DATE_30D`` is a valid UTC date
+    at the inclusive ``MIN_AGE_DAYS_FOR_RATE`` floor, so every case is eligible.
+    """
+    for views, expected in ((10, 10.0), (7, 7.0), (5, 5.0), (1.0, 1.0)):
+        result = m.age_normalized_page_view_index(
+            views, dfx.DATE_30D, **dfx.index_kwargs()
+        )
+        assert result.is_available is True, views
+        assert result.unavailable_reason is None, views
+        assert result.value == pytest.approx(expected, abs=1e-9), views
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-TST-010")
+def test_page_view_index_is_independent_of_age_above_threshold() -> None:
+    """Above the floor, age no longer scales the index (D1-S2; plan §13).
+
+    The same 10 views at age ``30.0`` and at age ``300.0`` give the same index,
+    ``10.0``: ``MIN_AGE_DAYS_FOR_RATE`` is an eligibility floor, not a rate
+    normalizer. The older date is derived from the frozen cutoff (no clock).
+    """
+    date_300d = dfx.CUTOFF_UTC - timedelta(days=300)
+    at_threshold = m.age_normalized_page_view_index(
+        10, dfx.DATE_30D, **dfx.index_kwargs()
+    )
+    well_above = m.age_normalized_page_view_index(
+        10, date_300d, **dfx.index_kwargs()
+    )
+    assert at_threshold.is_available is True
+    assert well_above.is_available is True
+    assert at_threshold.value == pytest.approx(10.0, abs=1e-9)
+    assert well_above.value == pytest.approx(10.0, abs=1e-9)
+    assert at_threshold.value == well_above.value
 
 
 @pytest.mark.lreq("LREQ-MET-040")
@@ -1473,13 +1517,13 @@ def test_page_view_index_rejects_non_numeric_views_and_accepts_integral_float() 
         assert result.value is None, name
         assert result.unavailable_reason == m.METRIC_REASON_WRONG_TYPE, name
 
-    # 1.0 * 7 / 30 = 7/30 = 0.23333333333333334, the same as the integer 1.
+    # 1.0 -> 1.0, the same as the integer 1 (D1-S2; plan §13).
     integral_float = m.age_normalized_page_view_index(
         1.0, dfx.DATE_30D, **dfx.index_kwargs()
     )
     integer = m.age_normalized_page_view_index(1, dfx.DATE_30D, **dfx.index_kwargs())
     assert integral_float.is_available is True
-    assert integral_float.value == pytest.approx(0.23333333333333334, abs=1e-9)
+    assert integral_float.value == pytest.approx(1.0, abs=1e-9)
     assert integral_float.value == integer.value
 
 
@@ -1499,13 +1543,13 @@ def test_page_view_index_wrong_type_date_is_unavailable() -> None:
 @pytest.mark.lreq("LREQ-TST-050")
 def test_page_view_index_age_threshold_boundary() -> None:
     """The MIN_AGE_DAYS_FOR_RATE boundary is inclusive at 30.0 (SRS §7.2, §14)."""
-    # 2025-01-01T00:00Z is exactly 30.0 days old:
-    # 10 * 7 / 30 = 70/30 = 2.3333333333333335.
+    # 2025-01-01T00:00Z is exactly 30.0 days old (the inclusive floor):
+    # 10 -> 10.0 (D1-S2; plan §13).
     at_threshold = m.age_normalized_page_view_index(
         10, dfx.DATE_30D, **dfx.index_kwargs()
     )
     assert at_threshold.is_available is True
-    assert at_threshold.value == pytest.approx(2.3333333333333335, abs=1e-9)
+    assert at_threshold.value == pytest.approx(10.0, abs=1e-9)
 
     # 2025-01-01T01:00Z is 29.9583333... days old; below the inclusive minimum.
     below = m.age_normalized_page_view_index(
@@ -1537,13 +1581,13 @@ def test_page_view_index_never_divides_by_zero_at_threshold() -> None:
         )
 
     # With an explicit minimum of 1, the threshold is inclusive at age 1.0:
-    # 10 * 7 / 1.0 = 70.0. Age 0.0 stays AGE_BELOW_MINIMUM, so the division is
-    # never evaluated at age zero (SRS §7.2; plan §5.3 step 10).
+    # 10 -> 10.0. Age 0.0 stays AGE_BELOW_MINIMUM (SRS §7.2; plan §5.3
+    # step 10): the floor gates eligibility only and never scales the value.
     one_day = m.age_normalized_page_view_index(
         10, dfx.DATE_ONE_DAY, **dfx.index_kwargs(min_age_days_for_rate=1)
     )
     assert one_day.is_available is True
-    assert one_day.value == pytest.approx(70.0, abs=1e-9)
+    assert one_day.value == pytest.approx(10.0, abs=1e-9)
 
     zero_age = m.age_normalized_page_view_index(
         10, dfx.DATE_AT_CUTOFF, **dfx.index_kwargs(min_age_days_for_rate=1)
@@ -1587,7 +1631,7 @@ def test_page_view_index_rejects_state_excluded_and_unknown() -> None:
         10, dfx.DATE_30D, **dfx.index_kwargs(state=dfx.STATE_MIXED_CASE_PUBLISHED)
     )
     assert mixed_case.is_available is True
-    assert mixed_case.value == pytest.approx(2.3333333333333335, abs=1e-9)
+    assert mixed_case.value == pytest.approx(10.0, abs=1e-9)
 
 
 @pytest.mark.lreq("LREQ-GQL-070")

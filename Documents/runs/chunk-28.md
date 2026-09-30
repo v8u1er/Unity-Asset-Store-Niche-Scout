@@ -40,6 +40,20 @@ pre-change audit snapshot. Page-view semantics status = `unvalidated`; no writer
 | Preflight (lead) | DONE | branch `chunk-28`; clean tree; chunk-27 GATE PASSED; baseline 701 passed. |
 | Plan — `chunk-planner` | DONE (FROZEN) | First dispatch (`ses_f11b0d1e2ffeYZhS9RAJYQUiGf`) hit its step cap during read-only reconnaissance (INCOMPLETE, no file). Re-dispatched (`ses_f11a54655ffeu7XLaPgJjjcX5m`) with the reconnaissance in the brief; wrote `Documents/plans/chunk-28-page-view-semantics-remediation.md` (601 lines, §1–§14, `Status: FROZEN`). Lead-verified by read: allowlist §6 exact, six gate bullets verbatim (§10), D1-S1…D1-S7 checkpoint (§13), the two load-bearing decisions (§5.3 guard, §8.2 old-DB), two open questions (§12). |
 
+| Tests — `test-author` | DONE | Dispatches `ses_f1198068affeA2EGpVmdUBiLNG` (step cap, recon only, no file) then `ses_f118c598cffeFLAW5hQttiSjsR` (provider reset, then resumed). Files (tests only): `date_eligibility_fixtures.py`, `identity_preflight_vectors.py`, `metric_estimator_fixtures.py`, `report_fixtures.py`, `sampling_persistence_fixtures.py`, `test_validation.py`, `test_contracts.py`, `test_collector.py`, `test_database.py`, `test_pipeline.py`, `test_report.py`, `test_metrics.py`, `traceability.json`. Lead-reproduced below. |
+
+### Tests stage — lead-reproduced (real output)
+
+| Command | Real result |
+|---|---|
+| `git status --porcelain` | exactly the 13 `tests/**` paths above; no `src/`, `Documents/`, or other file |
+| `python -m pytest tests -q --collect-only` | **711 tests collected** in 0.67s — no syntax/collection errors |
+| `python -m pytest -q` | **25 failed, 686 passed in 25.20s** — every failure is a missing-implementation failure: wrong index values (`2.333…` vs `10.0`; `0.5` vs `5.0`), absent enum member (`Extra items in the right set: 'validated_windowed_weekly'` at `test_collector.py:3116`), wrong `SCHEMA_VERSION`/`ENDPOINT_CONTRACT_VERSION`, wrong report text, absent seed/non-clobber token |
+| `python -m niche_scout.tools.validate_traceability` | exit 0 — **89 LREQ IDs, 690 matrix nodes**, 0 unmarked analytical outside exemption (3 exempted) |
+| unchanged nodes | full suite delta: 701 baseline → 711 collected (10 new nodes); the 25 failures are the intended pre-implementation set, no collateral collection or syntax failure |
+
+The 25 failures are the accepted missing-implementation set (formula, enum token, both version bumps, report caveats, seed + non-clobber). The broad D/Q/rankability captured-run re-baseline is deferred to implementation (chunk-24/25 precedent); the test-author enumerated the affected nodes/fixtures in its report and left their numeric expectations untouched except hand-derivable vectors.
+
 ### Plan stage notes (lead-read)
 
 - The plan is freezeable; the two §12 open questions are recorded, not resolved: (1) LREQ

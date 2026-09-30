@@ -1142,31 +1142,31 @@ def test_estimators_repeat_deterministically() -> None:
 def test_demand_explicit_zero_page_views_are_usable() -> None:
     """Explicit valid zero page views are usable and enter demand as index ``0.0``.
 
-    SRS §7.2 / LREQ-MET-040: "An explicit valid page-view value of zero is
-    usable and yields an index of zero." In ``mfx.DEMAND_EXPLICIT_ZERO`` one
-    stratum has ``N_h = 75``, ``n_h = 10``: five observations carry the explicit
-    valid ``product_page_views = 0`` and five carry ``product_page_views = 10``,
-    all at ``DATE_70D`` (age ``70.0``). The index is ``views * 7 / 70 =
-    views / 10``, so the zero-view observations contribute index ``0.0`` and the
-    ten-view observations index ``1.0``. Both groups are usable, so
-    ``u_demand_h = 10`` — the five zeros are values, not missing entries (missing
-    is not zero, SRS §1.2).
+    SRS §7.2 / LREQ-MET-040 as amended by D1-S2 (plan §13): "An explicit valid
+    page-view value of zero is usable and yields an index of zero." In
+    ``mfx.DEMAND_EXPLICIT_ZERO`` one stratum has ``N_h = 75``, ``n_h = 10``:
+    five observations carry the explicit valid ``product_page_views = 0`` and
+    five carry ``product_page_views = 10``, all at ``DATE_70D`` (age ``70.0``).
+    The index is the weekly count itself, ``index = product_page_views``, so the
+    zero-view observations contribute index ``0.0`` and the ten-view observations
+    index ``10.0``. Both groups are usable, so ``u_demand_h = 10`` — the five
+    zeros are values, not missing entries (missing is not zero, SRS §1.2).
 
-    ``DemandPerAssetRaw = (5 * 1.0 + 5 * 0.0) / 10 = 0.5`` (single stratum, so
+    ``DemandPerAssetRaw = (5 * 10.0 + 5 * 0.0) / 10 = 5.0`` (single stratum, so
     the ``N_h / N`` weight renormalizes to itself; SRS §7.2 / LREQ-MET-030).
     ``DemandMedianRaw`` weights every usable observation by ``N_h / n_h =
     75 / 10 = 7.5``: ``T = 75``, half ``37.5``; the cumulative weight after the
     five sorted ``0.0`` values is exactly ``37.5`` with a next sorted value
-    ``1.0``, so the exact-half branch returns ``(0.0 + 1.0) / 2 = 0.5`` (SRS
+    ``10.0``, so the exact-half branch returns ``(0.0 + 10.0) / 2 = 5.0`` (SRS
     §7.2 / LREQ-MET-050 rule, reached by this fixture). Coverage is
     ``75 / 75 = 1.0`` and the usable demand sample count is ``10``.
     """
     mean = m.demand_per_asset_raw(mfx.DEMAND_EXPLICIT_ZERO)
-    assert mean.value == pytest.approx(0.5, abs=1e-9)
+    assert mean.value == pytest.approx(5.0, abs=1e-9)
     assert mean.unavailable_reason is None
 
     median = m.demand_median_raw(mfx.DEMAND_EXPLICIT_ZERO)
-    assert median.value == pytest.approx(0.5, abs=1e-9)
+    assert median.value == pytest.approx(5.0, abs=1e-9)
     assert median.unavailable_reason is None
     assert m.stratum_expansion_weight(75, 10) == pytest.approx(7.5, abs=1e-9)
 

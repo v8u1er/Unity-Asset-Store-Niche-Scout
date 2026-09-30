@@ -791,18 +791,18 @@ DEMAND_PARTIAL_COVERAGE: CategoryMetricInput = make_category_input(
 # §7.2 (LREQ-MET-040): zero views are a usable observation whose index is 0.0,
 # never a missing/unusable value.
 #
-#   index = views * 7 / 70 = views / 10:
+#   index = product_page_views (D1-S2; plan §13):
 #     five zero-view observations -> index_i = 0.0, all usable -> u_demand_h = 10,
 #     NOT 5 (missing is not zero, SRS §1.2).
-#     five ten-view observations -> index_i = 1.0.
+#     five ten-view observations -> index_i = 10.0.
 #
 # DemandPerAssetRaw = mean of the 5 + 5 usable indices (single stratum, so the
-#   N_h / N weight renormalizes to itself) = (5 * 1.0 + 5 * 0.0) / 10 = 0.5.
+#   N_h / N weight renormalizes to itself) = (5 * 10.0 + 5 * 0.0) / 10 = 5.0.
 # DemandMedianRaw: every usable observation weighs N_h / n_h = 75 / 10 = 7.5;
-#   T = 10 * 7.5 = 75, half = 37.5. Sorted indices are 0.0 five times, then 1.0
+#   T = 10 * 7.5 = 75, half = 37.5. Sorted indices are 0.0 five times, then 10.0
 #   five times; the cumulative weight AFTER the five zeros is 5 * 7.5 = 37.5,
-#   exactly half, and a next sorted value (1.0) exists, so the exact-half branch
-#   applies: (0.0 + 1.0) / 2 = 0.5.
+#   exactly half, and a next sorted value (10.0) exists, so the exact-half branch
+#   applies: (0.0 + 10.0) / 2 = 5.0.
 # demand_stratum_eligibility_coverage = 75 / 75 = 1.0.
 # usable_demand_sample_count = 10.
 DEMAND_EXPLICIT_ZERO: CategoryMetricInput = make_category_input(

@@ -854,6 +854,26 @@ def test_failed_preflight_fallback_yields_one_row_per_category(tmp_path):
 # --------------------------------------------------------------------------
 
 
+def _assert_weekly_view_count_caveat(*rendered_texts: str) -> None:
+    """Assert the D1-S4 caveat substance on each rendered report string.
+
+    Plan §5.5 / §9.4 item 10: the caveats describe the page-view index as a
+    trailing-7-day (weekly) view count and no longer say "not a weekly traffic
+    rate". The exact literal is operator-pending (plan §12 OQ-2), so only the
+    pinned substance is asserted here.
+    """
+    for rendered in rendered_texts:
+        normalized = " ".join(rendered.casefold().split())
+        assert "trailing" in normalized or "weekly" in normalized, (
+            "the caveat must describe a trailing-7-day/weekly view count"
+        )
+        assert any(
+            token in normalized
+            for token in ("7-day", "7 day", "seven-day", "seven day")
+        ), "the caveat must describe the seven-day window"
+        assert "not a weekly traffic rate" not in normalized
+
+
 @pytest.mark.lreq("LREQ-RPT-050")
 def test_report_states_heuristic_and_six_distinctions(tmp_path):
     """Both renderers carry the fixed statement and its six distinctions."""
@@ -871,7 +891,6 @@ def test_report_states_heuristic_and_six_distinctions(tmp_path):
             "pagination completion",
             "immutable snapshot completeness",
             "page-view index",
-            "weekly traffic rate",
             "descriptive midranks",
             "inferential percentiles",
             "stratum eligibility coverage",
@@ -884,6 +903,33 @@ def test_report_states_heuristic_and_six_distinctions(tmp_path):
             "not a statistically representative",
         ):
             assert phrase in html
+        _assert_weekly_view_count_caveat(html)
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-050")
+def test_report_caveats_describe_trailing_seven_day_views(tmp_path):
+    """Both renderers describe the index as a trailing-7-day view count.
+
+    Plan §5.5 / §9.4 item 10 (D1-S4): the retired claim
+    "not a weekly traffic rate" is gone, the trailing-7-day/weekly count is
+    described, and the public ``HEURISTIC_STATEMENT`` no longer calls the index
+    cumulative. The exact literal is operator-pending (plan §12 OQ-2), so the
+    assertion is substance-only.
+    """
+    repository = _repository(tmp_path)
+    run = rf.run_record((rf.CATEGORY_ALPHA,))
+    row = rf.category_score_record(rf.CATEGORY_ALPHA)
+    try:
+        _seed(repository, run, (row,))
+        view = report.load_run_report_view(repository, rf.RUN_ID)
+        html = report.render_run_report_html(view)
+        text = report.render_run_report_text(view)
+        _assert_weekly_view_count_caveat(html, text)
+        statement = " ".join(report.HEURISTIC_STATEMENT.casefold().split())
+        assert "cumulative" not in statement
+        assert "not a weekly traffic rate" not in statement
     finally:
         repository.close()
 

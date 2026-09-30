@@ -406,7 +406,7 @@
   "tests/test_contracts.py::test_census_model_contract": [
     "LREQ-SMP-040"
   ],
-  "tests/test_contracts.py::test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0": [
+  "tests/test_contracts.py::test_category_scores_column_set_includes_failure_cause_and_version_is_1_3_0": [
     "LREQ-RPT-020"
   ],
   "tests/test_contracts.py::test_config_precedence_contract": [
@@ -424,6 +424,10 @@
   "tests/test_contracts.py::test_determinism_contract": [
     "LREQ-ARCH-030"
   ],
+  "tests/test_contracts.py::test_endpoint_contract_version_is_1_1_0": [
+    "LREQ-GQL-010",
+    "LREQ-ARCH-030"
+  ],
   "tests/test_contracts.py::test_formula_test_conventions": [
     "LREQ-TST-010"
   ],
@@ -435,6 +439,10 @@
   ],
   "tests/test_contracts.py::test_models_import": [
     "LREQ-ARCH-010"
+  ],
+  "tests/test_contracts.py::test_page_view_semantics_status_includes_validated_windowed_weekly": [
+    "LREQ-MET-040",
+    "LREQ-GQL-010"
   ],
   "tests/test_contracts.py::test_platform_pathlib_contract": [
     "LREQ-NFR-050"
@@ -494,6 +502,10 @@
   "tests/test_database.py::test_duplicate_sample_membership_is_rejected": [
     "LREQ-SMP-080"
   ],
+  "tests/test_database.py::test_enum_allow_list_accepts_validated_windowed_weekly": [
+    "LREQ-ARCH-030",
+    "LREQ-MET-040"
+  ],
   "tests/test_database.py::test_enum_backed_columns_reject_unknown_values": [
     "LREQ-SEC-020",
     "LREQ-ID-040"
@@ -515,6 +527,9 @@
   ],
   "tests/test_database.py::test_null_sensitivity_diagnostics_round_trip_as_null": [
     "LREQ-SEN-020"
+  ],
+  "tests/test_database.py::test_open_older_schema_raises_unless_check_version_false": [
+    "LREQ-ARCH-030"
   ],
   "tests/test_database.py::test_partial_graphql_operation_success_is_stored_independently": [
     "LREQ-GQL-050"
@@ -546,6 +561,9 @@
   ],
   "tests/test_database.py::test_schema_initialization_is_versioned_and_idempotent": [
     "LREQ-SEC-020"
+  ],
+  "tests/test_database.py::test_schema_version_is_1_3_0": [
+    "LREQ-ARCH-030"
   ],
   "tests/test_database.py::test_set_category_status_default_leaves_stored_cause_unchanged": [
     "LREQ-EXT-090"
@@ -1264,6 +1282,10 @@
   "tests/test_pipeline.py::test_pipeline_runs_completed_end_to_end": [
     "LREQ-ARCH-030"
   ],
+  "tests/test_pipeline.py::test_preflight_preserves_validated_windowed_weekly_status": [
+    "LREQ-MET-040",
+    "LREQ-SCR-050"
+  ],
   "tests/test_pipeline.py::test_projection_contains_required_counts_and_minimum_time": [
     "LREQ-NFR-020"
   ],
@@ -1278,6 +1300,10 @@
     "LREQ-NFR-030"
   ],
   "tests/test_pipeline.py::test_run_record_seeds_required_not_null_columns": [
+    "LREQ-ARCH-030"
+  ],
+  "tests/test_pipeline.py::test_run_seeds_validated_windowed_weekly_semantics": [
+    "LREQ-MET-040",
     "LREQ-ARCH-030"
   ],
   "tests/test_pipeline.py::test_run_uses_injected_clock_transports_and_sleeper": [
@@ -1444,6 +1470,9 @@
   ],
   "tests/test_report.py::test_render_dashboard_html_is_database_read_only": [
     "LREQ-CLI-020"
+  ],
+  "tests/test_report.py::test_report_caveats_describe_trailing_seven_day_views": [
+    "LREQ-RPT-050"
   ],
   "tests/test_report.py::test_report_states_heuristic_and_six_distinctions": [
     "LREQ-RPT-050"
@@ -2137,6 +2166,14 @@
     "LREQ-MET-030",
     "LREQ-TST-050"
   ],
+  "tests/test_validation.py::test_page_view_index_equals_weekly_view_count": [
+    "LREQ-MET-040",
+    "LREQ-TST-050"
+  ],
+  "tests/test_validation.py::test_page_view_index_is_independent_of_age_above_threshold": [
+    "LREQ-MET-040",
+    "LREQ-TST-010"
+  ],
   "tests/test_validation.py::test_page_view_index_missing_views_is_unavailable_not_zero": [
     "LREQ-MET-040",
     "LREQ-MET-010"
@@ -2161,7 +2198,7 @@
     "LREQ-GQL-060",
     "LREQ-MET-040"
   ],
-  "tests/test_validation.py::test_page_view_index_uses_seven_over_age_days": [
+  "tests/test_validation.py::test_page_view_index_uses_weekly_view_count": [
     "LREQ-MET-040"
   ],
   "tests/test_validation.py::test_page_view_index_wrong_type_date_is_unavailable": [

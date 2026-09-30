@@ -81,7 +81,12 @@ REQUIRED_STATUS_VALUES: dict[str, set[str]] = {
     },
     "IdentityResolutionStatus": {"resolved", "unresolved", "conflict"},
     "OperationStatus": {"success", "error"},
-    "PageViewSemanticsStatus": {"unvalidated", "validated_cumulative", "contradicted"},
+    "PageViewSemanticsStatus": {
+        "unvalidated",
+        "validated_cumulative",
+        "contradicted",
+        "validated_windowed_weekly",
+    },
     "GraphQLOperationCorrelationMode": {"explicit_key", "validated_position"},
     "IdentityPreflightStatus": {"passed", "failed", "insufficient"},
     "BreadthSource": {"verified_total_count", "distinct_canonical_discovered_count"},
@@ -223,7 +228,7 @@ REQUIRED_ROW_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 REQUIRED_CONSTANTS: dict[str, object] = {
-    "ENDPOINT_CONTRACT_VERSION": "1.0.0",
+    "ENDPOINT_CONTRACT_VERSION": "1.1.0",
     "IDENTITY_MAPPING_RULE_VERSION": "1.0.1",
     "SAMPLING_RULE_VERSION": "2.0.0",
     "MAX_DISCOVERY_RESULTS_PER_CATEGORY": 9000,
@@ -497,10 +502,32 @@ def test_graphql_endpoint_contract() -> None:
         "unvalidated",
         "validated_cumulative",
         "contradicted",
+        "validated_windowed_weekly",
     }
     assert (
         WarningCode.GRAPHQL_ID_MAPPING_MISMATCH.value == "GRAPHQL_ID_MAPPING_MISMATCH"
     )
+
+
+@pytest.mark.lreq("LREQ-MET-040")
+@pytest.mark.lreq("LREQ-GQL-010")
+def test_page_view_semantics_status_includes_validated_windowed_weekly() -> None:
+    """The D1-S3 token is a distinct enum member with its literal value."""
+    member = PageViewSemanticsStatus.VALIDATED_WINDOWED_WEEKLY
+    assert member.value == "validated_windowed_weekly"
+    assert {item.value for item in PageViewSemanticsStatus} == {
+        "unvalidated",
+        "validated_cumulative",
+        "contradicted",
+        "validated_windowed_weekly",
+    }
+
+
+@pytest.mark.lreq("LREQ-GQL-010")
+@pytest.mark.lreq("LREQ-ARCH-030")
+def test_endpoint_contract_version_is_1_1_0() -> None:
+    """The enrichment endpoint contract version is re-pinned to 1.1.0."""
+    assert models.ENDPOINT_CONTRACT_VERSION == "1.1.0"
 
 
 @pytest.mark.lreq("LREQ-SEC-010")
@@ -978,17 +1005,19 @@ def test_repository_protocol_and_schema_specification(
 
 
 @pytest.mark.lreq("LREQ-RPT-020")
-def test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0() -> (
+def test_category_scores_column_set_includes_failure_cause_and_version_is_1_3_0() -> (
     None
 ):
-    """The Chunk 23 column is the last column and the schema version is 1.2.0.
+    """The Chunk 23 column is the last column and the schema version is 1.3.0.
 
-    Hand-derived from ``interfaces/chunk-02.md`` §2.1 and the chunk-24 plan §3.1:
-    ``SCHEMA_VERSION`` is ``"1.2.0"`` and ``category_scores`` gains exactly one
-    nullable column, ``discovery_failure_cause_json TEXT``, appended last so the
-    frozen parity ``TABLE_COLUMNS["category_scores"] ==
+    Hand-derived from ``interfaces/chunk-02.md`` §2.1 and the chunk-28 plan
+    §5.4: ``SCHEMA_VERSION`` is ``"1.3.0"``; the ``1.2.0`` -> ``1.3.0`` bump
+    is chunk-28's ``PageViewSemanticsStatus`` extension, which is metadata-only
+    (``_ENUM_COLUMNS`` is Python-side, not DDL). ``category_scores`` still gains
+    exactly one nullable column, ``discovery_failure_cause_json TEXT``, appended
+    last so the frozen parity ``TABLE_COLUMNS["category_scores"] ==
     models.MANDATORY_ROW_FIELDS["category_scores"]`` still holds and it ships
-    in the ``CREATE TABLE`` text. The ``1.1.0`` -> ``1.2.0`` bump is chunk-24's
+    in the ``CREATE TABLE`` text. The ``1.1.0`` -> ``1.2.0`` bump was chunk-24's
     ``sample_members`` geometry-column rename (plan §3.1/§3.2); no migration path
     exists (single-run tool, SRS §15).
     """
@@ -998,7 +1027,7 @@ def test_category_scores_column_set_includes_failure_cause_and_version_is_1_2_0(
     assert columns[-1] == "discovery_failure_cause_json"
     assert columns[-1] in models.MANDATORY_ROW_FIELDS["category_scores"]
     assert columns == models.MANDATORY_ROW_FIELDS["category_scores"]
-    assert SCHEMA_VERSION == "1.2.0"
+    assert SCHEMA_VERSION == "1.3.0"
     assert "discovery_failure_cause_json" in CREATE_TABLE_STATEMENTS["category_scores"]
 
 
