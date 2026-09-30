@@ -1,7 +1,10 @@
 # Chunk 29 — Coveo retrieval-window coverage remediation (plan)
 
-Status: DRAFT — blocked on Open questions 1 and 2 (see §9). Do not freeze until a human
-answers them; both change a frozen public interface or the detection rule.
+Status: FROZEN (2026-09-30). Open questions 1 and 2 resolved by the operator: Q1 = option
+(a) — additive `CategoryDiscoveryResult.unreconciled_total_shortfall: int | None = None`
+(`interfaces/chunk-03.md` amended); Q2 = option (a) — strict `persisted < verified_total`.
+Freeze additionally authorized the SRS Lean 1.0.5 `LREQ-EXT-050` addendum and the Appendix C
+`DISCOVERY_INCOMPLETE` vocabulary (both applied before this plan was frozen).
 
 Branch: `chunk-29` (per `Documents/runs/chunk-29.md` §Branch). Base: `main`.
 Predecessors: Chunks 3, 7B, 8, 9A, 9B, 10, 11 are frozen and merged. This plan changes
@@ -486,5 +489,7 @@ Each bullet names a concrete command or a file:line evidence source.
 
 ## 11. Status
 
-Plan is DRAFT and **blocked** on Q1 and Q2. Recommended resolutions: Q1 option (a),
-Q2 option (a). Once confirmed, amend the three interface files and freeze this plan.
+Plan is FROZEN. Q1 = (a), Q2 = (a), resolved by the operator on 2026-09-30. The interface
+amendments were applied by the lead: `interfaces/chunk-00.md` (`WarningCode.DISCOVERY_INCOMPLETE`),
+`interfaces/chunk-03.md` (`CategoryDiscoveryResult.unreconciled_total_shortfall`),
+`interfaces/chunk-10.md` (§6 note).

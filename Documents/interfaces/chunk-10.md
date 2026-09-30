@@ -153,7 +153,12 @@ def category_status_for(
   a JSON array of unique warning codes in ascending lexical order, where `codes`
   are `models.WarningCode` values plus the preflight/limitation codes Chunk 10
   observes. An empty set serializes to `"[]"`. Set-then-sort keeps the payload
-  independent of iteration order (LREQ-ARCH-030).
+  independent of iteration order (LREQ-ARCH-030). **Chunk 29 additive note
+  (2026-09-30, operator-authorized):** the code set may now also contain
+  `DISCOVERY_INCOMPLETE`, emitted when a category's verified `totalCount` could
+  not be reconciled (`CategoryDiscoveryResult.unreconciled_total_shortfall` is
+  not `None`); such a category also carries `DISCOVERY_TRUNCATED` because its
+  terminal status is `truncated`. The JSON shape is unchanged.
 - `missing_components_json` is
   `json.dumps([k for k in COMPONENT_WEIGHT_KEYS if component_is_none(k)],
   separators=(",", ":"))` — the component keys whose value is `None`, in the

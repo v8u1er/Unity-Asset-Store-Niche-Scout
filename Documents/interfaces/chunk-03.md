@@ -152,6 +152,9 @@ class CategoryDiscoveryResult:
     filter_status: CategoryFilterValidationStatus
     conditions: tuple[DiscoveryStatus, ...]   # every applicable condition, severity-ordered
     issues: tuple[ValidationIssue, ...]
+    #: verified_total - persisted when the endpoint's verified totalCount could not be
+    #: reconciled, else None (see Chunk 29 additive note below). Additive, defaulted.
+    unreconciled_total_shortfall: int | None = None
 
 @dataclass(frozen=True, slots=True)
 class CoveoHttpResponse:
@@ -199,6 +202,18 @@ a **non-normative predecessor convention** carried from the retired
 
 `ordinal_end - ordinal_start` always equals `observations_emitted`, and the
 durable row count for the category matches both.
+
+**Chunk 29 additive note (2026-09-30, operator-authorized).**
+`CategoryDiscoveryResult` gains one field, `unreconciled_total_shortfall: int | None = None`,
+appended last with a default so every existing constructor call stays source-compatible. It is
+`verified_total - persisted` when the endpoint reported a verified `totalCount` that the
+traversal could not reconcile (an empty or short terminal page before the verified total was
+accounted for), else `None`. It is not a `DiscoveryStatus`, is never selected as
+`discovery_status`, and is never `0`; `None` means not-applicable for a reconciled read, a cap
+truncation, a page/request failure, or an absent verified total. Strict materiality is
+`persisted < verified_total` (SRS §4.1 `LREQ-EXT-050` Lean 1.0.5 addendum). The field's presence
+makes the pipeline emit the distinct `WarningCode.DISCOVERY_INCOMPLETE`; the `truncated` status
+continues to emit `DISCOVERY_TRUNCATED`.
 
 ---
 
