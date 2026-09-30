@@ -164,15 +164,46 @@ Held-out verification (final HEAD `4524553`): `python -m pytest -q -p no:cachepr
 | 3. `ENDPOINT_CONTRACT_VERSION == "1.1.0"`; every fixture pinning `"1.0.0"` re-baselined | `models.py:25` `"1.1.0"`; endpoint pins updated at `identity_preflight_vectors.py:324`, `report_fixtures.py:295`, `sampling_persistence_fixtures.py:231`, `test_collector.py:242`, `test_contracts.py`; `test_contracts.py::test_endpoint_contract_version_is_1_1_0` passes; surviving `"1.0.0"` strings are taxonomy / sampling-digest / unrelated-schema values, not the endpoint contract | PASS |
 | 4. report caveats no longer say "cumulative" / "not a weekly traffic rate" | `report.py:55` and `:128` reworded; `test_report_caveats_describe_trailing_seven_day_views` and `::test_report_states_heuristic_and_six_distinctions` pass | PASS |
 | 5. All D/Q/rankability goldens re-baselined from a captured run; pytest + four validators exit 0; ruff no new lint | the index-consuming DEMAND/QUALITY goldens re-baselined from the offline run (`metric_estimator_fixtures.py`, `test_metrics.py`); the acceptance/scoring goldens are status/component-driven and do not move (round-2 verified); `pytest` 711 passed; four validators exit 0; ruff no new lint | PASS |
-| 6. SRS D1-S1…D1-S7 applied by the operator, with diff/sha256 evidence in the run log — else the gate is FAILED and the chunk BLOCKED | **NOT APPLIED.** `Documents/SRS-lean-v2.md` sha256 == main's (`417860f40bef33645b270128e0f10f9a92342b7506ffc2495b5a17cefaee380b` on both revisions); `git diff main..HEAD -- Documents/SRS-lean-v2.md` → empty; the file still carries the pre-edit formula at `:133`/`:741-750`/`:1442`, the three-member enum at `:675-680`, and the old caveat wording at `:1163-1170`/`:1385`. No agent edit (correct); the operator has not applied the edits. | **FAIL** |
+| 6. SRS D1-S1…D1-S7 applied by the operator, with diff/sha256 evidence in the run log — else the gate is FAILED and the chunk BLOCKED | **APPLIED** (operator-authorized 2026-09-30, see the section above). `git status --porcelain` → ` M Documents/SRS-lean-v2.md`; `git diff --numstat` → 32 insertions / 19 deletions; sha256 `6903b8da…f43f55b` (pre-edit `417860f4…ee380b`). The seven edits D1-S1…D1-S7 are present at §1.4, §7.2, §6.3, §10, §16, App. A, and the header/revision history (Lean 1.0.4). | **PASS** |
 
-**Gate: FAILED** — bullets 1–5 PASS, bullet 6 FAILS (operator-only). The chunk is **BLOCKED** on the human
-checkpoint. No implementation or test defect remains (round 2: 0 Blocker other than this checkpoint, 0 Major).
+**Gate: PASSED** — all six bullets evidenced. `pytest` 711 passed; four validators exit 0; ruff no new
+lint; the SRS edit is applied with diff/sha256 recorded above. The SRS change is **uncommitted** at the
+operator's direction.
 
-### Operator action required before any merge
+### Operator action before any merge
 
-1. Apply D1-S1…D1-S7 (chunk-26 plan §13.4; reproduced in the chunk-28 plan §13) to
-   `Documents/SRS-lean-v2.md`.
-2. Record here the resulting `git hash-object Documents/SRS-lean-v2.md` (or `sha256sum`) and the diff.
-3. If the applied D1-S4/D1-S5 wording differs from the current `report.py:55`/`:128` substance, re-wording
-   `report.py` + `test_report.py` is a short follow-up (plan §12 OQ-2).
+The operator commits `Documents/SRS-lean-v2.md` themselves (the edit is in the working tree, unstaged on
+purpose). No further agent action is required for the gate; a wording-matched `report.py` follow-up is
+unnecessary because the applied D1-S4/D1-S5 text matches the shipped caveats.
+
+### Operator-authorized SRS application (2026-09-30) — D1-S1…D1-S7 APPLIED
+
+The operator authorized direct application ("use shell commands to edit the srs, you have permission,
+and i authorize", 2026-09-30). `Documents/SRS-lean-v2.md` is edited in place on branch `chunk-28`; the
+edit is **uncommitted** at the operator's direction (staged separately for their commit).
+
+Evidence:
+- `git status --porcelain` → ` M Documents/SRS-lean-v2.md` (only that path).
+- `git diff --numstat -- Documents/SRS-lean-v2.md` → **32 insertions, 19 deletions**.
+- sha256 of the edited file: `6903b8da128e3008862449f2a4a8131e1a1b9a2954559d768a56e1220f43f55b`
+  (pre-edit sha256, from `git show main:` earlier in this log: `417860f40bef33645b270128e0f10f9a92342b7506ffc2495b5a17cefaee380b`).
+  `git hash-object` was shell-denied; sha256 measured with Python instead.
+- Post-edit: `pytest` **711 passed**; `validate_traceability` exit 0 (89 IDs, 690 nodes);
+  `check_scope_prohibitions` exit 0.
+
+Applied edits (one row per D1-S#):
+
+| # | Section | Applied change |
+|---|---|---|
+| D1-S1 | §1.4 (`:133`) | Term redefined: the index **is** the weekly (trailing-7-day) page-view count `product_page_views`; not a lifetime-average count, not a daily-average rate; stable within a run, refreshed at most daily. |
+| D1-S2 | §7.2 `LREQ-MET-040` (`:741-750`) | Formula block → `age_normalized_page_view_index = product_page_views`; symbol documented as a historical label; `MIN_AGE_DAYS_FOR_RATE` stated as an eligibility floor only; explicit-zero sentence retained. |
+| D1-S3 | §6.3 (`:675-680`) | Allowed set gains `validated_windowed_weekly`; meaning stated (validated trailing-7-day weekly semantics); `contradicted` behavior unchanged. |
+| D1-S4 | §10 `LREQ-RPT-050` (`:1163-1170`) | "the page-view index from a weekly traffic rate" → "the page-view index (a validated trailing-7-day view count) from a lifetime or cumulative count and from a daily-average rate". |
+| D1-S5 | §16 item 5 (`:1385`) | Now: the page-view field is a validated trailing-7-day (weekly) view count, stable within a run and refreshed at most daily, not a lifetime/cumulative count and not a daily-average rate. |
+| D1-S6 | Appendix A (`:1442`) | Formula block → `age_normalized_page_view_index = product_page_views`. |
+| D1-S7 | Header + revision history (`:10-11`, `:21`, `:31-37`) | Version → **Lean 1.0.4**; header status line updated; new revision-history row; §2 status paragraph gains a Lean 1.0.4 sentence. |
+
+Consistency: the applied D1-S4/D1-S5 wording matches `report.py:55`/`:128` substance (initially a
+"traffic rate" phrasing was inserted then corrected to drop it, so the report tests stay green).
+
+**Gate bullet 6 is now evidence-backed and PASSES.** Revised gate result: **PASSED** (see updated table above).
