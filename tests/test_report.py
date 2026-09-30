@@ -1304,17 +1304,33 @@ def test_evidence_grade_order_is_the_enum_reversed():
 
 @pytest.mark.lreq("LREQ-RPT-010")
 def test_run_dashboard_html_is_self_contained_dark_mode_and_deterministic(tmp_path):
-    """One self-contained dark-mode document with fixed ``div_id``s, byte-stable."""
+    """One self-contained dark-mode document with fixed ``div_id``s, byte-stable.
+
+    Self-containment means no *fetchable* external URL and no external asset
+    element: the inline plotly.js bundle legitimately carries the byte-intact
+    SVG/XHTML/XML **namespace identifiers** (``http://www.w3.org/...``), which
+    are opaque strings for ``document.createElementNS``, not resources to fetch.
+    Those namespace identifiers must be preserved; every other ``http://`` or
+    ``https://`` (and the bare ``cdn.plot.ly`` host) is absent.
+    """
     repository, view = _dashboard_view(tmp_path)
     try:
         html = report.render_run_dashboard_html(view)
         assert "<script src" not in html
         assert "<link" not in html
         assert "cdn.plot.ly" not in html
-        assert "http://" not in html
-        assert "https://" not in html
         assert "@import" not in html
         assert "<script>" in html
+        # Namespace identifiers are preserved for document.createElementNS.
+        assert "http://www.w3.org/2000/svg" in html
+        assert "http://www.w3.org/1999/xhtml" in html
+        # No fetchable external URL remains: every scheme token is one of the
+        # preserved namespace identifiers.
+        for token in ("http://", "https://"):
+            residual = html
+            for namespace in report._PLOTLY_NAMESPACE_URLS:
+                residual = residual.replace(namespace, "")
+            assert token not in residual
         for _key, div_id in report.DASHBOARD_CHART_IDS:
             assert div_id in html
         assert html == report.render_run_dashboard_html(view)
@@ -1374,7 +1390,16 @@ def test_run_dashboard_keeps_refused_categories_off_the_scored_axis(tmp_path):
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_run_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
-    """A measured ``0.0`` renders ``0``; a ``None`` renders ``n/a``; they differ."""
+    """A measured ``0.0`` renders as ``0``; a ``None`` renders as ``n/a``.
+
+    The distinction is asserted in the emitted chart data, not on the
+    multi-megabyte document: the score-bar figure's trace data must show an
+    explicit ``0`` value for the measured-zero row and a ``None`` placeholder
+    whose text label is ``n/a`` for the unavailable row. A renderer that
+    collapsed the two would fail here.
+
+    Plan §5.3(a)/R5 and SRS §1.2: missing is never zero.
+    """
     zero_row = rf.category_score_record(
         rf.CATEGORY_ALPHA,
         component_d=0.0,
@@ -1387,16 +1412,65 @@ def test_run_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
     assert dict(contributions)["D"] == 0.0
 
     repository = _repository(tmp_path)
-    run = rf.run_record((rf.CATEGORY_ALPHA,))
     try:
+        run = rf.run_record((rf.CATEGORY_ALPHA,))
         _seed(repository, run, (zero_row,))
         view = report.load_run_report_view(repository, rf.RUN_ID)
-        html = report.render_run_dashboard_html(view)
-        assert "0" in html
-        assert "n/a" in html
-        assert "n/a" != "0"
+
+        zero_html = report.render_run_dashboard_html(view)
+        zero_figure = _figure_for_chart(zero_html, "niche-scout-score-bar")
+        zero_trace = zero_figure["data"][0]
+        assert zero_figure["data"][0]["x"] == [0.0]
+        assert zero_trace["text"] == ["0"]
+        # An explicit 0 is not rendered as the n/a marker.
+        assert _NA_MARKER not in zero_trace["text"]
+
+        # The unavailable row: a ``None`` component/score renders ``n/a``, never 0.
+        unavailable = rf.category_score_record(
+            rf.CATEGORY_ALPHA,
+            component_d=None,
+            component_c=None,
+            component_r=None,
+            component_q=None,
+            market_opportunity_score=None,
+            ranking_sensitivity_json=rf.ranking_sensitivity_json(
+                (rf.CATEGORY_ALPHA,), balanced_ranks={rf.CATEGORY_ALPHA: 1}
+            ),
+        )
+        repository2 = _repository(tmp_path)
+        try:
+            run2 = rf.run_record((rf.CATEGORY_ALPHA,), run_id="run-unavailable")
+            unavailable = dataclasses.replace(unavailable, run_id="run-unavailable")
+            _seed(repository2, run2, (unavailable,))
+            unavailable_view = report.load_run_report_view(
+                repository2, "run-unavailable"
+            )
+            unavailable_figure = _figure_for_chart(
+                report.render_run_dashboard_html(unavailable_view),
+                "niche-scout-score-bar",
+            )
+            unavailable_trace = unavailable_figure["data"][0]
+            # A null score is a zero-height placeholder labelled ``n/a`` with no
+            # measured bar value; it is never the explicit-zero text ``0``.
+            assert unavailable_trace["x"] == [0.0]
+            assert unavailable_trace["text"] == [_NA_MARKER]
+            assert unavailable_trace["text"] != ["0"]
+        finally:
+            repository2.close()
     finally:
         repository.close()
+
+
+_NA_MARKER = "n/a"
+
+
+def _figure_for_chart(html, div_id):
+    """Return the parsed figure JSON emitted for the fixed ``div_id`` chart."""
+    marker = f"Plotly.newPlot({json.dumps(div_id)},"
+    index = html.index(marker) + len(marker)
+    decoder = json.JSONDecoder()
+    figure, _end = decoder.raw_decode(html[index:])
+    return figure
 
 
 @pytest.mark.lreq("LREQ-RPT-010")

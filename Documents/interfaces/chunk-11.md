@@ -69,7 +69,7 @@ class RawMetricInputs:
 @dataclass(frozen=True, slots=True)
 class CategoryReportRow:
     category: str
-    rank: int | None                  # from ranking_sensitivity_json.ranked_categories; None when absent
+    rank: int | None                  # rank_balanced from ranking_sensitivity_json.categories; None when absent
     market_opportunity_score: float | None
     score_state: str
     component_d: float | None
@@ -194,7 +194,7 @@ def render_dashboard_html(repository: "SqliteRepository", run_id: str) -> str:
   pending/unavailable.
 - Non-rankable categories remain visible in both table and detail, with the reason
   derived only from persisted fields.
-- `rank` comes from `ranking_sensitivity_json.ranked_categories`; absent → `None`.
+- `rank` is `rank_balanced` from `ranking_sensitivity_json.categories`; absent → `None`.
   An empty candidate set / `ranking_sensitivity_json == "{}"` renders no rank and
   no stability.
 - Output is self-contained and deterministic: explicit ordering, no RNG, no

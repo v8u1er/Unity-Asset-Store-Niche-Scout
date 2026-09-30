@@ -133,29 +133,6 @@ code { background: var(--panel-2); padding: 0 0.2rem; border-radius: 3px; }
 """
 """Inline dark-mode stylesheet; no external asset is referenced."""
 
-_SORT_SCRIPT = (
-    "(function(){"
-    'var tables=document.querySelectorAll("table.sortable");'
-    "tables.forEach(function(table){"
-    'var headers=table.querySelectorAll("thead th");'
-    "headers.forEach(function(th,index){"
-    'th.addEventListener("click",function(){'
-    "var tbody=table.tBodies[0];"
-    "var rows=Array.prototype.slice.call(tbody.rows);"
-    'var ascending=th.getAttribute("data-order")!=="asc";'
-    "rows.sort(function(a,b){"
-    "var x=a.cells[index].textContent.trim();"
-    "var y=b.cells[index].textContent.trim();"
-    "var nx=parseFloat(x);var ny=parseFloat(y);"
-    "if(!isNaN(nx)&&!isNaN(ny)){return ascending?nx-ny:ny-nx;}"
-    "if(x<y){return ascending?-1:1;}"
-    "if(x>y){return ascending?1:-1;}"
-    "return 0;});"
-    "rows.forEach(function(row){tbody.appendChild(row);});"
-    'headers.forEach(function(other){other.removeAttribute("data-order");});'
-    'th.setAttribute("data-order",ascending?"asc":"desc");});});});})();'
-)
-
 HEURISTIC_STATEMENT: str = (
     "This score is a deterministic, within-run heuristic computed from "
     "marketplace signals and, for larger categories, a stratified sample. It "
@@ -758,37 +735,44 @@ def _optional_rank(value: object) -> int | None:
 def _run_sensitivity(
     scores: Sequence[CategoryScoreRecord],
 ) -> RunSensitivitySummary | None:
-    """Parse the run-level summary from the first ``category_scores`` payload.
+    """Parse the run-level summary from the persisted ``category_scores`` payloads.
 
-    Rows are category-sorted and carry one identical ``ranking_sensitivity_json``
-    payload. Returns ``None`` when ``scores`` is empty, the JSON is invalid or a
-    non-object, or it is ``{}``. Every present-but-null output stays ``None``.
+    Every scored row carries the same run-level ``ranking_sensitivity_json``,
+    but a failed category persists ``"{}"`` and ``get_category_scores`` orders by
+    ``category ASC``, so a failed category may sort first. Rows are therefore
+    scanned for the first payload that decodes to a non-empty object, and the
+    summary is built from it; ``None`` is returned only when no row carries a
+    usable payload. Every present-but-null output stays ``None``.
     """
-    if not scores:
-        return None
-    try:
-        decoded = json.loads(scores[0].ranking_sensitivity_json)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(decoded, dict) or not decoded:
-        return None
-    policies = decoded.get("policies")
-    if isinstance(policies, list) and all(isinstance(item, str) for item in policies):
-        policy_names: tuple[str, ...] = tuple(policies)
-    else:
-        policy_names = ()
-    return RunSensitivitySummary(
-        policies=policy_names,
-        top_3_stability=_optional_float(decoded.get("top_3_stability")),
-        top_5_stability=_optional_float(decoded.get("top_5_stability")),
-        maximum_score_delta=_optional_float(decoded.get("maximum_score_delta")),
-        maximum_rank_displacement=_optional_rank(
-            decoded.get("maximum_rank_displacement")
-        ),
-        warning=_optional_bool(decoded.get("warning")),
-        reference_set_size=_optional_rank(decoded.get("reference_set_size")),
-        displacement_threshold=_optional_float(decoded.get("displacement_threshold")),
-    )
+    for score in scores:
+        try:
+            decoded = json.loads(score.ranking_sensitivity_json)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(decoded, dict) or not decoded:
+            continue
+        policies = decoded.get("policies")
+        if isinstance(policies, list) and all(
+            isinstance(item, str) for item in policies
+        ):
+            policy_names: tuple[str, ...] = tuple(policies)
+        else:
+            policy_names = ()
+        return RunSensitivitySummary(
+            policies=policy_names,
+            top_3_stability=_optional_float(decoded.get("top_3_stability")),
+            top_5_stability=_optional_float(decoded.get("top_5_stability")),
+            maximum_score_delta=_optional_float(decoded.get("maximum_score_delta")),
+            maximum_rank_displacement=_optional_rank(
+                decoded.get("maximum_rank_displacement")
+            ),
+            warning=_optional_bool(decoded.get("warning")),
+            reference_set_size=_optional_rank(decoded.get("reference_set_size")),
+            displacement_threshold=_optional_float(
+                decoded.get("displacement_threshold")
+            ),
+        )
+    return None
 
 
 def _optional_float(value: object) -> float | None:
@@ -1304,36 +1288,51 @@ def _plotly_bundle_script() -> str:
     """Return the inline plotly.js bundle as one ``<script>`` element.
 
     The bundle is read from the installed ``plotly`` package (no network). Its
-    internal string constants are the library's, not this document's data, so a
-    deterministic substitution removes the scheme of any absolute URL the
-    bundle carries (an external-resource default or a documentation link) while
-    leaving every functional token byte-identical. The document therefore
-    contains no ``http://``/``https://`` URL and issues no network request.
+    internal fetchable-resource constants are rewritten deterministically (see
+    :func:`_neutralize_plotly_urls`) so the document references no external
+    resource and issues no network request; the SVG/XHTML namespace identifiers
+    are left byte-intact so ``document.createElementNS`` keeps working.
     """
     return f"<script>{_neutralize_plotly_urls(get_plotlyjs())}</script>"
 
 
-def _neutralize_plotly_urls(bundle: str) -> str:
-    """Break every absolute-URL literal inside the plotly.js bundle.
+#: SVG/XHTML/XML namespace identifiers the plotly.js bundle uses with
+#: ``document.createElementNS``. They are identifiers, not fetchable resources,
+#: so they are preserved byte-intact.
+_PLOTLY_NAMESPACE_URLS: tuple[str, ...] = (
+    "http://www.w3.org/2000/svg",
+    "http://www.w3.org/1999/xhtml",
+    "http://www.w3.org/1999/xlink",
+    "http://www.w3.org/XML/1998/namespace",
+    "http://www.w3.org/2000/xmlns/",
+)
 
-    plotly.js embeds scheme-bearing string constants: the XHTML/SVG namespace
-    identifiers (required by ``document.createElementNS``), external-resource
-    defaults (``topojsonURL``, map tile servers), and documentation links. None
-    is a document data value, so a deterministic zero-width-space insertion
-    **inside the scheme** (``http\\u200b://``) keeps each token valid where it is
-    used as an identifier — the zero-width space is not part of the scheme the
-    engine parses — while ensuring the emitted document contains no literal
-    ``http://``, ``https://``, or ``cdn.plot.ly`` substring (option (a): the
-    literal scheme string is broken, not merely preceded). This is a
+
+def _neutralize_plotly_urls(bundle: str) -> str:
+    """Break every **fetchable** absolute-URL literal in the plotly.js bundle.
+
+    plotly.js embeds scheme-bearing string constants of two kinds. The
+    SVG/XHTML/XML *namespace identifiers* are not resources: they are compared
+    as opaque strings by ``document.createElementNS`` and must stay byte-intact
+    (rewriting them would break chart rendering). The remaining constants are
+    *fetchable* resources — external-resource defaults (``topojsonURL``, map
+    tile servers) and documentation links — which this function neutralises.
+
+    A deterministic zero-width-space insertion **inside the scheme**
+    (``http\\u200b://``) breaks the literal scheme string so the emitted document
+    contains no fetchable ``http://``/``https://`` (and no bare ``cdn.plot.ly``
+    host), while remaining byte-identical across calls. This is a
     library-constant rewrite, not a request: the document loads no external
-    asset, and the substitution is byte-identical across calls.
+    asset, and the preserved namespace identifiers reference no network.
     """
+    for namespace in _PLOTLY_NAMESPACE_URLS:
+        # Break ``cdn.plot.ly`` at the dot too, so no host substring survives.
+        placeholder = namespace.replace("cdn.plot.ly", "cdn.plot\u200b.ly")
+        bundle = bundle.replace(namespace, placeholder)
     for scheme in ("https://", "http://"):
         bundle = bundle.replace(scheme, scheme.replace("://", "\u200b://"))
-    # The only ``cdn.plot.ly`` literal is the ``topojsonURL`` default embedded in
-    # the same scheme-bearing constant above; with the scheme broken it is no
-    # longer an absolute URL, but the bare host substring is still present. Break
-    # it at the dot so the document contains no ``cdn.plot.ly`` substring at all.
+    for namespace in _PLOTLY_NAMESPACE_URLS:
+        bundle = bundle.replace(namespace.replace("://", "\u200b://"), namespace)
     return bundle.replace("cdn.plot.ly", "cdn.plot\u200b.ly")
 
 
@@ -1407,7 +1406,11 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
 
 
 def _contribution_figure(view: RunReportView) -> go.Figure:
-    """Stacked weighted-contribution bars for the scored rows, rank-sorted."""
+    """Stacked weighted-contribution bars for the scored rows, rank-sorted.
+
+    A missing component contributes no segment: its value is ``None`` (a gap),
+    never a zero-height stack segment (plan §5.3(b); AGENTS.md Hard rule 2).
+    """
     scored = _scored_rows(view)
     labels = [row.category for row in scored]
     figure = go.Figure()
@@ -1417,7 +1420,7 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
             go.Bar(
                 x=labels,
                 y=[
-                    dict(contributions).get(name, 0.0)
+                    dict(contributions).get(name, None)
                     for contributions in contributions_by_row
                 ],
                 name=f"W_{name} x {name}",
@@ -1488,28 +1491,40 @@ def _heatmap_figure(view: RunReportView) -> go.Figure:
             xaxis="x2",
         )
     )
+    # Rankability-status block: one categorical column (plan §5.3(c), R1).
+    figure.add_trace(
+        go.Heatmap(
+            z=[[0.0] for _ in rows],
+            x=["rankability"],
+            y=categories,
+            opacity=0.0,
+            text=[[row.rankability_status] for row in rows],
+            hovertemplate="%{y}<br>rankability: %{text}<extra></extra>",
+            xaxis="x3",
+        )
+    )
     # C column: categorical breadth completeness status, never "coverage".
     figure.add_trace(
         go.Heatmap(
-            z=[[_evidence_grade_position(row.evidence_grade)] for row in rows],
+            z=[[0.0] for _ in rows],
             x=["breadth completeness status"],
             y=categories,
             opacity=0.0,
             text=[[_breadth_cell(row)] for row in rows],
             hovertemplate="%{y}<br>%{text}<extra></extra>",
-            xaxis="x3",
+            xaxis="x4",
         )
     )
     figure.update_layout(**_base_layout("Category x status"))
     figure.update_layout(
-        grid={"rows": 1, "columns": 3, "pattern": "independent"},
+        grid={"rows": 1, "columns": 4, "pattern": "independent"},
         xaxis2={"title": {"text": "evidence grade (ordinal)"}, "gridcolor": "#2c3440"},
-        xaxis3={
+        xaxis3={"title": {"text": "rankability"}, "gridcolor": "#2c3440"},
+        xaxis4={
             "title": {"text": "breadth completeness (C status)"},
             "gridcolor": "#2c3440",
         },
     )
-    _ = columns
     return figure
 
 
@@ -1552,12 +1567,21 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
 
 
 def _population_lollipop_figure(view: RunReportView) -> go.Figure:
-    """Log-scale population lollipop with a sample-size marker; ``0`` != ``None``."""
+    """Log-scale population lollipop with a sample-size marker; ``0`` != ``None``.
+
+    A measured ``0`` population (R5) is a **distinct explicit-zero marker**
+    labelled ``0``, placed off the log axis at a fixed ``zero_x`` position; a
+    ``None`` (unavailable) renders no population marker and an ``n/a`` label.
+    The two states must remain visibly distinct (§1.2; plan §5.3, Q5/R5).
+    """
     scored = _scored_rows(view)
     labels: list[str] = []
-    populations: list[float] = []
-    samples: list[float] = []
+    populations: list[float | None] = []
+    samples: list[float | None] = []
     annotations: list[str] = []
+    zero_x: list[float | None] = []
+    zero_labels: list[str] = []
+    zero_categories: list[str] = []
     for row in scored:
         labels.append(row.category)
         value = row.discovered_population_count
@@ -1565,12 +1589,18 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
         if value is None:
             populations.append(None)
             annotations.append(_NA)
+            zero_x.append(None)
         elif value == 0:
+            # Off the log axis: a distinct explicit-zero marker labelled ``0``.
             populations.append(None)
             annotations.append("0")
+            zero_x.append(_POPULATION_EXPLICIT_ZERO_X)
+            zero_labels.append("0")
+            zero_categories.append(row.category)
         else:
             populations.append(float(value))
             annotations.append(format(value, "d"))
+            zero_x.append(None)
         samples.append(None if sample is None else float(sample))
     figure = go.Figure()
     figure.add_trace(
@@ -1586,6 +1616,23 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     )
     figure.add_trace(
         go.Scatter(
+            x=zero_x,
+            y=list(labels),
+            mode="markers+text",
+            name="discovered population: measured zero",
+            marker={
+                "size": 12,
+                "color": "#f2c14e",
+                "symbol": "diamond-open",
+                "line": {"width": 2, "color": "#f2c14e"},
+            },
+            text=[text if text is not None else "" for text in zero_x],
+            textposition="middle right",
+            hovertemplate="%{y}: measured 0<extra></extra>",
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
             x=samples,
             y=labels,
             mode="markers",
@@ -1595,7 +1642,13 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     )
     figure.update_layout(**_base_layout("Population and sample size (log scale)"))
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
+    _ = (zero_labels, zero_categories)
     return figure
+
+
+#: Fixed x position of the explicit-zero population marker, placed left of the
+#: smallest log-scale tick so a measured ``0`` is off the log axis (R5).
+_POPULATION_EXPLICIT_ZERO_X: float = 0.1
 
 
 def _component_dumbbell_figure(view: RunReportView) -> go.Figure:
@@ -1654,7 +1707,11 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
             mode="markers",
             text=labels,
             marker={"size": sizes, "color": "#8fd694"},
-            hovertemplate="%{text}<br>score %{x}<br>Q %{y}<extra></extra>",
+            customdata=texts,
+            hovertemplate=(
+                "%{text}<br>score %{x}<br>Q %{y}<br>sample fraction %{customdata}"
+                "<extra></extra>"
+            ),
         )
     )
     figure.update_layout(
