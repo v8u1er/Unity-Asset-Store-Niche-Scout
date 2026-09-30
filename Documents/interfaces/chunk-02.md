@@ -583,3 +583,18 @@ and in the Chunk 2 gate report.
   manually cross-check its plan's LREQ table against the actual
   `@pytest.mark.lreq` markers and `tests/traceability.json` entries. Its
   marker-without-entry direction still runs and did pass here.
+
+---
+
+## 8. Chunk 30 revision — read API addition (2026-09-30)
+
+Operator-authorized (chunk-30 D-3; plan `chunk-30-dark-mode-plotly-dashboard.md` §2/§12).
+Additive to §2.8; no existing read changes.
+
+- `SqliteRepository.get_latest_run_id(self) -> Optional[str]` — the `run_id` of the run with
+  the greatest decoded `run_started_at_utc`; ties break to the lexicographically smallest
+  `run_id`; `None` when `runs` is empty. Selection is performed in Python over
+  `SELECT run_id, run_started_at_utc FROM runs` because `_encode_column` writes
+  `datetime.isoformat()` with variable-width fractional seconds, so a SQL `ORDER BY` on the
+  TEXT column is not reliably chronological. Read-only, deterministic, no clock read, no
+  network. Added to the `Repository` protocol by `chunk-00.md` §12.

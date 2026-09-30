@@ -177,3 +177,25 @@ def main(argv: Sequence[str] | None = None) -> int:
   untouched by Chunk 12 (dependency-map §6.4).
 - **`runs.taxonomy_sha256` empty-hash rejection** is Chunk 10-owned and unchanged
   by this chunk.
+
+## 9. Chunk 30 revision — optional `--run-id` (2026-09-30)
+
+Operator-authorized (chunk-30 D-3; plan
+`chunk-30-dark-mode-plotly-dashboard.md` §2/§12). This deliberately **amends
+Ruling 3**; Ruling 6 (stdout, no file write, no browser) is retained.
+
+- **`CliOptions.run_id` (§4)** is now the **optional** dashboard selector:
+  `--run-id`, or the most recent run by `run_started_at_utc` when absent.
+- **`build_parser` (§5).** `dashboard --run-id` is `required=False`,
+  `default=None` (still no `--latest`).
+- **`dashboard_command` (§5).** When `options.run_id` is `None`, resolve
+  `repository.get_latest_run_id()`; if that is `None` (empty `runs` table), print a
+  redacted error to `stderr` and return `EXIT_RUNTIME_ERROR` without calling the
+  renderer; otherwise call `report_renderer(repository, str(run_id))` as today. A
+  given-but-unknown run id still maps `RunNotFoundError` to `EXIT_RUNTIME_ERROR`.
+- **Behavioral contract (§6).** The bullet "`dashboard` without `--run-id` is an
+  argparse usage error (exit 2)" is superseded: an absent `--run-id` selects the
+  most recent run; an empty `runs` table is a runtime failure.
+- **§1 note.** `database.py` is now touched by this chunk (adds
+  `get_latest_run_id`; see `chunk-00.md` §12 and `chunk-02.md` §8), superseding the
+  "`database.py` was not touched" sentence.

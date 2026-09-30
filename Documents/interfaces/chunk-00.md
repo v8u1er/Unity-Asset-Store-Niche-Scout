@@ -519,3 +519,15 @@ Operator-authorized remediation (chunk-24; authoritative delta:
   contiguous blocks.
 - `SCHEMA_VERSION` is `"1.2.0"` (was `"1.1.0"`); `sample_members` carries
   `stratum_offset`/`stratum_stride` in place of the ordinal interval columns.
+
+## 12. Chunk 30 revision — repository latest-run read (2026-09-30)
+
+Operator-authorized (chunk-30 D-3; plan `chunk-30-dark-mode-plotly-dashboard.md` §2/§12).
+Additive only; no existing protocol name changes.
+
+- The `Repository` protocol (§6) additionally declares:
+  `def get_latest_run_id(self) -> Optional[str]: ...` — return the `run_id` of the row with
+  the greatest decoded `run_started_at_utc` (timezone-aware UTC), tie-broken by the
+  lexicographically smallest `run_id`; `None` when `runs` is empty. Read-only,
+  deterministic, no clock read, no network. Implemented by Chunk 30 in `SqliteRepository`
+  (see `interfaces/chunk-02.md` §8).

@@ -218,3 +218,43 @@ remediation (chunk-24; see `Documents/interfaces/chunk-24.md`).
 - HTML/text rendering shows the stratum's offset and stride in place of the
   ordinal interval; the "Sample strata" table otherwise renders persisted values
   verbatim.
+
+## 10. Chunk 30 revision — dark-mode Plotly dashboard (2026-09-30)
+
+Operator-authorized (chunk-30 D-1..D-4; plan
+`chunk-30-dark-mode-plotly-dashboard.md` §2/§12). This section supersedes the
+affected lines above.
+
+- **Constants (§2).** Add `COMPONENT_WEIGHTS`, `EVIDENCE_GRADE_ORDER`,
+  `COVERAGE_REFERENCE_THRESHOLDS`, `DASHBOARD_CHART_IDS`, all sourced from
+  `models`/SRS §14 (never hard-coded). `EVIDENCE_GRADE_ORDER` equals the
+  `EvidenceGrade` enum reversed (insufficient→strong).
+- **`CategoryReportRow` (§4).** Appends `rank_demand_heavy: int | None`,
+  `rank_competition_heavy: int | None`, `breadth_completeness_status: str | None`,
+  `breadth_source: str | None`.
+- **New type.** `RunSensitivitySummary` (frozen, `slots=True`): `policies`,
+  `top_3_stability`, `top_5_stability`, `maximum_score_delta`,
+  `maximum_rank_displacement`, `warning`, `reference_set_size`,
+  `displacement_threshold`; every optional field is `None` when the persisted value
+  is null/absent (never `0`/`False`).
+- **`RunReportView` (§4).** Appends `sensitivity: RunSensitivitySummary | None`.
+- **New function.** `render_run_dashboard_html(view: RunReportView) -> str` — one
+  self-contained dark-mode HTML document with inline Plotly JS, fixed `div_id`s,
+  no `<script src>`/`<link>`/CDN, deterministic and byte-identical for a fixed
+  view; includes `HEURISTIC_STATEMENT`, the primary table, and the category detail
+  panel.
+- **`render_dashboard_html` (§5).** Signature unchanged; its body is repointed to
+  `render_run_dashboard_html(load_run_report_view(repository, run_id))`.
+  Self-containment and database-reads-only guarantees are unchanged.
+- **Rank locant correction (§4 line 72, §7 line 197).** The display rank is
+  `rank_balanced` from `ranking_sensitivity_json.categories`, **not**
+  `ranked_categories` (`report.py:550-579`, `LREQ-SEN-020`); the earlier text is
+  superseded.
+- **Display rules (§7).** The category × status heatmap shows numeric D/R/Q
+  stratum eligibility coverage (with the 0.50/0.80 reference lines) plus a C
+  column carrying `breadth_completeness_status`/`breadth_source`, **never labelled
+  "coverage"**; evidence grade uses an ordinal colour scale; a measured `0`
+  renders as `0`, distinct from the `n/a` null marker; refused categories never
+  share the scored axis with rankable ones; no confidence interval or error bar;
+  coverage and `sample_fraction` stay distinctly labelled. `report.py` may import
+  `plotly`; all other boundary rules (§1) are unchanged.
