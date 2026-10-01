@@ -1491,6 +1491,22 @@
   "tests/test_report.py::test_dashboard_charts_carry_explanations_and_human_labels": [
     "LREQ-RPT-010"
   ],
+  "tests/test_report.py::test_dashboard_css_uses_the_reference_palette_and_explicit_type_scale": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_layout_has_minimal_anchor_navigation_with_inline_svg_and_skip_link": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_column_guide_discloses_every_primary_column_label": [
+    "LREQ-RPT-020",
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_charts_use_automargin_for_long_category_labels": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_evidence_scale_is_retuned_to_the_reference_palette": [
+    "LREQ-RPT-020"
+  ],
   "tests/test_report.py::test_dashboard_detail_panel_covers_rpt_030_items_for_a_selected_category": [
     "LREQ-RPT-030"
   ],

@@ -1087,19 +1087,39 @@ _DASHBOARD_CSS_TOKENS = (
     "--font-sans",
     "--font-mono",
     "--measure",
+    # Chunk 33 — explicit type/weight scale (plan §5) and nav offset (§7.3).
+    "--font-size-label",
+    "--font-size-small",
+    "--font-size-body",
+    "--font-size-subhead",
+    "--font-size-card-title",
+    "--font-size-section-title",
+    "--font-size-page-title",
+    "--font-size-numeric-md",
+    "--font-size-numeric-lg",
+    "--weight-body",
+    "--weight-muted",
+    "--weight-label",
+    "--weight-numeric",
+    "--weight-card-title",
+    "--weight-section-title",
+    "--weight-page-title",
+    "--nav-topbar-height",
 )
 
+# Chunk 33 supersedes the chunk-32 token hexes (plan §3.1, §4.1): the same node
+# asserts these ten reference-palette values casefolded.
 _DASHBOARD_CSS_HEXES = (
-    "#0b1120",
-    "#1b2029",
-    "#222833",
-    "#2c3440",
-    "#e6e9ee",
-    "#9aa6b2",
-    "#6ea8fe",
-    "#f2c14e",
-    "#8fd694",
-    "#e06c75",
+    "#0c1d27",
+    "#112d3b",
+    "#0c2432",
+    "#1f394e",
+    "#e6f0f4",
+    "#8fb0bf",
+    "#64bcfb",
+    "#46b688",
+    "#48b78d",
+    "#e27882",
 )
 
 _DASHBOARD_CSS_CLASSES = (
@@ -1128,6 +1148,12 @@ _DASHBOARD_CSS_CLASSES = (
     "metric-kind",
     "missing",
     "rankability",
+    # Chunk 33 — minimal navigation and the Column guide (plan §6.2, §7).
+    "dashboard-nav",
+    "nav-link",
+    "nav-label",
+    "skip-link",
+    "column-guide",
 )
 
 
@@ -1772,3 +1798,254 @@ def test_dashboard_uses_progressive_disclosure_without_dropping_mandated_content
         assert held.count(report._FORMULA_EXPLANATIONS[0]) == 1
     finally:
         repository.close()
+
+
+# --------------------------------------------------------------------------
+# Chunk 33 — dashboard visual redesign: reference palette, explicit type
+# scale, truncation fix, and minimal anchor navigation (plan §9.1).
+#
+# Palette/type tokens are read from the packaged stylesheet; the nav, icon,
+# Column-guide, and automargin assertions walk the same normalized Dash tree
+# as the chunk-31/32 nodes above. No new fixture and no new golden vector
+# (plan §9.5).
+# --------------------------------------------------------------------------
+
+#: Chunk 33 reference token hexes (plan §4.1).
+_REFERENCE_PALETTE_HEXES = (
+    "#0c1d27",
+    "#112d3b",
+    "#0c2432",
+    "#1f394e",
+    "#e6f0f4",
+    "#8fb0bf",
+    "#64bcfb",
+    "#46b688",
+    "#48b78d",
+    "#e27882",
+)
+
+#: Chunk 33 ordinal evidence scale, in ``EVIDENCE_GRADE_ORDER`` order (plan
+#: §4.2, LR1).
+_EVIDENCE_SCALE_HEXES = ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688")
+
+#: Chunk 33 explicit size tokens (plan §5.1).
+_TYPE_SCALE_TOKENS = (
+    "--font-size-label",
+    "--font-size-small",
+    "--font-size-body",
+    "--font-size-subhead",
+    "--font-size-card-title",
+    "--font-size-section-title",
+    "--font-size-page-title",
+    "--font-size-numeric-md",
+    "--font-size-numeric-lg",
+)
+
+#: Chunk 33 explicit weight tokens (plan §5.2).
+_WEIGHT_SCALE_TOKENS = (
+    "--weight-body",
+    "--weight-muted",
+    "--weight-label",
+    "--weight-numeric",
+    "--weight-card-title",
+    "--weight-section-title",
+    "--weight-page-title",
+)
+
+#: Chunk 33 presentational nav anchors in document order (plan §7.1).
+_DASHBOARD_NAV_ANCHORS = (
+    "#run-header-block",
+    "#kpi-strip",
+    "#chart-grid",
+    "#primary-table-section",
+    "#detail-section",
+)
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_uses_the_reference_palette_and_explicit_type_scale():
+    """Chunk 33 palette, evidence scale, and type/weight tokens are in the CSS.
+
+    The stylesheet carries the ten reference token hexes (plan §4.1) and the
+    four ordinal evidence hexes (plan §4.2, LR1); the retired amber ``#f2c14e``
+    is gone; every size token (plan §5.1) and weight token (plan §5.2) is
+    defined; the asset stays offline (no scheme-bearing URL, ``@import``, or
+    ``url(``); and an unavoidable DataTable clip is disclosed with an ellipsis
+    (plan §6.2/LR4; skill ``ux-guidelines.csv:85`` "Truncate with ellipsis and
+    expand option").
+    """
+    css_path = _dashboard_css_path()
+    assert css_path.is_file(), f"missing stylesheet: {css_path}"
+    text = css_path.read_text(encoding="utf-8")
+    folded = text.casefold()
+    for hex_value in _REFERENCE_PALETTE_HEXES:
+        assert hex_value in folded, f"missing reference hex {hex_value!r}"
+    for hex_value in _EVIDENCE_SCALE_HEXES:
+        assert hex_value in folded, f"missing evidence hex {hex_value!r}"
+    assert "#f2c14e" not in folded
+    for token in _TYPE_SCALE_TOKENS + _WEIGHT_SCALE_TOKENS:
+        assert token in text, f"missing type/weight token {token!r}"
+    assert "http://" not in folded
+    assert "https://" not in folded
+    assert "@import" not in folded
+    assert "url(" not in folded
+    # `.dash-cell`/`.dash-header` disclose a clip with an ellipsis; the rule may
+    # be per selector or a combined selector list (plan §3.3, §6.2).
+    for selector in (".dash-cell", ".dash-header"):
+        rules = re.findall(rf"{re.escape(selector)}[^{{}}]*\{{([^{{}}]*)\}}", text)
+        assert rules, f"missing rule for {selector}"
+        assert any("text-overflow: ellipsis" in rule for rule in rules), selector
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_layout_has_minimal_anchor_navigation_with_inline_svg_and_skip_link(
+    tmp_path,
+):
+    """The layout carries an anchor nav with inline SVG icons and a skip link.
+
+    Plan §7.1: a ``Nav`` targets the five sections in document order; a skip
+    link is the first focusable element and points at ``#main-content`` (skill
+    ``ux-guidelines.csv:46`` "Skip Links"); every nav item has a visible text
+    label; the icons are inline SVG emitted through ``dcc.Markdown`` with
+    ``aria-hidden="true"`` and ``focusable="false"`` (plan §7.2/LR2; skill
+    ``icons.csv:2`` usage column: a decorative icon beside visible text is
+    ``aria-hidden``); every existing ``DASHBOARD_COMPONENT_IDS`` id survives.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        assert _components_of_type(layout, "Nav"), "the layout has no Nav"
+        anchors = _components_of_type(layout, "A")
+        skip_links = [
+            anchor
+            for anchor in anchors
+            if anchor.to_plotly_json()["props"].get("className") == "skip-link"
+        ]
+        assert skip_links, "no skip-link anchor"
+        assert skip_links[0].to_plotly_json()["props"].get("href") == "#main-content"
+        assert anchors[0] is skip_links[0], "the skip link is not the first anchor"
+        nav_links = [
+            anchor
+            for anchor in anchors
+            if anchor.to_plotly_json()["props"].get("className") == "nav-link"
+        ]
+        assert [
+            anchor.to_plotly_json()["props"].get("href") for anchor in nav_links
+        ] == list(_DASHBOARD_NAV_ANCHORS)
+        for anchor in nav_links:
+            labels = [
+                span
+                for span in _components_of_type(anchor, "Span")
+                if span.to_plotly_json()["props"].get("className") == "nav-label"
+            ]
+            assert len(labels) == 1, "nav item needs one visible text label"
+            assert isinstance(labels[0].children, str)
+            assert labels[0].children.strip()
+        for anchor_id in _DASHBOARD_NAV_ANCHORS:
+            assert _component_by_id(layout, anchor_id[1:]) is not None, anchor_id
+        markdowns = [
+            node
+            for node in _components_of_type(layout, "Markdown")
+            if isinstance(node.children, str) and "<svg" in node.children
+        ]
+        assert markdowns, "no inline SVG icon Markdown component"
+        for markdown in markdowns:
+            held = markdown.children
+            assert 'aria-hidden="true"' in held
+            assert 'focusable="false"' in held
+            props = markdown.to_plotly_json()["props"]
+            assert props.get("dangerously_allow_html") is True
+        for component_id, _role in report.DASHBOARD_COMPONENT_IDS:
+            assert _component_by_id(layout, component_id) is not None
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_column_guide_discloses_every_primary_column_label(tmp_path):
+    """One ``column-guide`` Details lists all 30 labels; columns are unchanged.
+
+    Plan §6.2/LR4: the native disclosure directly above the primary table is
+    the visible full-detail path for a clipped header (skill
+    ``ux-guidelines.csv:114`` "Essential Text Truncation" and
+    ``ux-guidelines.csv:117`` "Compact Label Overflow": never a hover-only
+    tooltip). It renames and removes no column: the DataTable's default
+    columns stay in ``_PRIMARY_COLUMNS`` order.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        guides = [
+            node
+            for node in _components_of_type(layout, "Details")
+            if node.to_plotly_json()["props"].get("className") == "column-guide"
+        ]
+        assert len(guides) == 1
+        held = _norm(guides[0])
+        for label, _attribute in report._PRIMARY_COLUMNS:
+            assert label in held, f"column guide omits {label!r}"
+        tables = _components_of_type(layout, "DataTable")
+        assert len(tables) == 1
+        names = [column["name"] for column in tables[0].columns]
+        assert names == [label for label, _ in report._PRIMARY_COLUMNS]
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_charts_use_automargin_for_long_category_labels(tmp_path):
+    """Category-axis figures set ``automargin``; the fixed ``l: 140`` is gone.
+
+    Plan §6.1: ``_score_bar_figure`` and ``_population_lollipop_figure`` carry
+    the category on ``yaxis``, ``_contribution_figure`` on ``xaxis``; the
+    shared margin no longer pins the left edge, so a long category label
+    expands the margin from the view's own labels. Two builds stay equal
+    (plan §8).
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        div_ids = dict(report.DASHBOARD_CHART_IDS)
+        for chart_key, axis in (
+            ("score_bar", "yaxis"),
+            ("population_lollipop", "yaxis"),
+            ("contribution_stack", "xaxis"),
+        ):
+            figure = _graph_for(layout, div_ids[chart_key])
+            axis_layout = figure["layout"].get(axis, {})
+            assert axis_layout.get("automargin") is True, chart_key
+            margin = figure["layout"].get("margin", {})
+            assert margin.get("l") is not None, chart_key
+            assert margin.get("l") != 140, chart_key
+        assert _norm(layout) == _norm(report.build_dashboard_layout(view))
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_evidence_scale_is_retuned_to_the_reference_palette():
+    """LR1: the four ordinal evidence colours match the stylesheet values.
+
+    ``report._EVIDENCE_GRADE_COLOURS`` (plan §4.2) is the zip of
+    ``EVIDENCE_GRADE_ORDER`` with the image-family values; the CSS defines the
+    same four ``--evidence-*`` values, so the bar colour, the ordinal source,
+    and the stylesheet cannot drift apart.
+    """
+    assert report._EVIDENCE_GRADE_COLOURS == tuple(
+        zip(
+            report.EVIDENCE_GRADE_ORDER,
+            ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688"),
+        )
+    )
+    text = _dashboard_css_path().read_text(encoding="utf-8")
+    folded = text.casefold()
+    for token, expected in (
+        ("--evidence-insufficient", "#c98b8b"),
+        ("--evidence-weak", "#e0a458"),
+        ("--evidence-moderate", "#8fb0bf"),
+        ("--evidence-strong", "#46b688"),
+    ):
+        match = re.search(rf"{re.escape(token)}\s*:\s*(#[0-9a-f]{{6}})", folded)
+        assert match is not None, f"missing token {token!r}"
+        assert match.group(1) == expected, token
