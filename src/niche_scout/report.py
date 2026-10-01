@@ -1756,13 +1756,17 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
         figure.add_trace(
             go.Scatter(
                 x=[_REFUSED_ANNOTATION_X] * (len(refused) + 1),
-                y=[" "] + [f"{row.category} (refused)" for row in refused],
+                y=[" "]
+                + [f"{_category_leaf_label(row, view)} (refused)" for row in refused],
                 mode="text",
                 text=[""] + [_NA] * len(refused),
                 textposition="middle right",
                 name="refused (n/a)",
                 showlegend=False,
-                hovertemplate="%{y}: n/a<extra></extra>",
+                customdata=[[""]] + [[row.category] for row in refused],
+                hovertemplate=(
+                    "%{y}: n/a<br>category: %{customdata[0]}<extra></extra>"
+                ),
             )
         )
     figure.update_layout(**_base_layout())
@@ -1898,7 +1902,10 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             },
             text=["" if value is None else "0" for value in zero_x],
             textposition="middle right",
-            hovertemplate="%{y}: measured 0<extra></extra>",
+            customdata=customdata,
+            hovertemplate=(
+                "%{y}: measured 0<br>category: %{customdata[0]}<extra></extra>"
+            ),
         )
     )
     figure.add_trace(
