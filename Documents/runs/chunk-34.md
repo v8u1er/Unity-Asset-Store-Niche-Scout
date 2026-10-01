@@ -175,8 +175,49 @@ removing any column.
 | Tests — `test-author` | DONE | six new §10.1 nodes + §10.2 (a)–(g) amended in place; two fixture names + `__all__`; six `traceability.json` keys; red step 12 failed / 43 passed; commit `chunk-34: tests (red)` |
 | Implement — `impl-deep` | DONE | `report.py` + `dashboard.css`; one plan erratum found (leaf-label expectation contradicted §5.2), plan + test corrected in place; commits `chunk-34: implementation`, `chunk-34: tests (leaf-label erratum)`, `chunk-34: plan erratum (leaf-label expectation)` |
 | Lead verification | DONE | pytest 761 passed; validate_traceability exit 0; import boundaries + scope prohibitions exit 0; ruff format/check clean; live Playwright re-audit below |
-| Review — `spec-reviewer` | PENDING | |
+| Review — `spec-reviewer` (round 1) | DONE | `VERDICT: FAIL` — 1 Major (tests not ruff-format clean), 3 Minors (refused label full path; measured-zero hover lacks full path; §6.3 SQLite probe unrecorded). No Blocker |
+| Review fix round 1 | DONE | Major + the two label/hover Minors fixed; probe Minor resolved as N/A with runtime evidence; commits `chunk-34: review fixes (format + refused/zero leaf guards)`, `... (refused leaf labels + zero hover)`, `... (rankable zero-population vector)` |
+| Lead re-verify (round 1) | DONE | pytest 761 passed; validators exit 0; ruff format/check clean on all three changed test/src files; live re-audit below |
+| Review — `spec-reviewer` (round 2) | PENDING | |
 | Gate | PENDING | |
+
+## Reviewer round 1 and fix round 1
+
+Reviewer `VERDICT: FAIL` (commit `d0ca884` state), findings and dispositions:
+
+- **[Major] `tests/test_report.py` not ruff-format clean** (`_relative_luminance` generator, plan §12 /
+  `LREQ-NFR-060`). **Fixed**: reformatted in place; `ruff format --check tests/test_report.py` →
+  "1 file already formatted".
+- **[Minor] `report.py:1759` refused annotation kept full taxonomy paths** (plan §1.1/§5.2).
+  **Accepted and fixed** (operator item 1 is explicit; §1.1 says every chart category label, axis
+  and hover, is the leaf). Lead-authorised in-scope minor remediation, guarded by two new
+  in-place assertions on the existing leaf-label node (node ID/marker/key unchanged).
+- **[Minor] `report.py:1899` measured-zero trace hover had no full-path field** (plan §5.2
+  hover-collision-safety). **Accepted and fixed**, same guard node.
+- **[Minor] §6.3 SQLite marker probe has no recorded evidence.** **Resolved as not applicable**:
+  the plan's probe is `SELECT DISTINCT marker->>'symbol' FROM traces`, but the schema has **no
+  `traces` table** — `database.py` declares only `runs`, `raw_discovery_observations`,
+  `sample_members`, `enrichment_observations`, `category_scores` (`database.py:87,111,134,153,179`)
+  plus `schema_metadata`. Charts are built in `report.py` and never persisted as traces, so the
+  probe cannot run. Equivalent **runtime evidence** taken instead (Kilo Playwright, live figure
+  state): the only explicit marker `symbol` in any of the five figures is `diamond-open`, on the
+  population `measured zero` trace; all other traces carry no `symbol`.
+
+Fix-round commands (lead-run): `python -m pytest -q` → **761 passed**;
+`validate_traceability` / `check_import_boundaries` / `check_scope_prohibitions` → exit 0;
+`python -m ruff format --check src/niche_scout/report.py tests/test_report.py tests/fixtures/report_fixtures.py`
+→ "3 files already formatted"; `python -m ruff check` on the same three → "All checks passed!".
+
+Live re-audit after the fix (0 console errors):
+
+- Score-bar refused annotation `y` = `[" ", "creatures (refused)", "humanoids (refused)",
+  "furniture (refused)", "weapons (refused)", "air (refused)", "land (refused)"]`; each row's
+  `customdata` holds the full path (`3d/characters/creatures`, …) and the hover is
+  `"%{y}: n/a<br>category: %{customdata[0]}<extra></extra>"`.
+- Population `measured zero` trace `customdata` holds the full paths and hover is
+  `"%{y}: measured 0<br>category: %{customdata[0]}<extra></extra>"`; marker `symbol` `diamond-open`.
+- Mobile (375×800): link width 37.5 px, link center x 26.7 = icon center x 26.7 — centered.
+- Re-confirmed at 1440×869: no `gtitle`; tick font mono; single-series legends empty; 30 headers.
 
 ## Lead verification (2026-10-01, after implementation)
 
