@@ -1109,7 +1109,11 @@ _DASHBOARD_CSS_TOKENS = (
 )
 
 # Chunk 33 supersedes the chunk-32 token hexes (plan §3.1, §4.1): the same node
-# asserts these ten reference-palette values casefolded.
+# asserts these ten reference-palette values casefolded. Chunk 34 (plan §10.2a)
+# adds the four §4.1 ramp stops the ``--ramp-1``..``--ramp-4`` / ``--evidence-*``
+# tokens carry; the ten semantic tokens above stay asserted (``--muted-fg``
+# ``#8fb0bf`` and ``--positive`` ``#46b688`` are retained as tokens, not as
+# evidence values).
 _DASHBOARD_CSS_HEXES = (
     "#0c1d27",
     "#112d3b",
@@ -1121,6 +1125,10 @@ _DASHBOARD_CSS_HEXES = (
     "#46b688",
     "#48b78d",
     "#e27882",
+    "#9fd7ea",
+    "#b9dbb0",
+    "#d5dd93",
+    "#e6d489",
 )
 
 _DASHBOARD_CSS_CLASSES = (
@@ -1508,7 +1516,9 @@ def test_dashboard_charts_carry_explanations_and_human_labels(tmp_path):
             assert caption in held
             assert report._DASHBOARD_CHART_TITLES[chart_key] in held
             figure = _graph_for(layout, div_id)
-            assert figure["layout"]["title"]["text"]
+            # Chunk 34 §5.1: the card ``H3`` is the only chart title; the
+            # duplicated in-plot Plotly title is dropped.
+            assert "title" not in figure["layout"]
         # Plain-language component names replace bare acronyms in the legend.
         assert "Demand" in held
         assert "Competition" in held
@@ -1602,6 +1612,10 @@ def test_dashboard_policy_bump_and_kpi_tiles(tmp_path):
         )
         for trace in bump["data"]:
             assert trace["connectgaps"] is False
+            # Chunk 34 §5.3: each series carries a direct label on its first
+            # policy point, so the legend need not be read to identify a line.
+            assert "text" in trace["mode"]
+            assert trace["text"][0]
         kpi_strip = _component_by_id(report.build_dashboard_layout(view), "kpi-strip")
         assert kpi_strip is not None
         kpi_text = _norm(kpi_strip)
@@ -1637,9 +1651,10 @@ def test_dashboard_score_bar_encodes_ordinal_evidence_grade(tmp_path):
             for row in report._scored_rows(view)
         ]
         assert trace["marker"]["color"] == expected
-        # The exact grade text is present in the hover customdata.
+        # The exact grade text is present in the hover customdata, paired with
+        # the full category path (chunk 34 §5.2).
         assert trace["customdata"] == [
-            row.evidence_grade for row in report._scored_rows(view)
+            [row.category, row.evidence_grade] for row in report._scored_rows(view)
         ]
         assert "evidence strength" in trace["hovertemplate"]
         # The ordinal palette is keyed by EVIDENCE_GRADE_ORDER.
@@ -1825,9 +1840,9 @@ _REFERENCE_PALETTE_HEXES = (
     "#e27882",
 )
 
-#: Chunk 33 ordinal evidence scale, in ``EVIDENCE_GRADE_ORDER`` order (plan
-#: §4.2, LR1).
-_EVIDENCE_SCALE_HEXES = ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688")
+#: Chunk 34 ordinal evidence scale, in ``EVIDENCE_GRADE_ORDER`` order: the four
+#: §4.1 ramp stops (plan §3.1, §4.2 LR1, §10.2e).
+_EVIDENCE_SCALE_HEXES = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
 
 #: Chunk 33 explicit size tokens (plan §5.1).
 _TYPE_SCALE_TOKENS = (
@@ -2071,29 +2086,339 @@ def test_dashboard_charts_use_automargin_for_long_category_labels(tmp_path):
         repository.close()
 
 
+def _relative_luminance(hex_colour):
+    """Return the WCAG relative luminance of an ``#rrggbb`` colour."""
+
+    def linearise(channel):
+        if channel <= 0.04045:
+            return channel / 12.92
+        return ((channel + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (
+        linearise(int(hex_colour[index : index + 2], 16) / 255.0)
+        for index in (1, 3, 5)
+    )
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def _contrast_ratio(first, second):
+    """Return the WCAG contrast ratio between two ``#rrggbb`` colours."""
+    lighter, darker = sorted(
+        (_relative_luminance(first), _relative_luminance(second)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_dashboard_evidence_scale_is_retuned_to_the_reference_palette():
     """LR1: the four ordinal evidence colours match the stylesheet values.
 
-    ``report._EVIDENCE_GRADE_COLOURS`` (plan §4.2) is the zip of
-    ``EVIDENCE_GRADE_ORDER`` with the image-family values; the CSS defines the
-    same four ``--evidence-*`` values, so the bar colour, the ordinal source,
-    and the stylesheet cannot drift apart.
+    ``report._EVIDENCE_GRADE_COLOURS`` (plan §4.1) is the zip of
+    ``EVIDENCE_GRADE_ORDER`` with the ramp stops; the CSS defines the same four
+    ``--evidence-*`` values, so the bar colour, the ordinal source, and the
+    stylesheet cannot drift apart. Every stop is below 3:1 against white (plan
+    §4.2), documenting why the Plotly mode bar stays disabled and no ramp colour
+    is placed on a white surface.
     """
+    expected = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
     assert report._EVIDENCE_GRADE_COLOURS == tuple(
-        zip(
-            report.EVIDENCE_GRADE_ORDER,
-            ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688"),
-        )
+        zip(report.EVIDENCE_GRADE_ORDER, expected)
     )
     text = _dashboard_css_path().read_text(encoding="utf-8")
     folded = text.casefold()
-    for token, expected in (
-        ("--evidence-insufficient", "#c98b8b"),
-        ("--evidence-weak", "#e0a458"),
-        ("--evidence-moderate", "#8fb0bf"),
-        ("--evidence-strong", "#46b688"),
+    for token, value in (
+        ("--evidence-insufficient", "#9fd7ea"),
+        ("--evidence-weak", "#b9dbb0"),
+        ("--evidence-moderate", "#d5dd93"),
+        ("--evidence-strong", "#e6d489"),
     ):
         match = re.search(rf"{re.escape(token)}\s*:\s*(#[0-9a-f]{{6}})", folded)
         assert match is not None, f"missing token {token!r}"
-        assert match.group(1) == expected, token
+        assert match.group(1) == value, token
+    for hex_value in expected:
+        assert _contrast_ratio(hex_value, "#ffffff") < 3.0, hex_value
+
+
+# --------------------------------------------------------------------------
+# Chunk 34 — chart label/legend/font/colour remediation + compliant table
+# prioritization + nav centering (plan §10.1). The fixture view comes from
+# ``_dashboard_view``; the leaf-collision vector reuses the fixture factories
+# and the two ``report_fixtures`` collision category names (plan §10.5).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_path):
+    """Chart labels are the final ``/`` segment; same-leaf groups disambiguate.
+
+    Plan §5.2: ``_category_leaf_label`` returns the leaf; when two or more rows
+    in the same view share a leaf, every member of the group gets
+    ``" · <parent path>"``. The full path stays in the layout (table/detail) and
+    in hover customdata; no number, rank, or measured value changes.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        div_ids = dict(report.DASHBOARD_CHART_IDS)
+        scored = report._scored_rows(view)
+        assert [row.category for row in scored] == [
+            rf.CATEGORY_ALPHA,
+            rf.CATEGORY_BRAVO,
+            rf.CATEGORY_CHARLIE,
+        ]
+        bar = _graph_for(layout, div_ids["score_bar"])
+        assert bar["data"][0]["y"] == ["Alpha", "Bravo", "Charlie"]
+        assert rf.CATEGORY_ALPHA not in bar["data"][0]["y"]
+        scatter = _graph_for(layout, div_ids["score_quality_scatter"])
+        assert scatter["data"][0]["text"] == ["Alpha", "Bravo", "Charlie"]
+        held = _norm(layout)
+        for row in view.categories:
+            assert row.category in held
+        # A non-colliding leaf carries no suffix; the fixture's four leaves are
+        # unique (Alpha, Bravo, Charlie, NonRankable).
+        assert report._category_leaf_label(scored[0], view) == "Alpha"
+        assert _norm(layout) == _norm(report.build_dashboard_layout(view))
+    finally:
+        repository.close()
+
+    # The collision vector needs one run carrying both same-leaf rows, so it is
+    # seeded inline with the same fixture factories ``_view_with_row`` uses
+    # (that helper builds a one-row run only).
+    repository = _repository(tmp_path)
+    try:
+        categories = (rf.CATEGORY_COLLISION_FIRST, rf.CATEGORY_COLLISION_SECOND)
+        run = rf.run_record(categories, run_id="run-leaf-collision")
+        rows = tuple(
+            dataclasses.replace(
+                rf.category_score_record(category), run_id="run-leaf-collision"
+            )
+            for category in categories
+        )
+        _seed(repository, run, rows)
+        collision_view = report.load_run_report_view(repository, "run-leaf-collision")
+        labels = {
+            row.category: report._category_leaf_label(row, collision_view)
+            for row in collision_view.categories
+        }
+        assert labels == {
+            rf.CATEGORY_COLLISION_FIRST: "Foo · a/x",
+            rf.CATEGORY_COLLISION_SECOND: "Foo · b/y",
+        }
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones(tmp_path):
+    """The two single-series figures hide the legend; the three others keep it.
+
+    Plan §5.3: *Composite score by rank* and *Composite score vs quality* drop
+    the meaningless one-item legend; contribution, population, and policy bump
+    keep theirs (a missing ``showlegend`` key means Plotly's default ``True``).
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        div_ids = dict(report.DASHBOARD_CHART_IDS)
+        for chart_key in ("score_bar", "score_quality_scatter"):
+            figure = _graph_for(layout, div_ids[chart_key])
+            assert figure["layout"].get("showlegend") is False, chart_key
+        for chart_key in (
+            "contribution_stack",
+            "policy_bump",
+            "population_lollipop",
+        ):
+            figure = _graph_for(layout, div_ids[chart_key])
+            assert figure["layout"].get("showlegend") is not False, chart_key
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_figures_use_mono_numeric_and_sans_label_fonts(tmp_path):
+    """All five figures: mono numeric ticks, sans labels, no in-plot title.
+
+    Plan §5.1/§5.4: both tickfonts use ``_FIGURE_FONT_MONO``; the figure font and
+    both axis-title fonts use ``_FIGURE_FONT_SANS``; the duplicated in-plot
+    Plotly title is dropped (the card ``H3`` remains); the three category axes
+    read ``category (leaf)``.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        div_ids = dict(report.DASHBOARD_CHART_IDS)
+        for _chart_key, div_id in report.DASHBOARD_CHART_IDS:
+            figure_layout = _graph_for(layout, div_id)["layout"]
+            assert figure_layout["font"]["family"] == report._FIGURE_FONT_SANS
+            for axis in ("xaxis", "yaxis"):
+                assert (
+                    figure_layout[axis]["tickfont"]["family"]
+                    == report._FIGURE_FONT_MONO
+                ), (div_id, axis)
+                assert (
+                    figure_layout[axis]["title"]["font"]["family"]
+                    == report._FIGURE_FONT_SANS
+                ), (div_id, axis)
+            assert "title" not in figure_layout, div_id
+        for chart_key, axis in (
+            ("score_bar", "yaxis"),
+            ("contribution_stack", "xaxis"),
+            ("population_lollipop", "yaxis"),
+        ):
+            figure = _graph_for(layout, div_ids[chart_key])
+            assert figure["layout"][axis]["title"]["text"] == "category (leaf)"
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
+    """Bump series use the cyclic ramp index and carry direct first-point labels.
+
+    Plan §4.1/§5.3: trace ``i`` over ``_policy_rank_rows(view)`` sets both
+    ``line.color`` and ``marker.color`` to ``_RAMP_HEXES[i % len(_RAMP_HEXES)]``
+    (up to 18 series must never index past the 4 stops); each trace labels its
+    first policy point and keeps ``connectgaps`` false.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        bump = _graph_for(
+            report.build_dashboard_layout(view),
+            dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
+        )
+        assert report._RAMP_HEXES == ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
+        assert len(bump["data"]) == len(report._policy_rank_rows(view)) == 3
+        for index, trace in enumerate(bump["data"]):
+            expected = report._RAMP_HEXES[index % len(report._RAMP_HEXES)]
+            assert trace["line"]["color"] == expected
+            assert trace["marker"]["color"] == expected
+            assert "text" in trace["mode"]
+            assert trace["text"][0]
+            assert trace["connectgaps"] is False
+    finally:
+        repository.close()
+
+    # Five series exercise the modulo rule: series 4 wraps to ramp stop 1.
+    repository = _repository(tmp_path)
+    try:
+        categories = tuple(f"Synthetic/Policy{index}" for index in range(5))
+        balanced = {category: index + 1 for index, category in enumerate(categories)}
+        policy_ranks = {
+            category: {
+                "rank_demand_heavy": index + 1,
+                "rank_competition_heavy": index + 1,
+            }
+            for index, category in enumerate(categories)
+        }
+        payload = rf.ranking_sensitivity_json(
+            categories, balanced_ranks=balanced, policy_ranks=policy_ranks
+        )
+        run = rf.run_record(categories, run_id="run-policy-ramp")
+        rows = tuple(
+            dataclasses.replace(
+                rf.category_score_record(category, ranking_sensitivity_json=payload),
+                run_id="run-policy-ramp",
+            )
+            for category in categories
+        )
+        _seed(repository, run, rows)
+        wide_view = report.load_run_report_view(repository, "run-policy-ramp")
+        wide_bump = _graph_for(
+            report.build_dashboard_layout(wide_view),
+            dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
+        )
+        assert len(report._policy_rank_rows(wide_view)) == 5
+        assert len(wide_bump["data"]) == 5
+        for index, trace in enumerate(wide_bump["data"]):
+            expected = report._RAMP_HEXES[index % len(report._RAMP_HEXES)]
+            assert trace["line"]["color"] == expected
+            assert trace["marker"]["color"] == expected
+        assert wide_bump["data"][4]["line"]["color"] == report._RAMP_HEXES[0]
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_primary_table_freezes_leading_columns_and_dims_secondaries(tmp_path):
+    """The leading 7 columns freeze; the 23 secondary columns dim inline.
+
+    Plan §6.1: ``fixed_columns`` is the native DataTable freeze; the de-emphasis
+    uses ``fontWeight``/``opacity`` conditional entries keyed by ``column_id``
+    (never ``className``), so every default column label stays unchanged in
+    ``_PRIMARY_COLUMNS`` order.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        tables = _components_of_type(layout, "DataTable")
+        assert len(tables) == 1
+        props = tables[0].to_plotly_json()["props"]
+        assert report._FROZEN_COLUMN_COUNT == 7
+        assert props.get("fixed_columns") == {
+            "headers": False,
+            "data": report._FROZEN_COLUMN_COUNT,
+        }
+        attributes = [attribute for _, attribute in report._PRIMARY_COLUMNS]
+        frozen_ids = set(attributes[: report._FROZEN_COLUMN_COUNT])
+        secondary_ids = set(attributes[report._FROZEN_COLUMN_COUNT :])
+        assert len(frozen_ids) == 7
+        assert len(secondary_ids) == 23
+        for entries, opacity in (
+            (props.get("style_header_conditional") or [], 0.85),
+            (props.get("style_data_conditional") or [], 0.82),
+        ):
+            assert entries, "missing conditional-style entries"
+            targeted = {entry["if"]["column_id"] for entry in entries}
+            assert targeted == secondary_ids
+            assert not (targeted & frozen_ids)
+            for entry in entries:
+                assert entry.get("fontWeight") == "400"
+                assert entry.get("opacity") == pytest.approx(opacity)
+                assert "color" not in entry
+                assert "backgroundColor" not in entry
+                assert "className" not in entry
+        names = [column["name"] for column in tables[0].columns]
+        assert names == [label for label, _ in report._PRIMARY_COLUMNS]
+        assert len(names) == 30
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links():
+    """The ramp/evidence tokens are recolored, nav links are border-boxed, offline.
+
+    Plan §4.4/§7: the four ``--evidence-*`` values are the four ramp stops and
+    ``--ramp-1``..``--ramp-4`` mirror them; the retired ``#c98b8b``/``#e0a458``
+    are gone; ``.nav-link`` uses ``box-sizing: border-box`` so the desktop rail
+    link cannot overflow; the asset stays offline (no scheme-bearing URL,
+    ``@import``, or ``url(``).
+    """
+    css_path = _dashboard_css_path()
+    assert css_path.is_file(), f"missing stylesheet: {css_path}"
+    text = css_path.read_text(encoding="utf-8")
+    folded = text.casefold()
+    for index, (grade, hex_value) in enumerate(
+        (
+            ("insufficient", "#9fd7ea"),
+            ("weak", "#b9dbb0"),
+            ("moderate", "#d5dd93"),
+            ("strong", "#e6d489"),
+        ),
+        start=1,
+    ):
+        ramp = re.search(rf"--ramp-{index}\s*:\s*(#[0-9a-f]{{6}})", folded)
+        assert ramp is not None, f"missing --ramp-{index}"
+        assert ramp.group(1) == hex_value, f"--ramp-{index}"
+        evidence = re.search(rf"--evidence-{grade}\s*:\s*(#[0-9a-f]{{6}})", folded)
+        assert evidence is not None, f"missing --evidence-{grade}"
+        assert evidence.group(1) == hex_value, f"--evidence-{grade}"
+    assert "#c98b8b" not in folded
+    assert "#e0a458" not in folded
+    rules = re.findall(r"\.nav-link[^{}]*\{([^{}]*)\}", text)
+    assert rules, "missing .nav-link rule"
+    assert any("box-sizing: border-box" in rule for rule in rules)
+    assert "http://" not in folded
+    assert "https://" not in folded
+    assert "@import" not in folded
+    assert "url(" not in folded

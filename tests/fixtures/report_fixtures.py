@@ -56,6 +56,11 @@ CATEGORY_PRIMARY = CATEGORY_ALPHA
 #: is inverse to the balanced score (plan §6.1).
 CATEGORY_LOW_INPUT_FIRST = "Defect/LowScoreInputFirst"
 CATEGORY_HIGH_INPUT_SECOND = "Defect/HighScoreInputSecond"
+#: Chunk 34 leaf-collision vector (plan §10.5): two distinct paths whose final
+#: ``/`` segment collides, so ``_category_leaf_label`` must append the parent
+#: path to both labels.
+CATEGORY_COLLISION_FIRST = "a/x/Foo"
+CATEGORY_COLLISION_SECOND = "b/y/Foo"
 
 # --------------------------------------------------------------------------
 # Frozen ``stratum_statistics_json`` payloads (one per vector).
@@ -525,6 +530,8 @@ __all__ = [
     "CATEGORY_ALPHA",
     "CATEGORY_BRAVO",
     "CATEGORY_CHARLIE",
+    "CATEGORY_COLLISION_FIRST",
+    "CATEGORY_COLLISION_SECOND",
     "CATEGORY_FALLBACK_ONE",
     "CATEGORY_FALLBACK_TWO",
     "CATEGORY_HIGH_INPUT_SECOND",

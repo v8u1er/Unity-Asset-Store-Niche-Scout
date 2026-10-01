@@ -1623,6 +1623,24 @@
   "tests/test_report.py::test_zero_population_sample_fraction_is_null": [
     "LREQ-RPT-020"
   ],
+  "tests/test_report.py::test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_figures_use_mono_numeric_and_sans_label_fonts": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_dashboard_primary_table_freezes_leading_columns_and_dims_secondaries": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links": [
+    "LREQ-RPT-010"
+  ],
   "tests/test_sampling.py::test_census_member_digest_is_standard_nul_digest": [
     "LREQ-SMP-060"
   ],
