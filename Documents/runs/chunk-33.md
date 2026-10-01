@@ -187,8 +187,42 @@ emoji).
 | Tests — `test-author` | DONE | 5 new nodes in `tests/test_report.py` + 5 keys in `tests/traceability.json`; amended `_DASHBOARD_CSS_HEXES` and extended the token/class tuples. Lead-verified: `pytest tests/test_report.py` → `6 failed, 43 passed` (all six are missing-implementation failures — missing tokens, no `Nav`, no `column-guide`, no `automargin`, stale evidence colour — no syntax/collection errors); full suite `6 failed, 749 passed`; `validate_traceability` → `734 matrix nodes, 0 unmarked`. Committed `chunk-33: tests`. |
 | Implement — `impl-deep` | DONE | Palette, evidence scale, type/weight tokens, automargin, Column guide, anchor nav with data-URI `Img` icons. 3 fix rounds: (1) Playwright found the primary table rendering **white with light text** (Dash injects `.dash-...-inner td/th {background:white}`, beating `.dash-cell`) and the LR2 `dcc.Markdown` SVG not rendering; fixed via token `!important`/specificity rules + `dash_html.Img` data-URI icons + `body{font-family}`. (2) `test-author` amended the nav node (same ID/marker/key) to assert the `Img`/data-URI mechanism and forbid `Markdown` in the nav; the dead `display:none` Markdown was then removed. (3) Final polish: `title_standoff:16` (axis-title/tick overlap) and `r:56` (value-label room). Committed `chunk-33: implementation`. |
 | Lead verification | DONE | `pytest -q` → 755 passed, 0 failed; `validate_traceability` → 734 nodes, 0 unmarked; `check_import_boundaries`/`check_scope_prohibitions` → exit 0; `ruff format --check`/`ruff check` → clean. Kilo Playwright re-verification: `.dash-cell` bg `#112D3B`/text `#E6F0F4`, `.dash-header` bg `#0C2432`/text `#8FB0BF`; nav 5× `img.nav-icon` (`naturalWidth 20`); no Markdown in nav; body font `system-ui…`; Column guide opens with 30 items; category labels render fully. |
-| Review — `spec-reviewer` | PENDING | |
-| Gate | PENDING | |
+| Review — `spec-reviewer` | DONE | `VERDICT: PASS`, no Blocker/Major. 9 Minors (recorded below). Reviewer independently re-ran: `pytest` 755 passed; `validate_traceability` 734 nodes/0 unmarked; `check_import_boundaries`/`check_scope_prohibitions` exit 0; changed files ruff-clean; contrast hand-recomputed and passing. |
+| Post-review lead additions | DONE | Two lead-directed passes after the PASS (recorded as deviations from the "≤2 fix rounds" guideline — reviewer did not fail, and these close plan §1.1 intent / a verification defect): (a) figure colour literals in `report.py` retuned to the new palette (`#e6e9ee`→`#e6f0f4`, `#1b2029`→`#112d3b`, `#222833`→`#0c2432`, `#2c3440`→`#1f394e`, `#6ea8fe`→`#64bcfb`, `#f2c14e`→`#46b688`, `#8fd694`→`#48b78d`; static-report `_INLINE_CSS` untouched); (b) mobile top-bar offset (`.dashboard { padding-block-start: var(--nav-topbar-height) }` at base/375/768) so the fixed nav no longer covers the `<h1>` at 375px (Playwright-confirmed), plus dead-CSS removal (`--font-size-base`, `.nav-link svg`) and `.nav-label` off-scale `0.625rem`→`var(--font-size-label)`. Committed `chunk-33: palette completion + mobile nav offset + css hygiene`. |
+| Gate | PASSED | all bullets evidenced below |
+
+## Gate (2026-10-01)
+
+`GATE: PASSED`. Every plan §11 bullet has evidence:
+
+| # | Bullet | Evidence |
+|---|---|---|
+| 1 | Full suite green | `python -m pytest -q` → `755 passed, 25 warnings` |
+| 2 | Traceability | `python -m niche_scout.tools.validate_traceability` → exit 0, `89 … mapped, 734 matrix nodes, 0 unmarked` |
+| 3 | Import boundaries | `python -m niche_scout.tools.check_import_boundaries` → `Import boundaries valid for metrics.py, scoring.py` |
+| 4 | Scope prohibitions | `python -m niche_scout.tools.check_scope_prohibitions` → `Scope prohibitions valid … (6 tokens checked)` |
+| 5 | Lint/format | `ruff format --check src/niche_scout/report.py tests/test_report.py` → `2 files already formatted`; `ruff check …` → `All checks passed!` |
+| 6 | CSS palette/tokens/offline | Pillow-free probe over `dashboard.css`: `missing_new_hex []`, `missing_ev_hex []`, `retired_amber_present False`, `missing_tokens []`, `missing_classes []`, `external []`, breakpoints `True`/`True` incl. `@media (prefers-reduced-motion: reduce)` |
+| 7 | Navigation | Kilo Playwright (1440 & 375): `.dashboard-nav` `position: fixed`, 73px rail desktop / `flex-direction: row` top bar mobile; `.skip-link` present; 5 anchors (`#run-header-block`, `#kpi-strip`, `#chart-grid`, `#primary-table-section`, `#detail-section`); 5× `img.nav-icon` `naturalWidth 20`; `#primary-table-section` `:target` border-left `rgb(70,182,136)` (= `--accent`), `scroll-margin-top: 56px`; mobile `<h1>` no longer obscured (`padding-block-start: 56px` base/375/768, desktop rail `margin-inline-start: 96px`, no double offset) |
+| 8 | Column guide / table | Playwright: `.column-guide` opens with `30` `<li>`; test asserts the DataTable `columns` names equal `_PRIMARY_COLUMNS`; `.dash-cell`/`.dash-header` computed `overflow: hidden`, `text-overflow: ellipsis`, `white-space: nowrap` |
+| 9 | Truncation fix | `report.py:1470` `"margin": {"l": 8, "r": 56, "t": 48, "b": 40}` (no `l: 140`); `automargin: True` at `report.py:1476/1482` (both axes); Playwright shows full category labels (`3d/characters/humanoids (refused)` etc.) |
+| 10 | Evidence scale | `report._EVIDENCE_GRADE_COLOURS` → `(('insufficient','#c98b8b'),('weak','#e0a458'),('moderate','#8fb0bf'),('strong','#46b688'))` |
+| 11 | Purity / no callback / ids | one `@app.callback` (`report.py:2386`, unchanged); boundaries + scope validators pass; `test_build_dashboard_app_layout_matches_the_layout_builder` and the nav node verify every `DASHBOARD_COMPONENT_IDS` id |
+| 12 | Files touched | `git diff --name-only main...chunk-33` → the 4 plan §10 files + the 2 lead docs (`Documents/plans/…`, `Documents/runs/…`); nothing else |
+
+Recorded deviation: plan §7.2/LR2 says "inline SVG"; Dash 4.4.1's `dcc.Markdown` strips the `<svg>` wrapper (Playwright: `svgCount 0`), so the lead re-ruled to an inline **data-URI SVG in `dash_html.Img`** (`imgCount 5`), which the reviewer accepted and which keeps the offline/no-CDN guarantee.
+
+## Reviewer Minors (recorded; no loop)
+
+1. `.dash-header` uppercase/letter-spacing removed vs LR4 wording — accepted deviation; justified by plan §5.2 Label role and the truncation goal; no test pins it.
+2. Shared margin `r:56` + `title_standoff:16` vs plan §6.1's `r:24` — accepted polish; no constant/test pins `r`.
+3. `report.py` figure literals still used chunk-32 hexes — **resolved** by the post-review palette-completion pass (remaining static-report `_INLINE_CSS` light hexes are the frozen standalone path, intentionally untouched).
+4. `--font-size-numeric-md` defined but unused — **unresolved**; record at gate.
+5. `.nav-label` 10px off-scale in the ≥1024 media query — **resolved** (now `var(--font-size-label)`).
+6. Dead CSS `--font-size-base`, `.nav-link svg` — **resolved** (removed).
+7. Nav test amended after implementation (LR2 re-ruling) — accepted; node ID/marker/key unchanged, not weakened; recorded here and in the plan-deviation note.
+8. `tests/test_report.py` now 2,099 lines, far above the 800–1,000-line report trigger — **report item** with a proposed requirement-cluster split (dashboard design/CSS nodes vs report-render/metric nodes); not a gate failure.
+9. Mobile nav obscured the `<h1>` at 375px — **resolved** (post-review mobile offset pass); Playwright-confirmed.
 
 ## Open items carried forward
 
