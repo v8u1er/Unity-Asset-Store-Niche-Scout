@@ -267,11 +267,19 @@ def _dashboard_assets_dir() -> Path:
     return Path(__file__).resolve().parent / _DASHBOARD_ASSETS_DIRNAME
 
 
+#: One sequential analogous ramp (pastel cyan -> pastel yellow), four stops in
+#: rank order (Chunk 34 §4.1). Single literal source for the curve/bar colours;
+#: the stylesheet ``--ramp-1``..``--ramp-4`` and ``--evidence-*`` values mirror
+#: it. Stop 1 = best rank.
+_RAMP_HEXES: tuple[str, ...] = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
+"""The four ramp stop hexes, best rank first; the evidence scale's source."""
+
 #: Ordinal ``(grade, colour)`` pairs for the evidence-grade colour on the score
-#: bar (R4). Sourced from :data:`EVIDENCE_GRADE_ORDER` so the ordinal source is
-#: the enum, not a second literal.
+#: bar (R4). Sourced from :data:`EVIDENCE_GRADE_ORDER` and the one ramp so the
+#: ordinal source is the enum and the evidence scale cannot drift from the curve
+#: ramp (Chunk 34 §4.1).
 _EVIDENCE_GRADE_COLOURS: tuple[tuple[str, str], ...] = tuple(
-    zip(EVIDENCE_GRADE_ORDER, ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688"))
+    zip(EVIDENCE_GRADE_ORDER, _RAMP_HEXES)
 )
 
 HEURISTIC_STATEMENT: str = (
@@ -399,6 +407,14 @@ _PRIMARY_COLUMNS: tuple[tuple[str, str], ...] = (
     ("sensitivity warning", "sensitivity_warning"),
     ("sample shared with other categories (%)", "overlap_sample_percentage"),
 )
+
+#: Number of leading ``_PRIMARY_COLUMNS`` that stay frozen during horizontal
+#: scroll (Chunk 34 §6.1). 7 is the smallest count that keeps ``category`` (0)
+#: plus the score columns ``composite score`` (2), ``D`` (3), ``C`` (4), ``R``
+#: (5), and ``Q`` (6); columns fix left-to-right, so ``rank`` (1) is included
+#: automatically. Derived from the ``_PRIMARY_COLUMNS`` order, not a second
+#: literal.
+_FROZEN_COLUMN_COUNT: int = 7
 
 #: One short meaning per ``_PRIMARY_COLUMNS`` label, keyed by the label so the
 #: Column guide (Chunk 33, LR4) renames no column and adds no second label
@@ -1347,6 +1363,33 @@ def _refused_rows(view: RunReportView) -> tuple[CategoryReportRow, ...]:
     return tuple(row for row in view.categories if row.rank is None)
 
 
+def _category_leaf_label(row: CategoryReportRow, view: RunReportView) -> str:
+    """Return the chart label for ``row``: the final ``/``-segment of its category.
+
+    ``"vfx/shaders/fullscreen-camera-effects"`` -> ``"fullscreen-camera-effects"``;
+    a category with no ``/`` is returned unchanged. When two or more rows in
+    ``view`` share the same leaf, the label is suffixed with the remaining parent
+    path so the labels stay unique and deterministic:
+    ``"fullscreen-camera-effects · vfx/shaders"``. The suffix is appended for
+    *every* member of a colliding leaf group, never for a non-colliding row, so
+    two calls with a fixed view return equal labels (explicit, order-independent
+    collision count). No number, rank, or measured value is changed; the full
+    path stays in the primary table cell, the column guide, the selector, and the
+    category detail heading.
+    """
+    if "/" in row.category:
+        parent, leaf = row.category.rsplit("/", 1)
+    else:
+        parent, leaf = "", row.category
+    counts: dict[str, int] = {}
+    for candidate in view.categories:
+        candidate_leaf = candidate.category.rsplit("/", 1)[-1]
+        counts[candidate_leaf] = counts.get(candidate_leaf, 0) + 1
+    if parent and counts[leaf] > 1:
+        return f"{leaf} · {parent}"
+    return leaf
+
+
 def _component_contributions(
     row: CategoryReportRow,
 ) -> tuple[tuple[str, float], ...]:
@@ -1454,33 +1497,57 @@ def _evidence_colour(grade: str) -> str:
     return _EVIDENCE_GRADE_COLOURS[position][1]
 
 
-def _base_layout(title: str) -> dict:
+#: Offline font stacks baked as literals because figures serialize to JSON and
+#: cannot read a CSS variable; these are the ``--font-sans`` / ``--font-mono``
+#: values from ``assets/dashboard.css`` (local fonts only, no web font).
+_FIGURE_FONT_SANS: str = (
+    'system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+)
+_FIGURE_FONT_MONO: str = (
+    'ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, '
+    '"SFMono-Regular", Menlo, monospace'
+)
+"""Numeric ticks and numeric annotations use the mono stack; axis titles and
+hyphenated labels use the sans stack (Chunk 34 §5.1)."""
+
+
+def _base_layout() -> dict:
     """Return the fixed dark-mode layout shared by every dashboard figure.
 
     The colour literals below intentionally mirror the semantic tokens in
     ``assets/dashboard.css`` (``--fg``, ``--surface``, ``--surface-2``,
     ``--border``): figures serialize to JSON, so a CSS variable cannot be used
     here and the duplication is deliberate. Keep both in sync.
+
+    The in-plot ``title`` is deliberately absent: the chart card ``H3`` is the
+    only chart title (Chunk 34 §5.1). Numeric ticks use
+    :data:`_FIGURE_FONT_MONO` and axis titles use :data:`_FIGURE_FONT_SANS`.
     """
     return {
-        "title": {"text": title, "font": {"color": "#e6f0f4"}},
         "paper_bgcolor": "#112d3b",
         "plot_bgcolor": "#112d3b",
-        "font": {"color": "#e6f0f4", "size": 12},
+        "font": {"color": "#e6f0f4", "size": 12, "family": _FIGURE_FONT_SANS},
         "margin": {"l": 8, "r": 56, "t": 48, "b": 40},
         "showlegend": True,
-        "legend": {"bgcolor": "#0c2432", "font": {"color": "#e6f0f4"}},
+        "legend": {
+            "bgcolor": "#0c2432",
+            "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO},
+        },
         "xaxis": {
             "gridcolor": "#1f394e",
             "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
+            "tickfont": {"family": _FIGURE_FONT_MONO, "color": "#e6f0f4"},
+            "title": {"font": {"family": _FIGURE_FONT_SANS, "color": "#e6f0f4"}},
         },
         "yaxis": {
             "gridcolor": "#1f394e",
             "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
+            "tickfont": {"family": _FIGURE_FONT_MONO, "color": "#e6f0f4"},
+            "title": {"font": {"family": _FIGURE_FONT_SANS, "color": "#e6f0f4"}},
         },
     }
 
@@ -1656,11 +1723,11 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
     """
     scored = _scored_rows(view)
     refused = _refused_rows(view)
-    labels = [row.category for row in scored]
+    labels = [_category_leaf_label(row, view) for row in scored]
     values: list[float] = []
     texts: list[str] = []
     colours: list[str] = []
-    customdata: list[str] = []
+    customdata: list[list[str]] = []
     for row in scored:
         if row.market_opportunity_score is None:
             values.append(0.0)
@@ -1669,7 +1736,7 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             values.append(float(row.market_opportunity_score))
             texts.append(format(row.market_opportunity_score, ".6g"))
         colours.append(_evidence_colour(row.evidence_grade))
-        customdata.append(row.evidence_grade)
+        customdata.append([row.category, row.evidence_grade])
     figure = go.Figure(
         go.Bar(
             x=values,
@@ -1680,7 +1747,8 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             marker={"color": colours},
             customdata=customdata,
             hovertemplate=(
-                "%{y}: %{text}<br>evidence strength: %{customdata}<extra></extra>"
+                "%{y}: %{text}<br>category: %{customdata[0]}"
+                "<br>evidence strength: %{customdata[1]}<extra></extra>"
             ),
         )
     )
@@ -1697,9 +1765,10 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
                 hovertemplate="%{y}: n/a<extra></extra>",
             )
         )
-    figure.update_layout(**_base_layout("Composite score by rank"))
+    figure.update_layout(**_base_layout())
+    figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "composite score"})
-    figure.update_yaxes(autorange="reversed", title={"text": "category"})
+    figure.update_yaxes(autorange="reversed", title={"text": "category (leaf)"})
     return figure
 
 
@@ -1711,10 +1780,10 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
     The legend uses the plain component names (plan §5.7).
     """
     scored = _scored_rows(view)
-    labels = [row.category for row in scored]
+    labels = [_category_leaf_label(row, view) for row in scored]
     figure = go.Figure()
     contributions_by_row = [_component_contributions(row) for row in scored]
-    for name, _weight in COMPONENT_WEIGHTS:
+    for index, (name, _weight) in enumerate(COMPONENT_WEIGHTS):
         figure.add_trace(
             go.Bar(
                 x=labels,
@@ -1723,11 +1792,12 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
                     for contributions in contributions_by_row
                 ],
                 name=_component_label(name),
+                marker={"color": _RAMP_HEXES[index]},
             )
         )
-    figure.update_layout(**_base_layout("Weighted component contributions"))
+    figure.update_layout(**_base_layout())
     figure.update_layout(barmode="stack")
-    figure.update_xaxes(title={"text": "category"})
+    figure.update_xaxes(title={"text": "category (leaf)"})
     figure.update_yaxes(title={"text": "weighted contribution to composite score"})
     return figure
 
@@ -1735,21 +1805,34 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
 def _policy_bump_figure(view: RunReportView) -> go.Figure:
     """Three-policy rank bump chart; a null rank is a gap, never ``0``."""
     policies = _policy_axis_labels(view)
+    rows_by_category = {row.category: row for row in _scored_rows(view)}
     figure = go.Figure()
-    for category, balanced, demand_heavy, competition_heavy in _policy_rank_rows(view):
+    for index, (
+        category,
+        balanced,
+        demand_heavy,
+        competition_heavy,
+    ) in enumerate(_policy_rank_rows(view)):
         ranks = (balanced, demand_heavy, competition_heavy)
         if sum(rank is not None for rank in ranks) < 2:
             continue
+        label = _category_leaf_label(rows_by_category[category], view)
+        colour = _RAMP_HEXES[index % len(_RAMP_HEXES)]
         figure.add_trace(
             go.Scatter(
                 x=list(policies),
                 y=[rank for rank in ranks],
-                mode="lines+markers",
-                name=category,
+                mode="lines+markers+text",
+                name=label,
+                legendgroup=label,
+                text=[label, "", ""],
+                textposition="middle right",
+                line={"color": colour},
+                marker={"color": colour},
                 connectgaps=False,
             )
         )
-    figure.update_layout(**_base_layout("Policy rank comparison"))
+    figure.update_layout(**_base_layout())
     figure.update_xaxes(title={"text": "scoring policy"})
     figure.update_yaxes(autorange="reversed", title={"text": "rank (1 = best)"})
     return figure
@@ -1770,7 +1853,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     annotations: list[str] = []
     zero_x: list[float | None] = []
     for row in scored:
-        labels.append(row.category)
+        labels.append(_category_leaf_label(row, view))
         value = row.discovered_population_count
         sample = row.enriched_sample_count
         if value is None:
@@ -1787,16 +1870,18 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             annotations.append(format(value, "d"))
             zero_x.append(None)
         samples.append(None if sample is None else float(sample))
+    customdata = [[row.category] for row in scored]
     figure = go.Figure()
     figure.add_trace(
         go.Scatter(
             x=populations,
             y=labels,
             mode="markers",
-            name="discovered population (observed)",
-            marker={"size": 12, "color": "#64bcfb"},
+            name="discovered population",
+            marker={"size": 12, "color": _RAMP_HEXES[0]},
             text=annotations,
-            hovertemplate="%{y}: %{text}<extra></extra>",
+            customdata=customdata,
+            hovertemplate="%{y}<br>category: %{customdata[0]}<extra></extra>",
         )
     )
     figure.add_trace(
@@ -1804,12 +1889,12 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             x=zero_x,
             y=list(labels),
             mode="markers+text",
-            name="discovered population: measured zero",
+            name="measured zero",
             marker={
                 "size": 12,
-                "color": "#46b688",
+                "color": "#e27882",
                 "symbol": "diamond-open",
-                "line": {"width": 2, "color": "#46b688"},
+                "line": {"width": 2, "color": "#e27882"},
             },
             text=["" if value is None else "0" for value in zero_x],
             textposition="middle right",
@@ -1821,13 +1906,22 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             x=samples,
             y=labels,
             mode="markers",
-            name="sample size (observed)",
-            marker={"size": 7, "color": "#46b688"},
+            name="sample size",
+            marker={"size": 7, "color": _RAMP_HEXES[1]},
         )
     )
-    figure.update_layout(**_base_layout("Population and sample size (log scale)"))
+    figure.update_layout(**_base_layout())
+    figure.update_layout(
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.28,
+            "xanchor": "center",
+            "x": 0.5,
+        }
+    )
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
-    figure.update_yaxes(title={"text": "category"})
+    figure.update_yaxes(title={"text": "category (leaf)"})
     return figure
 
 
@@ -1854,24 +1948,24 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
                 _SAMPLE_FRACTION_MIN_MARKER + float(row.sample_fraction) * 40.0
             )
             texts.append(format(row.sample_fraction, ".4g"))
-        labels.append(row.category)
+        labels.append(_category_leaf_label(row, view))
+    customdata = [[row.category, text] for row, text in zip(scored, texts)]
     figure = go.Figure(
         go.Scatter(
             x=xs,
             y=ys,
             mode="markers",
             text=labels,
-            marker={"size": sizes, "color": "#48b78d"},
-            customdata=texts,
+            marker={"size": sizes, "color": _RAMP_HEXES[0]},
+            customdata=customdata,
             hovertemplate=(
-                "%{text}<br>composite score %{x}<br>"
-                "quality %{y}<br>sample fraction %{customdata}<extra></extra>"
+                "%{text}<br>category: %{customdata[0]}<br>composite score %{x}<br>"
+                "quality %{y}<br>sample fraction %{customdata[1]}<extra></extra>"
             ),
         )
     )
-    figure.update_layout(
-        **_base_layout("Composite score vs quality (marker = sample fraction)")
-    )
+    figure.update_layout(**_base_layout())
+    figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "composite score"})
     figure.update_yaxes(range=[0.0, 1.0], title={"text": "Quality"})
     return figure
@@ -2007,6 +2101,9 @@ def _primary_table(view: RunReportView) -> "dash_html.Div":
         }
         for row in view.categories
     ]
+    secondary_ids = [
+        attribute for _, attribute in _PRIMARY_COLUMNS[_FROZEN_COLUMN_COUNT:]
+    ]
     return dash_html.Div(
         dash_table.DataTable(
             id="primary-table-data",
@@ -2014,6 +2111,15 @@ def _primary_table(view: RunReportView) -> "dash_html.Div":
             data=data,
             sort_action="native",
             page_size=len(view.categories) or 1,
+            fixed_columns={"headers": False, "data": _FROZEN_COLUMN_COUNT},
+            style_header_conditional=[
+                {"if": {"column_id": column_id}, "fontWeight": "400", "opacity": 0.85}
+                for column_id in secondary_ids
+            ],
+            style_data_conditional=[
+                {"if": {"column_id": column_id}, "fontWeight": "400", "opacity": 0.82}
+                for column_id in secondary_ids
+            ],
             style_table={"overflowX": "auto", "width": "100%"},
             style_cell={
                 "padding": "2px 6px",
