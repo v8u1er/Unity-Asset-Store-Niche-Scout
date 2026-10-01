@@ -19,16 +19,15 @@ database under pytest ``tmp_path``.
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 import inspect
 import json
 import re
 from html import escape as html_escape
 from html.parser import HTMLParser
-from pathlib import Path
 
 import pytest
+from _plotly_utils.utils import PlotlyJSONEncoder
 from fixtures import report_fixtures as rf
 
 from niche_scout import database, report
@@ -1009,82 +1008,8 @@ def test_load_run_report_view_raises_for_unknown_run(tmp_path):
             report.load_run_report_view(repository, "missing-run")
         with pytest.raises(report.RunNotFoundError):
             report.write_run_report(repository, "missing-run", tmp_path / "x.html")
-        with pytest.raises(report.RunNotFoundError):
-            report.render_dashboard_html(repository, "missing-run")
     finally:
         repository.close()
-
-
-# --------------------------------------------------------------------------
-# LREQ-CLI-020 — the dashboard performs database reads only
-# --------------------------------------------------------------------------
-
-
-_FORBIDDEN_MODULES = frozenset(
-    {
-        "metrics",
-        "scoring",
-        "collector",
-        "collector_coveo",
-        "collector_graphql",
-        "config",
-        "pipeline",
-        "cli",
-        "requests",
-        "urllib",
-        "urllib3",
-        "http",
-        "httpx",
-        "aiohttp",
-        "socket",
-    }
-)
-
-_FORBIDDEN_CLOCK_ATTRS = frozenset({"now", "utcnow", "today", "time", "monotonic"})
-
-
-def _imported_modules(tree):
-    names = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module.split(".")[-1])
-    return names
-
-
-def _clock_reads(tree):
-    reads = []
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Attribute)
-            and node.attr in _FORBIDDEN_CLOCK_ATTRS
-            and isinstance(node.value, ast.Name)
-            and node.value.id in {"datetime", "time"}
-        ):
-            reads.append(ast.unparse(node))
-    return reads
-
-
-@pytest.mark.lreq("LREQ-CLI-020")
-def test_render_dashboard_html_is_database_read_only(tmp_path):
-    """The dashboard renderer imports no transport and takes no network input."""
-    repository = _repository(tmp_path)
-    run = rf.run_record((rf.CATEGORY_ALPHA,))
-    row = rf.category_score_record(rf.CATEGORY_ALPHA)
-    try:
-        _seed(repository, run, (row,))
-        html = report.render_dashboard_html(repository, rf.RUN_ID)
-        assert rf.RUN_ID in html
-    finally:
-        repository.close()
-
-    source = Path(report.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    assert _imported_modules(tree) & _FORBIDDEN_MODULES == set()
-    assert _clock_reads(tree) == []
-    signature = inspect.signature(report.render_dashboard_html)
-    assert set(signature.parameters) == {"repository", "run_id"}
 
 
 # --------------------------------------------------------------------------
@@ -1100,8 +1025,8 @@ def test_public_report_functions_have_hints_and_docstrings():
         report.render_run_report_html,
         report.render_run_report_text,
         report.write_run_report,
-        report.render_dashboard_html,
-        report.render_run_dashboard_html,
+        report.build_dashboard_layout,
+        report.build_dashboard_app,
     )
     for function in public_functions:
         signature = inspect.signature(function)
@@ -1117,13 +1042,75 @@ def test_public_report_functions_have_hints_and_docstrings():
         report.RunReportView,
     ):
         assert structure.__doc__ and structure.__doc__.strip()
+    for structure in (
+        report.StratumReportRow,
+        report.ReportWarning,
+        report.RawMetricInputs,
+        report.CategoryReportRow,
+        report.RunReportView,
+    ):
+        assert structure.__doc__ and structure.__doc__.strip()
     assert report.COMPONENT_RENDER_ORDER == ("D", "C", "R", "Q")
+    assert len(report._PRIMARY_COLUMNS) == 30
 
 
 # --------------------------------------------------------------------------
-# LREQ-RPT-020 / LREQ-SEN-020 / LREQ-RPT-010 / LREQ-RPT-040 / LREQ-RPT-050 —
-# Chunk 30 dark-mode Plotly dashboard.
+# Chunk 31 — Dash app: layout, figure, and detail helpers.
+#
+# The dashboard is a served Dash application with a pure
+# ``build_dashboard_layout(view)`` / ``build_dashboard_app(view)`` seam. Dash
+# trees are component objects, not plain JSON, so the helpers below normalize a
+# tree through Plotly's own encoder (the serializer Dash uses) and walk it.
 # --------------------------------------------------------------------------
+
+
+_NA_MARKER = "n/a"
+
+
+def _norm(component):
+    """Return the stable JSON string for a Dash component tree."""
+    return json.dumps(
+        component,
+        cls=PlotlyJSONEncoder,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _walk(component):
+    """Yield ``component`` and every descendant Dash component, depth first."""
+    yield component
+    children = getattr(component, "children", None)
+    if isinstance(children, (list, tuple)):
+        for child in children:
+            if hasattr(child, "to_plotly_json"):
+                yield from _walk(child)
+    elif hasattr(children, "to_plotly_json"):
+        yield from _walk(children)
+
+
+def _components_of_type(component, type_name):
+    """Return every descendant whose component type is ``type_name``."""
+    found = []
+    for node in _walk(component):
+        if node.to_plotly_json().get("type") == type_name:
+            found.append(node)
+    return found
+
+
+def _component_by_id(component, component_id):
+    """Return the first component carrying ``component_id``, or ``None``."""
+    for node in _walk(component):
+        if node.to_plotly_json()["props"].get("id") == component_id:
+            return node
+    return None
+
+
+def _graph_for(component, div_id):
+    """Return the ``dcc.Graph`` figure dict for the graph with ``div_id``."""
+    graph = _component_by_id(component, div_id)
+    assert graph is not None, f"graph {div_id!r} not found in the layout"
+    return graph.to_plotly_json()["props"]["figure"]
 
 
 def _dashboard_view(tmp_path):
@@ -1303,200 +1290,202 @@ def test_evidence_grade_order_is_the_enum_reversed():
 
 
 @pytest.mark.lreq("LREQ-RPT-010")
-def test_run_dashboard_html_is_self_contained_dark_mode_and_deterministic(tmp_path):
-    """One self-contained dark-mode document with fixed ``div_id``s, byte-stable.
-
-    Self-containment means no *fetchable* external URL and no external asset
-    element: the inline plotly.js bundle legitimately carries the byte-intact
-    SVG/XHTML/XML **namespace identifiers** (``http://www.w3.org/...``), which
-    are opaque strings for ``document.createElementNS``, not resources to fetch.
-    Those namespace identifiers must be preserved; every other ``http://`` or
-    ``https://`` (and the bare ``cdn.plot.ly`` host) is absent.
-    """
+def test_build_dashboard_layout_is_deterministic_for_a_fixed_view(tmp_path):
+    """Two layouts for one view are equal and carry every fixed component id."""
     repository, view = _dashboard_view(tmp_path)
     try:
-        html = report.render_run_dashboard_html(view)
-        assert "<script src" not in html
-        assert "<link" not in html
-        assert "cdn.plot.ly" not in html
-        assert "@import" not in html
-        assert "<script>" in html
-        # Namespace identifiers are preserved for document.createElementNS.
-        assert "http://www.w3.org/2000/svg" in html
-        assert "http://www.w3.org/1999/xhtml" in html
-        # No fetchable external URL remains: every scheme token is one of the
-        # preserved namespace identifiers.
-        for token in ("http://", "https://"):
-            residual = html
-            for namespace in report._PLOTLY_NAMESPACE_URLS:
-                residual = residual.replace(namespace, "")
-            assert token not in residual
-        for _key, div_id in report.DASHBOARD_CHART_IDS:
-            assert div_id in html
-        assert html == report.render_run_dashboard_html(view)
+        first = report.build_dashboard_layout(view)
+        second = report.build_dashboard_layout(view)
+        assert _norm(first) == _norm(second)
+        for component_id, _role in report.DASHBOARD_COMPONENT_IDS:
+            assert _component_by_id(first, component_id) is not None
     finally:
         repository.close()
 
 
-@pytest.mark.lreq("LREQ-RPT-050")
-@pytest.mark.lreq("LREQ-RPT-020")
-@pytest.mark.lreq("LREQ-RPT-030")
-def test_run_dashboard_includes_heuristic_statement_primary_table_and_details(
-    tmp_path,
-):
-    """The dashboard carries the statement, the primary table, and details."""
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_build_dashboard_app_layout_matches_the_layout_builder(tmp_path):
+    """``build_dashboard_app`` uses the layout builder and runs no server."""
     repository, view = _dashboard_view(tmp_path)
     try:
-        html = report.render_run_dashboard_html(view)
-        assert report.HEURISTIC_STATEMENT in html
-        html_headers = _PrimaryTableHTML_headers(html)
-        expected_labels = {label for label, _ in report._PRIMARY_COLUMNS}
-        assert set(html_headers) == expected_labels
-        assert "Formulas and explanations" in html
-        assert "Metric inputs" in html
-        assert "Sample strata" in html
-        assert "Timestamps" in html
+        layout = report.build_dashboard_layout(view)
+        app = report.build_dashboard_app(view)
+        assert _norm(app.layout) == _norm(layout)
+        app2 = report.build_dashboard_app(view)
+        assert _norm(app2.layout) == _norm(layout)
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_layout_shows_every_primary_table_column_by_default(tmp_path):
+    """All 30 ``_PRIMARY_COLUMNS`` labels are the DataTable's default columns."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        tables = _components_of_type(layout, "DataTable")
+        assert len(tables) == 1
+        names = [column["name"] for column in tables[0].columns]
+        assert names == [label for label, _ in report._PRIMARY_COLUMNS]
+        assert len(names) == 30
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-030")
+def test_dashboard_detail_panel_covers_rpt_030_items_for_a_selected_category(tmp_path):
+    """The selected-category detail carries every RPT-030 item; formulas once."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        held = _norm(layout)
+        for item in (
+            "Metric inputs",
+            "Observed versus inferred",
+            "Sample strata",
+            "Warnings",
+            "Timestamps",
+        ):
+            assert item in held
+        # The shared formula/"how to read" list appears exactly once, and the
+        # detail panel is the selected category's items only.
+        assert held.count(report._FORMULA_EXPLANATIONS[0]) == 1
+        panel = _component_by_id(layout, "detail-panel")
+        assert panel is not None
+        panel_text = _norm(panel)
+        assert "Rankable?" in panel_text
+        for label, _ in report._raw_metric_entries(view.categories[0]):
+            assert label in panel_text
     finally:
         repository.close()
 
 
 @pytest.mark.lreq("LREQ-RPT-040")
-def test_run_dashboard_keeps_refused_categories_off_the_scored_axis(tmp_path):
-    """Refused rows stay visible but disjoint from the scored axis."""
+def test_dashboard_layout_keeps_refused_categories_visible_and_off_the_scored_axis(
+    tmp_path,
+):
+    """Refused rows are visible in the table/detail but absent from the bar trace."""
     repository, view = _dashboard_view(tmp_path)
     try:
+        layout = report.build_dashboard_layout(view)
         scored = report._scored_rows(view)
         refused = report._refused_rows(view)
         assert refused
         assert {row.category for row in scored}.isdisjoint(
             {row.category for row in refused}
         )
-        html = report.render_run_dashboard_html(view)
+        bar_figure = _graph_for(layout, "niche-scout-score-bar")
+        bar_trace = bar_figure["data"][0]
+        # The bar trace holds scored rows only; refused categories never appear
+        # among its y labels.
         for row in refused:
-            assert row.category in html
-            assert row.market_opportunity_score is None
-        # Refused rows sit after the scored entries on a separate gap band and
-        # are not given a numeric bar value (the bar trace holds only scored
-        # rows), so they never share the scored axis with a measured bar.
-        scored_bar_values = [row.market_opportunity_score for row in scored]
-        assert all(value is not None for value in scored_bar_values)
-        for row in refused:
-            assert row.rank is None
-        for row in scored:
-            assert row.category in html
+            assert row.category not in bar_trace["y"]
+        held = _norm(layout)
+        for row in view.categories:
+            assert row.category in held
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-050")
+def test_dashboard_layout_includes_the_heuristic_statement(tmp_path):
+    """``HEURISTIC_STATEMENT`` appears verbatim exactly once in the layout."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        held = _norm(report.build_dashboard_layout(view))
+        statement = json.dumps(report.HEURISTIC_STATEMENT)[1:-1]
+        assert held.count(statement) == 1
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_charts_carry_explanations_and_human_labels(tmp_path):
+    """Every chart card has a one-line caption and the figures have labels."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        held = _norm(layout)
+        for chart_key, div_id in report.DASHBOARD_CHART_IDS:
+            caption = report._DASHBOARD_CHART_CAPTIONS[chart_key]
+            assert caption.strip()
+            assert caption in held
+            assert report._DASHBOARD_CHART_TITLES[chart_key] in held
+            figure = _graph_for(layout, div_id)
+            assert figure["layout"]["title"]["text"]
+        # Plain-language component names replace bare acronyms in the legend.
+        assert "Demand" in held
+        assert "Competition" in held
+        assert "Recent supply" in held
+        assert "Quality" in held
     finally:
         repository.close()
 
 
 @pytest.mark.lreq("LREQ-RPT-020")
-def test_run_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
-    """A measured ``0.0`` renders as ``0``; a ``None`` renders as ``n/a``.
-
-    The distinction is asserted in the emitted chart data, not on the
-    multi-megabyte document: the score-bar figure's trace data must show an
-    explicit ``0`` value for the measured-zero row and a ``None`` placeholder
-    whose text label is ``n/a`` for the unavailable row. A renderer that
-    collapsed the two would fail here.
-
-    Plan §5.3(a)/R5 and SRS §1.2: missing is never zero.
-    """
+def test_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
+    """A measured ``0.0`` is a bar labelled ``0``; a ``None`` is labelled ``n/a``."""
     zero_row = rf.category_score_record(
         rf.CATEGORY_ALPHA,
-        component_d=0.0,
         market_opportunity_score=0.0,
         ranking_sensitivity_json=rf.ranking_sensitivity_json(
             (rf.CATEGORY_ALPHA,), balanced_ranks={rf.CATEGORY_ALPHA: 1}
         ),
     )
-    contributions = report._component_contributions(zero_row)
-    assert dict(contributions)["D"] == 0.0
-
     repository = _repository(tmp_path)
     try:
         run = rf.run_record((rf.CATEGORY_ALPHA,))
         _seed(repository, run, (zero_row,))
         view = report.load_run_report_view(repository, rf.RUN_ID)
-
-        zero_html = report.render_run_dashboard_html(view)
-        zero_figure = _figure_for_chart(zero_html, "niche-scout-score-bar")
-        zero_trace = zero_figure["data"][0]
-        assert zero_figure["data"][0]["x"] == [0.0]
-        assert zero_trace["text"] == ["0"]
-        # An explicit 0 is not rendered as the n/a marker.
-        assert _NA_MARKER not in zero_trace["text"]
-
-        # The unavailable row: a ``None`` component/score renders ``n/a``, never 0.
-        unavailable = rf.category_score_record(
-            rf.CATEGORY_ALPHA,
-            component_d=None,
-            component_c=None,
-            component_r=None,
-            component_q=None,
-            market_opportunity_score=None,
-            ranking_sensitivity_json=rf.ranking_sensitivity_json(
-                (rf.CATEGORY_ALPHA,), balanced_ranks={rf.CATEGORY_ALPHA: 1}
-            ),
-        )
-        repository2 = _repository(tmp_path)
-        try:
-            run2 = rf.run_record((rf.CATEGORY_ALPHA,), run_id="run-unavailable")
-            unavailable = dataclasses.replace(unavailable, run_id="run-unavailable")
-            _seed(repository2, run2, (unavailable,))
-            unavailable_view = report.load_run_report_view(
-                repository2, "run-unavailable"
-            )
-            unavailable_figure = _figure_for_chart(
-                report.render_run_dashboard_html(unavailable_view),
-                "niche-scout-score-bar",
-            )
-            unavailable_trace = unavailable_figure["data"][0]
-            # A null score is a zero-height placeholder labelled ``n/a`` with no
-            # measured bar value; it is never the explicit-zero text ``0``.
-            assert unavailable_trace["x"] == [0.0]
-            assert unavailable_trace["text"] == [_NA_MARKER]
-            assert unavailable_trace["text"] != ["0"]
-        finally:
-            repository2.close()
+        bar = _graph_for(report.build_dashboard_layout(view), "niche-scout-score-bar")
+        assert bar["data"][0]["x"] == [0.0]
+        assert bar["data"][0]["text"] == ["0"]
+        assert _NA_MARKER not in bar["data"][0]["text"]
     finally:
         repository.close()
 
-
-_NA_MARKER = "n/a"
-
-
-def _figure_for_chart(html, div_id):
-    """Return the parsed figure JSON emitted for the fixed ``div_id`` chart."""
-    marker = f"Plotly.newPlot({json.dumps(div_id)},"
-    index = html.index(marker) + len(marker)
-    decoder = json.JSONDecoder()
-    figure, _end = decoder.raw_decode(html[index:])
-    return figure
+    unavailable = rf.category_score_record(
+        rf.CATEGORY_ALPHA,
+        component_d=None,
+        component_c=None,
+        component_r=None,
+        component_q=None,
+        market_opportunity_score=None,
+        ranking_sensitivity_json=rf.ranking_sensitivity_json(
+            (rf.CATEGORY_ALPHA,), balanced_ranks={rf.CATEGORY_ALPHA: 1}
+        ),
+    )
+    repository2 = _repository(tmp_path)
+    try:
+        run2 = rf.run_record((rf.CATEGORY_ALPHA,), run_id="run-unavailable")
+        unavailable = dataclasses.replace(unavailable, run_id="run-unavailable")
+        _seed(repository2, run2, (unavailable,))
+        view2 = report.load_run_report_view(repository2, "run-unavailable")
+        bar2 = _graph_for(report.build_dashboard_layout(view2), "niche-scout-score-bar")
+        assert bar2["data"][0]["text"] == [_NA_MARKER]
+        assert bar2["data"][0]["text"] != ["0"]
+    finally:
+        repository2.close()
 
 
 @pytest.mark.lreq("LREQ-RPT-010")
-def test_run_dashboard_has_no_confidence_interval_or_error_bars(tmp_path):
-    """No error-bar trace and no confidence-interval wording in the document."""
+def test_dashboard_has_no_confidence_interval_or_error_bars(tmp_path):
+    """No error-bar trace key and no confidence-interval wording in the layout."""
     repository, view = _dashboard_view(tmp_path)
     try:
-        html = report.render_run_dashboard_html(view)
-        # Restrict the error-bar key scan to this module's own chart JSON (the
-        # inline plotly.js bundle legitimately names ``error_y``/``error_x`` as
-        # trace attributes it supports; those are not emitted traces).
-        scripted = html.split("Plotly.newPlot", 1)[0]
-        assert '"error_y"' not in html.replace(scripted, "")
-        assert '"error_x"' not in html.replace(scripted, "")
-        normalized = html.casefold()
+        held = _norm(report.build_dashboard_layout(view))
+        assert "error_y" not in held
+        assert "error_x" not in held
+        normalized = held.casefold()
         assert "confidence interval" not in normalized
-        assert "confidence intervals" not in normalized
         assert "error bar" not in normalized
-        assert "error bars" not in normalized
     finally:
         repository.close()
 
 
 @pytest.mark.lreq("LREQ-SEN-020")
 @pytest.mark.lreq("LREQ-RPT-020")
-def test_run_dashboard_policy_bump_and_kpi_tiles(tmp_path):
+def test_dashboard_policy_bump_and_kpi_tiles(tmp_path):
     """The bump rows match the persisted ranks; null ranks are gaps; KPIs render."""
     repository, view = _dashboard_view(tmp_path)
     try:
@@ -1512,9 +1501,17 @@ def test_run_dashboard_policy_bump_and_kpi_tiles(tmp_path):
             ("top_5_stability", 0.8),
             ("maximum_rank_displacement", 2),
         )
-        html = report.render_run_dashboard_html(view)
-        assert "top_3_stability" in html
-        assert "maximum_rank_displacement" in html
+        bump = _graph_for(
+            report.build_dashboard_layout(view), "niche-scout-policy-bump"
+        )
+        for trace in bump["data"]:
+            assert trace["connectgaps"] is False
+        kpi_strip = _component_by_id(report.build_dashboard_layout(view), "kpi-strip")
+        assert kpi_strip is not None
+        kpi_text = _norm(kpi_strip)
+        for label, _value in tiles:
+            _, explanation = report._DASHBOARD_LABELS[label]
+            assert explanation in kpi_text
 
         # A null rank is a gap, not 0.
         gap_payload = rf.ranking_sensitivity_json(
@@ -1532,6 +1529,48 @@ def test_run_dashboard_policy_bump_and_kpi_tiles(tmp_path):
         repository.close()
 
 
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_score_bar_encodes_ordinal_evidence_grade(tmp_path):
+    """The bar colour is the ordinal evidence-grade colour, not a free palette."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        bar = _graph_for(report.build_dashboard_layout(view), "niche-scout-score-bar")
+        trace = bar["data"][0]
+        expected = [
+            report._evidence_colour(row.evidence_grade)
+            for row in report._scored_rows(view)
+        ]
+        assert trace["marker"]["color"] == expected
+        # The exact grade text is present in the hover customdata.
+        assert trace["customdata"] == [
+            row.evidence_grade for row in report._scored_rows(view)
+        ]
+        assert "evidence strength" in trace["hovertemplate"]
+        # The ordinal palette is keyed by EVIDENCE_GRADE_ORDER.
+        assert [grade for grade, _colour in report._EVIDENCE_GRADE_COLOURS] == list(
+            report.EVIDENCE_GRADE_ORDER
+        )
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_omits_the_coverage_heatmap(tmp_path):
+    """``status_heatmap`` is absent from the chart id table and the layout."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        chart_keys = {key for key, _ in report.DASHBOARD_CHART_IDS}
+        assert "status_heatmap" not in chart_keys
+        assert "component_dumbbell" not in chart_keys
+        held = _norm(report.build_dashboard_layout(view))
+        assert "niche-scout-status-heatmap" not in held
+        assert "niche-scout-component-dumbbell" not in held
+        assert not hasattr(report, "_heatmap_figure")
+        assert not hasattr(report, "_component_dumbbell_figure")
+    finally:
+        repository.close()
+
+
 def _view_with_row(tmp_path, row):
     """Build a one-row view from ``row`` for the gap/null assertions."""
     repository = _repository(tmp_path)
@@ -1540,30 +1579,3 @@ def _view_with_row(tmp_path, row):
     view = report.load_run_report_view(repository, row.run_id)
     repository.close()
     return view
-
-
-@pytest.mark.lreq("LREQ-RPT-020")
-def test_run_dashboard_heatmap_uses_persisted_coverage_and_ordinal_grade(tmp_path):
-    """Heatmap uses D/R/Q coverage, an ordinal grade scale, and a C status column."""
-    repository, view = _dashboard_view(tmp_path)
-    try:
-        html = report.render_run_dashboard_html(view)
-        for label in (
-            "demand stratum eligibility coverage",
-            "recent supply stratum eligibility coverage",
-            "quality stratum eligibility coverage",
-        ):
-            assert label in html
-        assert "evidence grade (ordinal)" in html
-        assert "breadth completeness status" in html
-        # The C column is a status, never labelled "coverage".
-        assert "breadth completeness coverage" not in html
-        # Reference lines equal the SRS §14 thresholds.
-        assert report.COVERAGE_REFERENCE_THRESHOLDS == (
-            ("minimum", 0.5),
-            ("strong", 0.8),
-        )
-        assert "minimum 0.50" in html
-        assert "strong 0.80" in html
-    finally:
-        repository.close()

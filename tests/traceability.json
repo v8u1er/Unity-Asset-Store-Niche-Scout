@@ -9,6 +9,9 @@
   "tests/test_cli.py::test_configure_logging_attaches_exactly_one_handler_and_is_idempotent": [
     "LREQ-NFR-020"
   ],
+  "tests/test_cli.py::test_dashboard_command_serves_the_built_app_without_writing_files": [
+    "LREQ-CLI-020"
+  ],
   "tests/test_cli.py::test_dashboard_missing_run_is_nonzero": [
     "LREQ-CLI-020"
   ],
@@ -1463,8 +1466,45 @@
   "tests/test_quality_tooling.py::test_traceability_validator_passes_on_current_tree": [
     "LREQ-TST-010"
   ],
+  "tests/test_report.py::test_build_dashboard_app_layout_matches_the_layout_builder": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_build_dashboard_layout_is_deterministic_for_a_fixed_view": [
+    "LREQ-RPT-010"
+  ],
   "tests/test_report.py::test_category_detail_shows_formulas_inputs_strata_and_timestamps": [
     "LREQ-RPT-030"
+  ],
+  "tests/test_report.py::test_dashboard_charts_carry_explanations_and_human_labels": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_detail_panel_covers_rpt_030_items_for_a_selected_category": [
+    "LREQ-RPT-030"
+  ],
+  "tests/test_report.py::test_dashboard_distinguishes_null_from_explicit_zero": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_dashboard_has_no_confidence_interval_or_error_bars": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_layout_includes_the_heuristic_statement": [
+    "LREQ-RPT-050"
+  ],
+  "tests/test_report.py::test_dashboard_layout_keeps_refused_categories_visible_and_off_the_scored_axis": [
+    "LREQ-RPT-040"
+  ],
+  "tests/test_report.py::test_dashboard_layout_shows_every_primary_table_column_by_default": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_dashboard_omits_the_coverage_heatmap": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_policy_bump_and_kpi_tiles": [
+    "LREQ-RPT-020",
+    "LREQ-SEN-020"
+  ],
+  "tests/test_report.py::test_dashboard_score_bar_encodes_ordinal_evidence_grade": [
+    "LREQ-RPT-020"
   ],
   "tests/test_report.py::test_demand_formula_text_does_not_claim_rating_inputs": [
     "LREQ-RPT-030",
@@ -1520,30 +1560,6 @@
     "LREQ-RPT-020",
     "LREQ-SEN-020"
   ],
-  "tests/test_report.py::test_run_dashboard_distinguishes_null_from_explicit_zero": [
-    "LREQ-RPT-020"
-  ],
-  "tests/test_report.py::test_run_dashboard_has_no_confidence_interval_or_error_bars": [
-    "LREQ-RPT-010"
-  ],
-  "tests/test_report.py::test_run_dashboard_heatmap_uses_persisted_coverage_and_ordinal_grade": [
-    "LREQ-RPT-020"
-  ],
-  "tests/test_report.py::test_run_dashboard_html_is_self_contained_dark_mode_and_deterministic": [
-    "LREQ-RPT-010"
-  ],
-  "tests/test_report.py::test_run_dashboard_includes_heuristic_statement_primary_table_and_details": [
-    "LREQ-RPT-050",
-    "LREQ-RPT-020",
-    "LREQ-RPT-030"
-  ],
-  "tests/test_report.py::test_run_dashboard_keeps_refused_categories_off_the_scored_axis": [
-    "LREQ-RPT-040"
-  ],
-  "tests/test_report.py::test_run_dashboard_policy_bump_and_kpi_tiles": [
-    "LREQ-SEN-020",
-    "LREQ-RPT-020"
-  ],
   "tests/test_report.py::test_run_sensitivity_is_none_for_empty_object_and_none_fields_when_all_null": [
     "LREQ-RPT-020",
     "LREQ-SEN-020"
@@ -1562,9 +1578,6 @@
   ],
   "tests/test_report.py::test_rank_none_renders_no_rank_recorded_note": [
     "LREQ-RPT-020"
-  ],
-  "tests/test_report.py::test_render_dashboard_html_is_database_read_only": [
-    "LREQ-CLI-020"
   ],
   "tests/test_report.py::test_report_caveats_describe_trailing_seven_day_views": [
     "LREQ-RPT-050"

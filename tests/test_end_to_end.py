@@ -30,6 +30,7 @@ import fixtures.cli_fixtures as cf
 import fixtures.coveo_discovery as fx
 import fixtures.pipeline_fixtures as pf
 import pytest
+from _plotly_utils.utils import PlotlyJSONEncoder
 
 from niche_scout import cli, models, report, scoring
 from niche_scout.database import SqliteRepository
@@ -150,7 +151,8 @@ def test_acceptance_run_persists_and_renders(tmp_path: Path) -> None:
     same_repo = factory.last
     run_row = same_repo.get_run(artifacts.run_id)
     rows = same_repo.get_category_scores(artifacts.run_id)
-    html = report.render_dashboard_html(same_repo, artifacts.run_id)
+    view = report.load_run_report_view(same_repo, artifacts.run_id)
+    html = report.render_run_report_html(view)
     factory.close_all()
 
     assert code == cli.EXIT_OK
@@ -516,7 +518,8 @@ def test_acceptance_rendered_report_contains_required_fields(tmp_path: Path) -> 
     repository = _repository_at(artifacts.db_path)
     try:
         view = report.load_run_report_view(repository, artifacts.run_id)
-        html = report.render_dashboard_html(repository, artifacts.run_id)
+        html = report.render_run_report_html(view)
+        app = report.build_dashboard_app(view)
     finally:
         repository.close()
 
@@ -524,6 +527,7 @@ def test_acceptance_rendered_report_contains_required_fields(tmp_path: Path) -> 
     assert view.categories
     assert view.heuristic_statement
     assert "heuristic" in html.lower()
+    assert view.heuristic_statement in json.dumps(app.layout, cls=PlotlyJSONEncoder)
     assert any(
         row.category == pf.TRANSPORT_VERIFIED_TOTAL_CATEGORY for row in view.categories
     )
@@ -745,18 +749,27 @@ def test_acceptance_dashboard_reads_persisted_run_only(tmp_path: Path) -> None:
         artifacts.config_path, artifacts.db_path, run_id=report_fx.RUN_ID
     )
     repository = SqliteRepository(artifacts.db_path)
+    factory = cf.dashboard_app_recorder()
+    serve = cf.run_dashboard_recorder()
+    original_run_dashboard = cli_module.run_dashboard
+    cli_module.run_dashboard = serve
     try:
         code = cli_module.dashboard_command(
             dashboard_options,
             repository=repository,
+            report_renderer=factory,
             stdout=stdout,
             stderr=stderr,
         )
     finally:
+        cli_module.run_dashboard = original_run_dashboard
         repository.close()
 
     assert code == cli_module.EXIT_OK
-    assert stdout.getvalue()
+    assert factory.call_count == 1
+    assert factory.views[0].run_id == report_fx.RUN_ID
+    assert serve.call_count == 1
+    assert serve.calls[0][0] is factory.app
 
 
 @pytest.mark.lreq("LREQ-TST-080")
