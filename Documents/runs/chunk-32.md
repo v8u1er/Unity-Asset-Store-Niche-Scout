@@ -104,10 +104,10 @@ progressive disclosure, direct labels + text (never color alone), sortable table
 | Skill CLI (lead) | DONE | lead ran the `ui-ux-pro-max` CLI (permitted for the lead); see "Skill CLI evidence" below. |
 | Rulings + freeze (lead) | DONE | plan §12 R1–R6; R1 = heuristic `open=False`; R2 = CLI output accepted + corroborates CSV citations; header flipped to `FROZEN`. |
 | Plan commit | DONE | `chunk-32: plan` |
-| Implement — `impl-fast` | PENDING | |
-| Lead verification | PENDING | |
-| Review — `spec-reviewer` | PENDING | |
-| Gate | PENDING | |
+| Implement — `impl-fast` | DONE | files: `src/niche_scout/assets/dashboard.css` (new, 599 lines), `pyproject.toml`, `src/niche_scout/report.py`, `tests/test_report.py`, `tests/traceability.json`; 4 new nodes; also used the ux skill (its CLI was permitted for the implementer). |
+| Lead verification | DONE | see "Gate walk" — all commands run by the lead. |
+| Review — `spec-reviewer` | PASS | VERDICT: PASS — no Blocker, no Major; 4 Minors (recorded below). Reviewer surfaced a self-inflicted stray file (see "Leftover"). |
+| Gate | PASSED | see walk. |
 
 ## Skill CLI evidence (lead; `ui-ux-pro-max`)
 
@@ -138,3 +138,70 @@ Commands run by the lead (the planner's own `bash` was denied by the environment
 Decision impact: dark data-dense theme retained (figures already dark), mono-for-data / sans-for-
 labels via an **offline system stack** (the skill's Google-Fonts `@import` is rejected under the
 offline constraint, D-4), sortable table primary, never colour-alone, focus/reduced-motion rules.
+
+## Lead verification (step 6; real output)
+
+| Command | Result |
+|---|---|
+| `python -m pytest -q` | `750 passed, 21 warnings in 30.73s` (warnings are Dash's own `DataTable` deprecation notice) |
+| `python -m niche_scout.tools.validate_traceability` | `Traceability valid: 89 required/defined LREQ IDs mapped, 729 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted non-analytical nodes)` |
+| `python -m niche_scout.tools.check_import_boundaries` | `Import boundaries valid for metrics.py, scoring.py` |
+| `python -m niche_scout.tools.check_scope_prohibitions` | `Scope prohibitions valid: no retired token found … (6 tokens checked)` |
+| `ruff format --check src/niche_scout/report.py tests/test_report.py` | `2 files already formatted` |
+| `ruff check src/niche_scout/report.py tests/test_report.py` | `All checks passed!` |
+
+Lead read `src/niche_scout/assets/dashboard.css` (599 lines) and the `report.py` diff: tokens + all
+25 classes + DataTable/react-select classes present; `:focus-visible` and
+`@media (prefers-reduced-motion: reduce)` present; the four breakpoints `375px`/768/1024/1440
+present; no `http://`, `https://`, `@import`, or `url(`; `assets_folder` passed as an absolute path;
+the heuristic statement still rendered once (inside a closed disclosure). `pyproject.toml` declares
+`[tool.setuptools.package-data] niche_scout = ["assets/*.css"]`; the assets dir holds only
+`dashboard.css`.
+
+## Review Minors (do not trigger a loop; recorded)
+
+1. `dashboard.css:311-323` + `:245-269` — CSS `position: sticky` on `.dash-header` cannot engage
+   because every Dash scroll ancestor (`.primary-table`, `.dash-table-container`,
+   `.dash-spreadsheet-container`) also sets `overflow-x: auto`. Sticky was explicitly best-effort
+   (plan §5.3 / §11 Q6); no gate depends on it. The plan's DoD wording should read "sortable table
+   polish (sticky best-effort)".
+2. `dashboard.css:61-64` — `html { scroll-padding-top: 56px }` does not offset the table's own
+   scroll container for focus-not-obscured inside the table. Residual because sticky is inert.
+3. `dashboard.css:438-441` — `.missing` (`--danger #E06C75`) on a zebra `--surface-2 #222833` row is
+   ≈4.2:1, just under the plan's 4.5:1 budget; the literal `n/a` text still carries the meaning, so
+   it is not colour-alone.
+4. `dashboard.css:163-166` — `details.heuristic > p` is a dead selector (the inner `P` carries
+   `className="heuristic"`); the live rule is `.heuristic`.
+
+## Leftover (not staged; not part of the chunk)
+
+`cssbase.py` at the repo root is an untracked stray file created by the `spec-reviewer`'s
+non-byte-exact extraction (`git show … > cssbase.py`). The lead could not remove it: `Remove-Item`
+and `git clean` are denied by the environment permission rule. It is **not staged and not part of
+chunk 32**; it should be deleted manually. (Reviewer MINOR #4 above is unrelated.)
+
+## Gate walk (plan §10 DoD)
+
+| Bullet | Evidence | Result |
+|---|---|---|
+| Whole suite passes | `pytest -q` → `750 passed, 21 warnings` | PASS |
+| Traceability exit 0, no orphan | `89 LREQ IDs, 729 matrix nodes, 0 unmarked (3 exempted)`; 4 new keys; no amended keys | PASS |
+| Import boundaries exit 0 | `Import boundaries valid for metrics.py, scoring.py` | PASS |
+| Scope prohibitions exit 0 | `no retired token found … (6 tokens checked)` | PASS |
+| Formatter/linter clean on changed Python | `2 files already formatted`; `All checks passed!` | PASS |
+| CSS exists, non-empty, offline, tokens/hexes/25 classes/DataTable+dropdown/focus/reduced-motion/breakpoints | new node `test_dashboard_css_asset_exists_is_offline_and_uses_the_token_set` passes; lead read the 599-line file | PASS |
+| `pyproject.toml` declares `niche_scout = ["assets/*.css"]` | `pyproject.toml:21-22` **(read)**; node `test_dashboard_css_is_declared_as_package_data` passes | PASS |
+| `assets_folder` resolves to the package assets dir | node `test_dashboard_app_serves_the_package_assets_folder` passes (asserts resolved equality, two builds); dir holds `dashboard.css` | PASS |
+| Progressive disclosure keeps mandated content | node `test_dashboard_uses_progressive_disclosure_without_dropping_mandated_content` passes; pinned RPT-020/030/040/050 nodes green; `view.heuristic_statement in app.layout` | PASS |
+| Static report path untouched/self-contained | `test_html_output_is_self_contained_and_deterministic` green; `render_run_report_html`/`write_run_report` unchanged | PASS |
+| `report.py` purity | `test_quality_tooling` purity scan green; no forbidden import; `_dashboard_assets_dir` reads no clock | PASS |
+| Files touched / interfaces | changed set = the 5 plan §7 files + lead-applied `interfaces/chunk-11.md` §12 + plan + run log; nothing else | PASS |
+
+**GATE: PASSED** (reviewer PASS; no Blocker/Major surviving; 4 Minors recorded, no loop).
+
+## Open items carried forward
+
+- Delete the stray untracked `cssbase.py` (Leftover above).
+- The four review Minors (sticky inert, scroll-padding, `.missing` 4.2:1 on zebra rows, dead
+  `details.heuristic > p` selector) are polish; a future styling pass can address them.
+- The three standing obligations (URI extraction, OI-6, `taxonomy_sha256`) remain untouched.
