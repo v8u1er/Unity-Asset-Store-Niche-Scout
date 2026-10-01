@@ -268,9 +268,49 @@ Residual observations (recorded, not blocking):
   the legend is still long, but the direct labels now carry identification, which was the
   skill-grounded fix. If a future chunk wants the legend hidden, that is a new scope decision.
 
+## Gate walk (plan §12 bullets, evidence one by one)
+
+| # | Gate bullet | Evidence | Result |
+|---|---|---|---|
+| 1 | `pytest -q` green; six new nodes; pinned nodes green; amended nodes pass amended | lead `python -m pytest -q` → 761 passed (run after the final commit) | PASS |
+| 2 | `validate_traceability` exit 0; new nodes marked + keyed | exit 0; "740 matrix nodes, 0 unmarked"; six new keys | PASS |
+| 3 | `check_import_boundaries` exit 0 | exit 0 | PASS |
+| 4 | `check_scope_prohibitions` exit 0 | exit 0 | PASS |
+| 5 | ruff format/check clean on changed Python files | `ruff format --check` on the three files → "3 files already formatted"; `ruff check` on the three → "All checks passed!" (lead, post-fix) | PASS |
+| 6 | Leaf-only ticks/hover; full path in table/guide/selector/detail; collision `leaf · parent` for the whole group | live: ticks `exterior`, `interior`, `guns`, …; refused `creatures (refused)`, hover `category: 3d/characters/creatures`; colliding `fantasy · 3d/environments`, `fantasy · 3d/characters/humanoids`; table cells + detail show full paths; test node green | PASS |
+| 7 | {score bar, scatter} `showlegend False`; other three keep; population legend horizontal below; no `layout.title` | live: both `legendItems []`; population legend below plot (193×67 at y 1534–1601, plot bottom 1503.5); no `gtitle` in any figure | PASS |
+| 8 | All five figures: mono numeric ticks, sans axis titles; no web font/URL | live tick font `ui-monospace, "Cascadia Mono", …` on all five; `--font-sans` axis titles; offline scan clean | PASS |
+| 9 | `_EVIDENCE_GRADE_COLOURS` == four ramp stops; CSS same; no retired hexes | live bar/contribution colours `#9fd7ea/#b9dbb0/#d5dd93/#e6d489`; CSS tokens asserted; `check_scope_prohibitions` exit 0 | PASS |
+| 10 | Policy series `i` sets line+marker to `_RAMP_HEXES[i % len]` | live 18-series cycle `#9fd7ea/#b9dbb0/#d5dd93/#e6d489` repeated, line == marker; node green | PASS |
+| 11 | DataTable freezes 7; 23 secondary conditionals; 30 columns unchanged, no removal/rename/reorder | live: 30 headers; first 7 `column_id`s carry no de-emphasis style; 23 secondary carry `font-weight: 400; opacity: 0.82`; `fixed_columns` present (`dash-fixed-content`) | PASS |
+| 12 | `.nav-link { box-sizing: border-box }`; desktop rail no longer overflows | live desktop: link 64 px in 73 px rail, link center 36.0 == icon center 36.0 (was +7.5 px); mobile centered 26.7 == 26.7 | PASS |
+| 13 | No forbidden import; no clock; no new callback; ids preserved | `check_import_boundaries` exit 0; no new callback; `DASHBOARD_COMPONENT_IDS` unchanged | PASS |
+| 14 | `.scratch/` SQLite marker probe → one symbol `diamond-open` | **N/A as written**: no `traces` table exists (`database.py` tables only) so the probe cannot run; equivalent runtime evidence — the only explicit marker `symbol` across the five figures is `diamond-open` (population measured-zero), verified live | PASS (substituted) |
+| 15 | No file outside §11 changed | commit scopes: only `report.py`, `dashboard.css`, `test_report.py`, `report_fixtures.py`, `traceability.json`, plus lead-owned `Documents/runs` + plan erratum | PASS |
+
+**GATE: PASSED** (2026-10-01). Bullet 14 is marked **substituted**: the plan's probe targets a
+`traces` table that does not exist in the schema; the runtime DOM check the reviewer accepted
+covers the same intent (exactly one marker symbol, `diamond-open`). No bullet is unmet.
+
+## Final commit list (chunk-34)
+
+- `52b3476` preflight, live dashboard audit, skill evidence, run log
+- `9be21d5` plan (frozen) · `fbd1126` plan erratum (leaf-label expectation)
+- `c393a3d` tests (red) · `9aa9f86` tests (leaf-label erratum) · `d0ca884` review fixes (format + refused/zero leaf guards) · `32df676` review fixes (rankable zero-population vector)
+- `c15c958` implementation · `81cc9ca` review fixes (refused leaf labels + zero hover) · `81acb04` review fixes (refused hover spacer wording)
+- `dc09e8c`/`915e6d9`/`faface8`/`45ad5fa` run-log stage records
+
 ## Open items carried forward
 
-- chunk-33 reviewer Minors still open: `--font-size-numeric-md` defined but unused
-  (not chunk 34's to resolve unless the plan touches it); `tests/test_report.py` above the
-  800–1,000-line report trigger (report item; split is a scope decision for a human).
-- The three standing obligations (URI extraction, OI-6, `taxonomy_sha256`) remain untouched.
+- Reviewer Minor (round 2, fixed): refused spacer hover wording — closed.
+- chunk-33 reviewer Minors still open (not chunk 34): `--font-size-numeric-md` defined but unused;
+  `tests/test_report.py` above the 800–1,000-line report trigger (report item; split is a human
+  scope decision).
+- Standing obligations unchanged: URI trailing-identifier extraction, OI-6 CSRF sufficiency,
+  `runs.taxonomy_sha256` empty-hash rejection (Chunk 10).
+
+## Gate
+
+| Stage | Status | Notes |
+|---|---|---|
+| Gate | PASSED | all 15 plan §12 bullets evidenced; bullet 14 substituted with runtime equivalent (no `traces` table) |
