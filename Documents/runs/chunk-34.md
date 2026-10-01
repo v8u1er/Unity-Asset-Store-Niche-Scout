@@ -178,8 +178,21 @@ removing any column.
 | Review — `spec-reviewer` (round 1) | DONE | `VERDICT: FAIL` — 1 Major (tests not ruff-format clean), 3 Minors (refused label full path; measured-zero hover lacks full path; §6.3 SQLite probe unrecorded). No Blocker |
 | Review fix round 1 | DONE | Major + the two label/hover Minors fixed; probe Minor resolved as N/A with runtime evidence; commits `chunk-34: review fixes (format + refused/zero leaf guards)`, `... (refused leaf labels + zero hover)`, `... (rankable zero-population vector)` |
 | Lead re-verify (round 1) | DONE | pytest 761 passed; validators exit 0; ruff format/check clean on all three changed test/src files; live re-audit below |
-| Review — `spec-reviewer` (round 2) | PENDING | |
+| Review — `spec-reviewer` (round 2) | DONE | `VERDICT: PASS` — all four round-1 findings resolved; one new cosmetic Minor (spacer hover), fixed in commit `chunk-34: review fixes (refused hover spacer wording)` |
 | Gate | PENDING | |
+
+## Reviewer round 2
+
+`VERDICT: PASS` with one new cosmetic Minor: the refused annotation's leading `" "` spacer row
+shared the refused hover template, so the spacer printed `" : n/a"`. Accepted and fixed
+(`report.py`: hover now `"%{y}<br>category: %{customdata[0]}<extra></extra>"`, giving the spacer
+`" "` and refused rows `<leaf> (refused)`); commit `chunk-34: review fixes (refused hover spacer
+wording)`. Re-verified: `ruff format --check src/niche_scout/report.py` → "1 file already
+formatted"; `pytest tests/test_report.py -q` → 55 passed; `pytest -q` → 761 passed.
+
+Reviewer round-2 residual notes: `ruff check` on the changed files could not be re-run by the
+reviewer (environment tool-permission denial), but the lead ran it clean; the §6.3 probe
+disposition was accepted (no `traces` table exists).
 
 ## Reviewer round 1 and fix round 1
 
