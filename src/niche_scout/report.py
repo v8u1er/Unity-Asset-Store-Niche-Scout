@@ -271,7 +271,7 @@ def _dashboard_assets_dir() -> Path:
 #: bar (R4). Sourced from :data:`EVIDENCE_GRADE_ORDER` so the ordinal source is
 #: the enum, not a second literal.
 _EVIDENCE_GRADE_COLOURS: tuple[tuple[str, str], ...] = tuple(
-    zip(EVIDENCE_GRADE_ORDER, ("#c98b8b", "#e0a458", "#8fb9a8", "#8fd694"))
+    zip(EVIDENCE_GRADE_ORDER, ("#c98b8b", "#e0a458", "#8fb0bf", "#46b688"))
 )
 
 HEURISTIC_STATEMENT: str = (
@@ -399,6 +399,52 @@ _PRIMARY_COLUMNS: tuple[tuple[str, str], ...] = (
     ("sensitivity warning", "sensitivity_warning"),
     ("sample shared with other categories (%)", "overlap_sample_percentage"),
 )
+
+#: One short meaning per ``_PRIMARY_COLUMNS`` label, keyed by the label so the
+#: Column guide (Chunk 33, LR4) renames no column and adds no second label
+#: literal. Every key is a ``_PRIMARY_COLUMNS`` label verbatim.
+_COLUMN_GUIDE_MEANINGS: dict[str, str] = {
+    "category": "the Asset Store category name.",
+    "rank": "the within-run rank; blank when the category is not rankable.",
+    "composite score": "the deterministic within-run composite, not a forecast.",
+    "D": "Demand: the discovered page-view index, shrunk by eligibility coverage.",
+    "C": "Competition: verified catalog breadth; unavailable when incomplete.",
+    "R": "Recent supply: recent share and median asset age, shrunk by coverage.",
+    "Q": "Quality: rating-derived quality, shrunk by eligibility coverage.",
+    "discovered population": "the observed discovered asset count.",
+    "sample size": "the observed enriched sample count.",
+    "census flag": "whether the whole discovered population was sampled.",
+    "unique enrichment count": "distinct sampled assets enriched once per run.",
+    "sample fraction": "enriched sample / discovered population; a sampling share.",
+    "sampling basis": "the sampling strategy recorded for the category.",
+    "cross-category overlap count": "sampled assets shared with other categories.",
+    "usable demand count": "sampled assets with a usable demand observation.",
+    "usable recent supply count": "sampled assets with a usable recent observation.",
+    "usable quality count": "sampled assets with a usable quality observation.",
+    "demand stratum eligibility coverage": (
+        "population share in eligible demand strata."
+    ),
+    "recent supply stratum eligibility coverage": (
+        "population share in eligible recent-supply strata."
+    ),
+    "quality stratum eligibility coverage": (
+        "population share in eligible quality strata."
+    ),
+    "evidence grade": "ordinal evidence strength, not statistical confidence.",
+    "rankability": "whether the category has enough evidence to be ranked.",
+    "discovery status": "whether discovery completed for the category.",
+    "page-view semantic status": (
+        "whether the page-view index is a trailing-7-day count."
+    ),
+    "top_3_stability": "top-three rank stability across policies; n/a if too few.",
+    "top_5_stability": "top-five rank stability across policies; n/a if too few.",
+    "maximum_score_delta": "largest composite change across scoring policies.",
+    "maximum_rank_displacement": "largest rank movement across scoring policies.",
+    "sensitivity_warning": "the recorded sensitivity warning, if any.",
+    "sample shared with other categories (%)": (
+        "share of the sample also in other categories."
+    ),
+}
 
 _INLINE_CSS = (
     "body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:1.5rem;"
@@ -1415,17 +1461,181 @@ def _base_layout(title: str) -> dict:
         "paper_bgcolor": "#1b2029",
         "plot_bgcolor": "#1b2029",
         "font": {"color": "#e6e9ee", "size": 12},
-        "margin": {"l": 140, "r": 24, "t": 48, "b": 40},
+        "margin": {"l": 8, "r": 56, "t": 48, "b": 40},
         "showlegend": True,
         "legend": {"bgcolor": "#222833", "font": {"color": "#e6e9ee"}},
-        "xaxis": {"gridcolor": "#2c3440", "zerolinecolor": "#2c3440"},
-        "yaxis": {"gridcolor": "#2c3440", "zerolinecolor": "#2c3440"},
+        "xaxis": {
+            "gridcolor": "#2c3440",
+            "zerolinecolor": "#2c3440",
+            "automargin": True,
+            "title_standoff": 16,
+        },
+        "yaxis": {
+            "gridcolor": "#2c3440",
+            "zerolinecolor": "#2c3440",
+            "automargin": True,
+            "title_standoff": 16,
+        },
     }
 
 
 def _component_label(name: str) -> str:
     """Return the human label for a component key (``D`` -> ``Demand``)."""
     return _DASHBOARD_LABELS[name][0]
+
+
+#: Fixed nav items in document order: ``(href, label, icon key)`` (Chunk 33 §7.1).
+_DASHBOARD_NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
+    ("#run-header-block", "Run", "house"),
+    ("#kpi-strip", "KPIs", "grid-four"),
+    ("#chart-grid", "Charts", "chart-bar"),
+    ("#primary-table-section", "Table", "list-bullets"),
+    ("#detail-section", "Detail", "list"),
+)
+
+#: Inline Phosphor-style outline SVG paths per icon key (Chunk 33 §7.2/LR2).
+#: ``dash_html`` has no SVG components in Dash 4.4.1 and ``dcc.Markdown`` strips
+#: the ``<svg>`` wrapper, so each icon is served as a ``dash_html.Img`` over a
+#: percent-encoded ``data:image/svg+xml`` URI (an inline asset, not a fetched
+#: URL).
+_NAV_ICON_PATHS: dict[str, str] = {
+    "house": (
+        '<path d="M213.66 101.66l-80-80a8 8 0 0 0-11.32 0l-80 80a8 8 0 0 0 '
+        "11.32 11.32L72 94.63V208a16 16 0 0 0 16 16h32a16 16 0 0 0 16-16v-40h48v40"
+        "a16 16 0 0 0 16 16h32a16 16 0 0 0 16-16V94.63l18.34 18.35a8 8 0 0 0 "
+        "11.32-11.32ZM200 208h-32v-40a16 16 0 0 0-16-16h-48a16 16 0 0 0-16 16v40"
+        'H88V88.63l72-72 72 72Z"/>'
+    ),
+    "grid-four": (
+        '<path d="M104 48H48a16 16 0 0 0-16 16v56a16 16 0 0 0 16 16h56a16 16 0 0 0 '
+        "16-16V64a16 16 0 0 0-16-16Zm0 72H48V64h56Zm104-72h-56a16 16 0 0 0-16 16v56"
+        "a16 16 0 0 0 16 16h56a16 16 0 0 0 16-16V64a16 16 0 0 0-16-16Zm0 72h-56V64"
+        "h56Zm-104 32H48a16 16 0 0 0-16 16v56a16 16 0 0 0 16 16h56a16 16 0 0 0 "
+        "16-16v-56a16 16 0 0 0-16-16Zm0 72H48v-56h56Zm104-72h-56a16 16 0 0 0-16 16"
+        "v56a16 16 0 0 0 16 16h56a16 16 0 0 0 16-16v-56a16 16 0 0 0-16-16Zm0 72"
+        'h-56v-56h56Z"/>'
+    ),
+    "chart-bar": (
+        '<path d="M224 200h-8v-56a16 16 0 0 0-16-16h-40a16 16 0 0 0-16 16v56h-24V96'
+        "a16 16 0 0 0-16-16H64a16 16 0 0 0-16 16v104h-8a8 8 0 0 0 0 16h184a8 8 0 0 "
+        '0 0-16Zm-64 0v-56h40v56Zm-80 0V96h40v104Z"/>'
+    ),
+    "list-bullets": (
+        '<circle cx="80" cy="64" r="16"/><circle cx="80" cy="128" r="16"/>'
+        '<circle cx="80" cy="192" r="16"/>'
+        '<path d="M216 56H112a8 8 0 0 0 0 16h104a8 8 0 0 0 0-16Zm0 64H112a8 8 0 0 0 '
+        '0 16h104a8 8 0 0 0 0-16Zm0 64H112a8 8 0 0 0 0 16h104a8 8 0 0 0 0-16Z"/>'
+    ),
+    "list": (
+        '<path d="M224 128a8 8 0 0 1-8 8H40a8 8 0 0 1 0-16h176a8 8 0 0 1 8 8ZM40 '
+        "72h176a8 8 0 0 0 0-16H40a8 8 0 0 0 0 16Zm176 112H40a8 8 0 0 0 0 16h176a8 "
+        '8 0 0 0 0-16Z"/>'
+    ),
+}
+
+
+def _nav_svg(icon_key: str) -> str:
+    """Return the inline ``<svg>`` markup for one decorative nav icon.
+
+    The fill is the ``--muted-fg`` reference value baked in (an ``<img>`` cannot
+    inherit ``currentColor``); the icon is decorative beside the visible text
+    label, so the element carries ``aria-hidden="true"`` and
+    ``focusable="false"`` (skill ``icons.csv`` usage column).
+    """
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" '
+        'width="20" height="20" fill="#8fb0bf" aria-hidden="true" '
+        'focusable="false">'
+        f"{_NAV_ICON_PATHS[icon_key]}</svg>"
+    )
+
+
+def _svg_data_uri(svg_markup: str) -> str:
+    """Percent-encode ``svg_markup`` into an offline ``data:`` image URI.
+
+    ``<``, ``>``, ``#``, ``"`` and spaces are percent-encoded so the URI is
+    valid; the result is an inline asset, never an external URL fetch, and no
+    scheme-bearing string is added to the stylesheet.
+    """
+    encoded = (
+        svg_markup.replace("%", "%25")
+        .replace('"', "%22")
+        .replace("#", "%23")
+        .replace("<", "%3C")
+        .replace(">", "%3E")
+        .replace(" ", "%20")
+    )
+    return "data:image/svg+xml;utf8," + encoded
+
+
+def _nav_icon(icon_key: str) -> "dash_html.Img":
+    """Return one nav item's decorative icon as a real ``<img>`` element.
+
+    Dash 4.4.1's ``dcc.Markdown(..., dangerously_allow_html=True)`` strips the
+    ``<svg>`` wrapper (the served DOM keeps only ``<path>`` inside a ``<p>``), so
+    it renders no SVG. The working, offline icon is a ``dash_html.Img`` whose
+    ``src`` is a percent-encoded ``data:image/svg+xml`` URI; the ``<img>`` is
+    decorative beside the visible label and carries ``aria-hidden="true"``.
+    """
+    return dash_html.Img(
+        src=_svg_data_uri(_nav_svg(icon_key)),
+        alt="",
+        className="nav-icon",
+        **{"aria-hidden": "true"},
+    )
+
+
+def _dashboard_nav() -> "dash_html.Nav":
+    """Return the presentational anchor navigation (Chunk 33 §7; no callback).
+
+    One anchor per section in document order, each with a real inline icon image
+    and a visible text label. Anchors only: no Dash callback, no JS. The icon is
+    ``aria-hidden`` and the text label is the accessible name and the fallback.
+    """
+    return dash_html.Nav(
+        [
+            dash_html.A(
+                [
+                    _nav_icon(icon_key),
+                    dash_html.Span(label, className="nav-label"),
+                ],
+                href=href,
+                className="nav-link",
+            )
+            for href, label, icon_key in _DASHBOARD_NAV_ITEMS
+        ],
+        className="dashboard-nav",
+        **{"aria-label": "Dashboard sections"},
+    )
+
+
+def _column_guide() -> "dash_html.Details":
+    """Return the native "Column guide" disclosure above the primary table.
+
+    Lists every ``_PRIMARY_COLUMNS`` label verbatim with a short meaning, built
+    from ``_PRIMARY_COLUMNS`` so no column name is restated as a second literal.
+    It is the keyboard/pointer-operable full-text path for a clipped DataTable
+    header (LR4; skill ``ux-guidelines.csv:114``/``:117``) and renames/removes
+    no column. A label without a recorded meaning still renders (meaning empty).
+    """
+    return dash_html.Details(
+        [
+            dash_html.Summary("Column guide"),
+            dash_html.Ol(
+                [
+                    dash_html.Li(
+                        [
+                            dash_html.Span(label),
+                            ": ",
+                            _COLUMN_GUIDE_MEANINGS.get(label, ""),
+                        ]
+                    )
+                    for label, _attribute in _PRIMARY_COLUMNS
+                ]
+            ),
+        ],
+        className="column-guide",
+    )
 
 
 def _score_bar_figure(view: RunReportView) -> go.Figure:
@@ -1800,12 +2010,10 @@ def _primary_table(view: RunReportView) -> "dash_html.Div":
             page_size=len(view.categories) or 1,
             style_table={"overflowX": "auto", "width": "100%"},
             style_cell={
-                "fontSize": "0.78rem",
                 "padding": "2px 6px",
                 "textAlign": "left",
                 "whiteSpace": "nowrap",
             },
-            style_header={"fontWeight": "600"},
         ),
         id="primary-table",
         className="primary-table",
@@ -2093,44 +2301,60 @@ def build_dashboard_layout(view: RunReportView) -> "dash_html.Div":
     )
     return dash_html.Div(
         [
-            dash_html.Header(
-                [
-                    dash_html.H1("Niche Scout dashboard"),
-                    _run_header(view),
-                    _heuristic_banner(view),
-                ],
-                className="run-header-block",
+            dash_html.A(
+                "Skip to main content",
+                href="#main-content",
+                className="skip-link",
             ),
-            _kpi_strip(view),
-            dash_html.Div(
+            _dashboard_nav(),
+            dash_html.Main(
                 [
-                    _chart_card(chart_key, view)
-                    for chart_key, _div_id in DASHBOARD_CHART_IDS
-                ],
-                className="chart-grid",
-            ),
-            dash_html.Section(
-                [
-                    dash_html.H2("Primary table"),
-                    _component_legend(),
-                    _primary_table(view),
-                ],
-                className="primary-table-section",
-            ),
-            dash_html.Section(
-                [
-                    dash_html.H2("Category detail"),
-                    _shared_formula_panel(),
-                    _category_selector(view),
-                    dash_html.Div(
-                        detail_children,
-                        id="detail-panel",
-                        className="detail-panel",
+                    dash_html.Header(
+                        [
+                            dash_html.H1("Niche Scout dashboard"),
+                            _run_header(view),
+                            _heuristic_banner(view),
+                        ],
+                        id="run-header-block",
+                        className="run-header-block",
                     ),
+                    _kpi_strip(view),
+                    dash_html.Div(
+                        [
+                            _chart_card(chart_key, view)
+                            for chart_key, _div_id in DASHBOARD_CHART_IDS
+                        ],
+                        id="chart-grid",
+                        className="chart-grid",
+                    ),
+                    dash_html.Section(
+                        [
+                            dash_html.H2("Primary table"),
+                            _component_legend(),
+                            _column_guide(),
+                            _primary_table(view),
+                        ],
+                        id="primary-table-section",
+                        className="primary-table-section",
+                    ),
+                    dash_html.Section(
+                        [
+                            dash_html.H2("Category detail"),
+                            _shared_formula_panel(),
+                            _category_selector(view),
+                            dash_html.Div(
+                                detail_children,
+                                id="detail-panel",
+                                className="detail-panel",
+                            ),
+                        ],
+                        id="detail-section",
+                        className="detail-section",
+                    ),
+                    _footnote(view),
                 ],
-                className="detail-section",
+                id="main-content",
             ),
-            _footnote(view),
         ],
         className="dashboard",
     )

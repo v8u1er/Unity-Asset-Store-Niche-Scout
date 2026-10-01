@@ -23,6 +23,7 @@ import dataclasses
 import inspect
 import json
 import re
+import urllib.parse
 from html import escape as html_escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -1901,20 +1902,27 @@ def test_dashboard_css_uses_the_reference_palette_and_explicit_type_scale():
 def test_dashboard_layout_has_minimal_anchor_navigation_with_inline_svg_and_skip_link(
     tmp_path,
 ):
-    """The layout carries an anchor nav with inline SVG icons and a skip link.
+    """The layout carries an anchor nav with data-URI Img icons and a skip link.
 
-    Plan §7.1: a ``Nav`` targets the five sections in document order; a skip
-    link is the first focusable element and points at ``#main-content`` (skill
-    ``ux-guidelines.csv:46`` "Skip Links"); every nav item has a visible text
-    label; the icons are inline SVG emitted through ``dcc.Markdown`` with
-    ``aria-hidden="true"`` and ``focusable="false"`` (plan §7.2/LR2; skill
-    ``icons.csv:2`` usage column: a decorative icon beside visible text is
-    ``aria-hidden``); every existing ``DASHBOARD_COMPONENT_IDS`` id survives.
+    Plan §7.1; the icon mechanism was re-ruled after the lead's Kilo Playwright
+    check proved Dash 4.4.1 ``dcc.Markdown`` strips the ``<svg>`` wrapper: a
+    ``Nav`` targets the five sections in document order; a skip link is the
+    first focusable element and points at ``#main-content`` (skill
+    ``ux-guidelines.csv:46`` "Skip Links"); every nav item has a visible
+    ``nav-label`` text label and exactly one ``Img`` whose ``src`` is an inline
+    percent-encoded ``data:image/svg+xml`` URI with ``alt=""`` and
+    ``aria-hidden="true"`` (skill ``icons.csv:2`` usage column: a decorative
+    icon beside visible text is hidden from assistive technology); the nav
+    contains no ``dcc.Markdown`` component, so the removed hidden-icon markup
+    cannot satisfy this node; no nav ``src``/``href`` targets an external asset
+    (the SVG XML namespace is allowed only inside the data URI); every existing
+    ``DASHBOARD_COMPONENT_IDS`` id survives.
     """
     repository, view = _dashboard_view(tmp_path)
     try:
         layout = report.build_dashboard_layout(view)
-        assert _components_of_type(layout, "Nav"), "the layout has no Nav"
+        navs = _components_of_type(layout, "Nav")
+        assert navs, "the layout has no Nav"
         anchors = _components_of_type(layout, "A")
         skip_links = [
             anchor
@@ -1932,6 +1940,7 @@ def test_dashboard_layout_has_minimal_anchor_navigation_with_inline_svg_and_skip
         assert [
             anchor.to_plotly_json()["props"].get("href") for anchor in nav_links
         ] == list(_DASHBOARD_NAV_ANCHORS)
+        namespace = 'xmlns="http://www.w3.org/2000/svg"'
         for anchor in nav_links:
             labels = [
                 span
@@ -1941,20 +1950,59 @@ def test_dashboard_layout_has_minimal_anchor_navigation_with_inline_svg_and_skip
             assert len(labels) == 1, "nav item needs one visible text label"
             assert isinstance(labels[0].children, str)
             assert labels[0].children.strip()
+            icons = _components_of_type(anchor, "Img")
+            assert len(icons) == 1, "nav item needs exactly one icon Img"
+            icon_props = icons[0].to_plotly_json()["props"]
+            src = icon_props.get("src")
+            assert isinstance(src, str), "the icon Img has no src string"
+            # LR2 (re-ruled): an inline percent-encoded data URI, never live
+            # markup routed through dcc.Markdown and never an external asset.
+            assert src.startswith("data:image/svg+xml"), src[:64]
+            assert "," in src, "a data URI must carry a comma before its payload"
+            svg = urllib.parse.unquote(src.split(",", 1)[1])
+            assert "<svg" in svg, "the data URI payload is not inline SVG"
+            # The SVG XML namespace is required; it lives inside the data URI.
+            assert namespace in svg
+            # A decorative icon beside a visible text label is hidden from
+            # assistive technology (skill icons.csv usage column).
+            assert icon_props.get("alt") == ""
+            assert icon_props.get("aria-hidden") == "true"
+        navs_with_links = [
+            candidate
+            for candidate in navs
+            if any(
+                anchor.to_plotly_json()["props"].get("className") == "nav-link"
+                for anchor in _components_of_type(candidate, "A")
+            )
+        ]
+        assert navs_with_links, "no Nav contains the nav items"
+        for nav in navs_with_links:
+            # The dead hidden-icon Markdown was removed with the re-ruling:
+            # its stale markup must not satisfy this node.
+            assert not _components_of_type(nav, "Markdown"), (
+                "the nav still contains a Markdown component"
+            )
+            assert '"Markdown"' not in _norm(nav), (
+                "a Markdown component type survives in the nav tree"
+            )
+            for node in _walk(nav):
+                node_json = node.to_plotly_json()
+                for attribute, value in node_json["props"].items():
+                    if not isinstance(value, str):
+                        continue
+                    if attribute in ("src", "href"):
+                        assert not value.startswith("http"), (
+                            f"nav {attribute} references an external asset: "
+                            f"{value[:64]!r}"
+                        )
+                    if namespace in value:
+                        # The namespace is permitted only inside the inline
+                        # data URI, never as a live external reference.
+                        assert node_json.get("type") == "Img"
+                        assert attribute == "src"
+                        assert value.startswith("data:image/svg+xml")
         for anchor_id in _DASHBOARD_NAV_ANCHORS:
             assert _component_by_id(layout, anchor_id[1:]) is not None, anchor_id
-        markdowns = [
-            node
-            for node in _components_of_type(layout, "Markdown")
-            if isinstance(node.children, str) and "<svg" in node.children
-        ]
-        assert markdowns, "no inline SVG icon Markdown component"
-        for markdown in markdowns:
-            held = markdown.children
-            assert 'aria-hidden="true"' in held
-            assert 'focusable="false"' in held
-            props = markdown.to_plotly_json()["props"]
-            assert props.get("dangerously_allow_html") is True
         for component_id, _role in report.DASHBOARD_COMPONENT_IDS:
             assert _component_by_id(layout, component_id) is not None
     finally:

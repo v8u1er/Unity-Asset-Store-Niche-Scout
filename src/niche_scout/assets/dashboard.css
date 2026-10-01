@@ -1,4 +1,4 @@
-/* Niche Scout dashboard stylesheet (Chunk 32).
+/* Niche Scout dashboard stylesheet (Chunk 33).
  *
  * Offline, self-contained design system for the served Dash dashboard. No
  * external URL, web font, at-import directive, or CDN is referenced: typography
@@ -10,33 +10,59 @@
  * colour alone), sortable primary table. Grounded in the ui-ux-pro-max skill:
  * styles.csv "Data-Dense Dashboard" (12-col grid, 8px gap, overflow:auto tables,
  * sticky headers, --table-row-height:36px), typography.csv "Dashboard Data"
- * (code for data, sans for labels), ux-guidelines.csv Reduced Motion / Focus
- * States / Color Contrast / Color Only / Table Handling / Readable Font Size.
+ * (code for data, sans for labels), ux-guidelines.csv Truncation / Essential
+ * Text Truncation / Compact Label Overflow / Skip Links / Focus States /
+ * Heading Hierarchy / Font Size Scale, icons.csv (decorative icons beside a
+ * visible label are aria-hidden).
+ *
+ * Chunk 33 (reference palette, explicit type/weight scale, truncation fix,
+ * minimal anchor navigation) supersedes the chunk-32 palette values and the
+ * chunk-32 ad-hoc heading/KPI sizes.
  */
 
 :root {
-  /* Semantic colour tokens (fixed). */
-  --bg: #0B1120;
-  --surface: #1B2029;
-  --surface-2: #222833;
-  --border: #2C3440;
-  --fg: #E6E9EE;
-  --muted-fg: #9AA6B2;
-  --primary: #6EA8FE;
-  --accent: #F2C14E;
-  --positive: #8FD694;
-  --danger: #E06C75;
+  /* Semantic colour tokens — reference image palette (Chunk 33 plan §4.1). */
+  --bg: #0c1d27;
+  --surface: #112d3b;
+  --surface-2: #0c2432;
+  --border: #1f394e;
+  --fg: #e6f0f4;
+  --muted-fg: #8fb0bf;
+  --primary: #64bcfb;
+  --accent: #46b688;
+  --positive: #48b78d;
+  --danger: #e27882;
 
-  /* Ordinal evidence scale (mirrors the existing figure scale). */
+  /* Ordinal evidence scale — re-tuned to the reference family (plan §4.2, LR1). */
   --evidence-insufficient: #c98b8b;
   --evidence-weak: #e0a458;
-  --evidence-moderate: #8fb9a8;
-  --evidence-strong: #8fd694;
+  --evidence-moderate: #8fb0bf;
+  --evidence-strong: #46b688;
 
   /* Offline system font stacks (no web font, no at-import directive). */
   --font-sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas,
     "SFMono-Regular", Menlo, monospace;
+
+  /* Explicit type scale (plan §5.1). */
+  --font-size-label: 0.75rem;
+  --font-size-small: 0.8125rem;
+  --font-size-body: 1rem;
+  --font-size-subhead: 1.125rem;
+  --font-size-card-title: 1.25rem;
+  --font-size-section-title: 1.5rem;
+  --font-size-page-title: 2rem;
+  --font-size-numeric-md: 1.25rem;
+  --font-size-numeric-lg: 2rem;
+
+  /* Explicit weight scale (plan §5.2). */
+  --weight-body: 400;
+  --weight-muted: 400;
+  --weight-label: 500;
+  --weight-numeric: 600;
+  --weight-card-title: 600;
+  --weight-section-title: 600;
+  --weight-page-title: 700;
 
   /* Non-colour tokens. */
   --measure: 72ch;
@@ -52,28 +78,32 @@
   --focus-offset: 2px;
   --z-header: 2;
   --font-size-base: 1rem;
-  --font-size-small: 0.8125rem;
   --table-row-height: 36px;
+  /* Sticky top-bar / rail offset so an anchored target is not obscured. */
+  --nav-topbar-height: 56px;
+  --nav-rail-width: 64px;
 }
 
 /* ---------------------------------------------------------------- canvas -- */
 
 html {
   color-scheme: dark;
-  scroll-padding-top: 56px;
+  scroll-padding-top: var(--nav-topbar-height);
 }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
+  font-family: var(--font-sans);
 }
 
 .dashboard {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--weight-body);
   line-height: 1.5;
   max-inline-size: 1600px;
   margin-inline: auto;
@@ -91,21 +121,25 @@ body {
 }
 
 .dashboard h1 {
-  font-size: 1.5rem;
+  font-size: var(--font-size-page-title);
+  font-weight: var(--weight-page-title);
 }
 
 .dashboard h2 {
-  font-size: 1.25rem;
+  font-size: var(--font-size-section-title);
+  font-weight: var(--weight-section-title);
   padding-block-end: var(--space-2);
   border-block-end: 1px solid var(--border);
 }
 
 .dashboard h3 {
-  font-size: 1.0625rem;
+  font-size: var(--font-size-card-title);
+  font-weight: var(--weight-card-title);
 }
 
 .dashboard h4 {
-  font-size: 0.9375rem;
+  font-size: var(--font-size-subhead);
+  font-weight: var(--weight-label);
   color: var(--muted-fg);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -114,6 +148,121 @@ body {
 
 .dashboard a {
   color: var(--primary);
+}
+
+/* --------------------------------------------------- skip link + nav ----- */
+
+/* Skip link: visually hidden until focused, then shown over the top bar. */
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: calc(var(--z-header) + 1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--space-3)));
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
+/* Top bar at base / mobile; fixed left icon rail at >=1024px. */
+.dashboard-nav {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: var(--z-header);
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-1);
+  min-block-size: var(--nav-topbar-height);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.nav-link {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  color: var(--muted-fg);
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
+  text-decoration: none;
+  cursor: pointer;
+  border-block-end: 2px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--fg);
+}
+
+.nav-link:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.nav-link svg {
+  inline-size: 20px;
+  block-size: 20px;
+  fill: currentColor;
+  display: block;
+}
+
+/* The nav icon is an <img> over a data:image/svg+xml URI (the fill is baked
+ * into the SVG, since an <img> cannot inherit currentColor). */
+.nav-icon {
+  inline-size: 20px;
+  block-size: 20px;
+  display: block;
+  opacity: 0.9;
+}
+
+.nav-link:hover .nav-icon,
+.nav-link:focus-visible .nav-icon {
+  opacity: 1;
+}
+
+.nav-label {
+  font-size: var(--font-size-label);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Unconditional active-section marker: :target on the destination section. */
+.run-header-block:target,
+#kpi-strip:target,
+.chart-grid:target,
+.primary-table-section:target,
+.detail-section:target {
+  border-inline-start: 3px solid var(--accent);
+  padding-inline-start: var(--space-3);
+  scroll-margin-top: var(--nav-topbar-height);
+}
+
+/* Active nav-link marker when :has() is supported (plan §7.3, LR5). */
+@supports selector(:has(*)) {
+  body:has(#run-header-block:target) .dashboard-nav .nav-link[href="#run-header-block"],
+  body:has(#kpi-strip:target) .dashboard-nav .nav-link[href="#kpi-strip"],
+  body:has(.chart-grid:target) .dashboard-nav .nav-link[href="#chart-grid"],
+  body:has(.primary-table-section:target) .dashboard-nav .nav-link[href="#primary-table-section"],
+  body:has(.detail-section:target) .dashboard-nav .nav-link[href="#detail-section"] {
+    color: var(--accent);
+    border-block-end-color: var(--accent);
+  }
 }
 
 /* ------------------------------------------------------- vertical rhythm -- */
@@ -143,7 +292,8 @@ body {
 .run-header dt {
   grid-column: span 12;
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -157,6 +307,8 @@ body {
 
 .heuristic {
   color: var(--muted-fg);
+  font-size: var(--font-size-body);
+  font-weight: var(--weight-muted);
   max-inline-size: var(--measure);
 }
 
@@ -176,6 +328,7 @@ details.heuristic > p {
 
 .kpi-strip {
   margin-block: var(--space-5);
+  scroll-margin-top: var(--nav-topbar-height);
 }
 
 .kpi-tile {
@@ -192,21 +345,24 @@ details.heuristic > p {
 
 .kpi-label {
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .kpi-value {
   font-family: var(--font-mono);
-  font-size: 1.5rem;
+  font-size: var(--font-size-numeric-lg);
+  font-weight: var(--weight-numeric);
   font-variant-numeric: tabular-nums;
   color: var(--fg);
 }
 
 .kpi-note {
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-body);
+  font-weight: var(--weight-muted);
   max-inline-size: var(--measure);
 }
 
@@ -214,6 +370,7 @@ details.heuristic > p {
 
 .chart-grid {
   margin-block: var(--space-5);
+  scroll-margin-top: var(--nav-topbar-height);
 }
 
 .chart-card {
@@ -235,7 +392,8 @@ details.heuristic > p {
 
 .chart-caption {
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-body);
+  font-weight: var(--weight-muted);
   max-inline-size: var(--measure);
   margin-block: 0 var(--space-2);
 }
@@ -254,10 +412,46 @@ details.heuristic > p {
   padding: var(--space-1);
 }
 
+.primary-table-section {
+  scroll-margin-top: var(--nav-topbar-height);
+}
+
 .component-legend {
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-body);
+  font-weight: var(--weight-muted);
   max-inline-size: var(--measure);
+}
+
+/* Column guide: native full-text disclosure above the primary table (LR4). */
+.column-guide {
+  margin-block: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
+.column-guide > summary {
+  cursor: pointer;
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+
+.column-guide ol {
+  margin: var(--space-2) 0 0;
+  padding-inline-start: var(--space-5);
+  color: var(--muted-fg);
+  font-size: var(--font-size-body);
+  max-inline-size: var(--measure);
+}
+
+.column-guide li {
+  margin-block-end: var(--space-1);
 }
 
 /* Dash DataTable generated classes. */
@@ -281,45 +475,76 @@ details.heuristic > p {
   border-collapse: collapse;
 }
 
+/* Dash DataTable injects `.dash-table-container .dash-spreadsheet-container
+ * .dash-spreadsheet-inner td/th { background: white }`, whose specificity beats
+ * a plain `.dash-cell`/`.dash-header`. The `!important` declarations below (and
+ * the equal-specificity guard) keep the reference tokens authoritative so light
+ * text is never painted on white (skill ux-guidelines.csv:36 Color Contrast,
+ * >=4.5:1 normal text). */
 .dash-cell {
   height: var(--table-row-height);
   max-height: var(--table-row-height);
   padding: var(--space-1) var(--space-2);
-  background: var(--surface);
-  color: var(--fg);
-  border-color: var(--border);
+  background: var(--surface) !important;
+  color: var(--fg) !important;
+  border-color: var(--border) !important;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
+  font-weight: var(--weight-numeric);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-cell .dash-cell-value {
+  color: var(--fg) !important;
 }
 
 .dash-spreadsheet-inner tr:nth-child(even) .dash-cell {
-  background: var(--surface-2);
+  background: var(--surface-2) !important;
 }
 
 .dash-spreadsheet-inner tr:hover .dash-cell {
-  background: var(--surface-2);
+  background: var(--surface-2) !important;
 }
 
 .dash-cell.focused,
 .dash-cell.selected {
   outline: var(--focus-ring);
   outline-offset: calc(-1 * var(--focus-offset));
-  background: var(--surface-2);
+  background: var(--surface-2) !important;
 }
 
 .dash-header {
   position: sticky;
   top: 0;
   z-index: var(--z-header);
-  background: var(--surface-2);
-  color: var(--muted-fg);
-  border-color: var(--border);
+  background: var(--surface-2) !important;
+  color: var(--muted-fg) !important;
+  border-color: var(--border) !important;
   font-family: var(--font-sans);
-  font-size: var(--font-size-small);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-header .column-header-name {
+  color: var(--muted-fg) !important;
+}
+
+/* Equal-specificity guard for the DataTable-injected td/th rule. */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+  background: var(--surface-2) !important;
+  color: var(--muted-fg) !important;
 }
 
 .dash-header.column-header--sort {
@@ -371,6 +596,7 @@ table.strata {
   background: var(--surface-2);
   color: var(--muted-fg);
   font-family: var(--font-sans);
+  font-weight: var(--weight-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -394,6 +620,10 @@ table.strata {
   margin-block-start: var(--space-3);
 }
 
+.detail-section {
+  scroll-margin-top: var(--nav-topbar-height);
+}
+
 .detail-section .category-selector {
   margin-block-start: var(--space-3);
 }
@@ -407,7 +637,7 @@ details > summary {
   cursor: pointer;
   padding: var(--space-2) 0;
   color: var(--fg);
-  font-weight: 600;
+  font-weight: var(--weight-label);
 }
 
 .formula-panel ul,
@@ -455,7 +685,8 @@ details > summary {
   display: block;
   margin-block-end: var(--space-1);
   color: var(--muted-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-label);
+  font-weight: var(--weight-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -530,7 +761,9 @@ a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 .dash-cell:focus-visible,
-.Select-control:focus-visible {
+.Select-control:focus-visible,
+.nav-link:focus-visible,
+.skip-link:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
@@ -583,10 +816,34 @@ input:focus-visible,
 @media (min-width: 1024px) {
   .dashboard {
     padding: var(--space-6);
+    /* Leading inset so the fixed rail does not cover content. */
+    margin-inline-start: calc(var(--nav-rail-width) + var(--space-6));
   }
 
   .chart-card {
     grid-column: span 6;
+  }
+
+  /* Fixed left icon rail. */
+  .dashboard-nav {
+    inset-block: 0;
+    inset-inline: 0 auto;
+    flex-direction: column;
+    inline-size: var(--nav-rail-width);
+    min-block-size: 100vh;
+    padding: var(--space-3) var(--space-1);
+    border-block-end: none;
+    border-inline-end: 1px solid var(--border);
+    overflow-x: visible;
+    overflow-y: auto;
+  }
+
+  .nav-link {
+    inline-size: 100%;
+  }
+
+  .nav-label {
+    font-size: 0.625rem;
   }
 }
 
