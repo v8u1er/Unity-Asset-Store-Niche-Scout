@@ -2216,9 +2216,17 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
 
     # The population chart's measured-explicit-zero trace exposes the full
     # category path in hover ("hover collision-safety", plan §5.2), so no chart
-    # hover is left showing a leaf without a path back to the table/detail.
+    # hover is left showing a leaf without a path back to the table/detail. The
+    # fixture's zero-population row is not rankable, and non-rankable rows stay
+    # off the scored axis (SRS §10 LREQ-RPT-040), so the vector is made rankable
+    # while keeping its measured ``discovered_population_count == 0`` and score.
     zero_row = dataclasses.replace(
         rf.zero_population_row(rf.CATEGORY_ZERO_POPULATION),
+        rankability_status="rankable",
+        ranking_sensitivity_json=rf.ranking_sensitivity_json(
+            (rf.CATEGORY_ZERO_POPULATION,),
+            balanced_ranks={rf.CATEGORY_ZERO_POPULATION: 1},
+        ),
         run_id="run-zero-population",
     )
     zero_view = _view_with_row(tmp_path, zero_row)
