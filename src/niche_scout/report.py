@@ -1764,9 +1764,7 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
                 name="refused (n/a)",
                 showlegend=False,
                 customdata=[[""]] + [[row.category] for row in refused],
-                hovertemplate=(
-                    "%{y}: n/a<br>category: %{customdata[0]}<extra></extra>"
-                ),
+                hovertemplate=("%{y}<br>category: %{customdata[0]}<extra></extra>"),
             )
         )
     figure.update_layout(**_base_layout())
