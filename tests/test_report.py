@@ -2095,8 +2095,7 @@ def _relative_luminance(hex_colour):
         return ((channel + 0.055) / 1.055) ** 2.4
 
     red, green, blue = (
-        linearise(int(hex_colour[index : index + 2], 16) / 255.0)
-        for index in (1, 3, 5)
+        linearise(int(hex_colour[index : index + 2], 16) / 255.0) for index in (1, 3, 5)
     )
     return 0.2126 * red + 0.7152 * green + 0.0722 * blue
 
@@ -2170,6 +2169,12 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
         expected_labels = ["Ranked · Alpha", "Ranked · Bravo", "Unranked"]
         assert bar["data"][0]["y"] == expected_labels
         assert rf.CATEGORY_ALPHA not in bar["data"][0]["y"]
+        # The refused annotation trace is the leaf plus the "(refused)" marker
+        # (with a leading spacer entry), never the full category path; plan
+        # §1.1/§5.2 make every chart category label a leaf.
+        refused_trace = bar["data"][1]
+        assert rf.CATEGORY_NON_RANKABLE not in refused_trace["y"]
+        assert "NonRankable (refused)" in refused_trace["y"]
         scatter = _graph_for(layout, div_ids["score_quality_scatter"])
         assert scatter["data"][0]["text"] == expected_labels
         held = _norm(layout)
@@ -2208,6 +2213,25 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
         }
     finally:
         repository.close()
+
+    # The population chart's measured-explicit-zero trace exposes the full
+    # category path in hover ("hover collision-safety", plan §5.2), so no chart
+    # hover is left showing a leaf without a path back to the table/detail.
+    zero_row = dataclasses.replace(
+        rf.zero_population_row(rf.CATEGORY_ZERO_POPULATION),
+        run_id="run-zero-population",
+    )
+    zero_view = _view_with_row(tmp_path, zero_row)
+    population = _graph_for(
+        report.build_dashboard_layout(zero_view),
+        dict(report.DASHBOARD_CHART_IDS)["population_lollipop"],
+    )
+    measured_zero = [
+        trace for trace in population["data"] if trace.get("name") == "measured zero"
+    ]
+    assert len(measured_zero) == 1
+    assert "category:" in measured_zero[0]["hovertemplate"]
+    assert measured_zero[0]["customdata"] == [[rf.CATEGORY_ZERO_POPULATION]]
 
 
 @pytest.mark.lreq("LREQ-RPT-010")
