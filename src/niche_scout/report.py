@@ -1455,24 +1455,30 @@ def _evidence_colour(grade: str) -> str:
 
 
 def _base_layout(title: str) -> dict:
-    """Return the fixed dark-mode layout shared by every dashboard figure."""
+    """Return the fixed dark-mode layout shared by every dashboard figure.
+
+    The colour literals below intentionally mirror the semantic tokens in
+    ``assets/dashboard.css`` (``--fg``, ``--surface``, ``--surface-2``,
+    ``--border``): figures serialize to JSON, so a CSS variable cannot be used
+    here and the duplication is deliberate. Keep both in sync.
+    """
     return {
-        "title": {"text": title, "font": {"color": "#e6e9ee"}},
-        "paper_bgcolor": "#1b2029",
-        "plot_bgcolor": "#1b2029",
-        "font": {"color": "#e6e9ee", "size": 12},
+        "title": {"text": title, "font": {"color": "#e6f0f4"}},
+        "paper_bgcolor": "#112d3b",
+        "plot_bgcolor": "#112d3b",
+        "font": {"color": "#e6f0f4", "size": 12},
         "margin": {"l": 8, "r": 56, "t": 48, "b": 40},
         "showlegend": True,
-        "legend": {"bgcolor": "#222833", "font": {"color": "#e6e9ee"}},
+        "legend": {"bgcolor": "#0c2432", "font": {"color": "#e6f0f4"}},
         "xaxis": {
-            "gridcolor": "#2c3440",
-            "zerolinecolor": "#2c3440",
+            "gridcolor": "#1f394e",
+            "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
         },
         "yaxis": {
-            "gridcolor": "#2c3440",
-            "zerolinecolor": "#2c3440",
+            "gridcolor": "#1f394e",
+            "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
         },
@@ -1788,7 +1794,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             y=labels,
             mode="markers",
             name="discovered population (observed)",
-            marker={"size": 12, "color": "#6ea8fe"},
+            marker={"size": 12, "color": "#64bcfb"},
             text=annotations,
             hovertemplate="%{y}: %{text}<extra></extra>",
         )
@@ -1801,9 +1807,9 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             name="discovered population: measured zero",
             marker={
                 "size": 12,
-                "color": "#f2c14e",
+                "color": "#46b688",
                 "symbol": "diamond-open",
-                "line": {"width": 2, "color": "#f2c14e"},
+                "line": {"width": 2, "color": "#46b688"},
             },
             text=["" if value is None else "0" for value in zero_x],
             textposition="middle right",
@@ -1816,7 +1822,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             y=labels,
             mode="markers",
             name="sample size (observed)",
-            marker={"size": 7, "color": "#f2c14e"},
+            marker={"size": 7, "color": "#46b688"},
         )
     )
     figure.update_layout(**_base_layout("Population and sample size (log scale)"))
@@ -1855,7 +1861,7 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
             y=ys,
             mode="markers",
             text=labels,
-            marker={"size": sizes, "color": "#8fd694"},
+            marker={"size": sizes, "color": "#48b78d"},
             customdata=texts,
             hovertemplate=(
                 "%{text}<br>composite score %{x}<br>"

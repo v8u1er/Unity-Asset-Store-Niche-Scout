@@ -77,7 +77,6 @@
   --focus-ring: 2px solid var(--primary);
   --focus-offset: 2px;
   --z-header: 2;
-  --font-size-base: 1rem;
   --table-row-height: 36px;
   /* Sticky top-bar / rail offset so an anchored target is not obscured. */
   --nav-topbar-height: 56px;
@@ -108,6 +107,11 @@ body {
   max-inline-size: 1600px;
   margin-inline: auto;
   padding: var(--space-4);
+  /* Base/mobile: fixed top bar must not obscure content, so inset the content
+   * by the top-bar height (plan §7.3; skill ux-guidelines.csv Sticky
+   * Navigation). The desktop rail swaps this for a leading (inline-start)
+   * inset at >=1024px; only one of the two applies at a time. */
+  padding-block-start: var(--nav-topbar-height);
 }
 
 .dashboard h1,
@@ -213,13 +217,6 @@ body {
 .nav-link:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
-}
-
-.nav-link svg {
-  inline-size: 20px;
-  block-size: 20px;
-  fill: currentColor;
-  display: block;
 }
 
 /* The nav icon is an <img> over a data:image/svg+xml URI (the fill is baked
@@ -784,6 +781,8 @@ input:focus-visible,
 @media (min-width: 375px) {
   .dashboard {
     padding: var(--space-4);
+    /* Re-assert the top-bar inset after the shorthand above resets it. */
+    padding-block-start: var(--nav-topbar-height);
   }
 }
 
@@ -808,6 +807,8 @@ input:focus-visible,
 
   .dashboard {
     padding: var(--space-5);
+    /* Re-assert the top-bar inset after the shorthand above resets it. */
+    padding-block-start: var(--nav-topbar-height);
   }
 }
 
@@ -816,7 +817,8 @@ input:focus-visible,
 @media (min-width: 1024px) {
   .dashboard {
     padding: var(--space-6);
-    /* Leading inset so the fixed rail does not cover content. */
+    /* Desktop rail: leading inset only; the padding shorthand above resets the
+     * mobile top-bar block-start inset, so the two never apply together. */
     margin-inline-start: calc(var(--nav-rail-width) + var(--space-6));
   }
 
@@ -843,7 +845,7 @@ input:focus-visible,
   }
 
   .nav-label {
-    font-size: 0.625rem;
+    font-size: var(--font-size-label);
   }
 }
 
