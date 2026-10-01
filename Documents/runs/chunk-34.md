@@ -173,10 +173,46 @@ removing any column.
 | Skill CLI (lead) | DONE | six queries above; the color-phrase query returned 0 matches (recorded) |
 | Plan — `chunk-planner` | DONE | plan frozen; three lead-verified corrections (DataTable `fixed_columns` + inline conditionals; hover customdata normalization; trace-name claim); commit `chunk-34: plan (frozen)` |
 | Tests — `test-author` | DONE | six new §10.1 nodes + §10.2 (a)–(g) amended in place; two fixture names + `__all__`; six `traceability.json` keys; red step 12 failed / 43 passed; commit `chunk-34: tests (red)` |
-| Implement — `impl-deep` | PENDING | |
-| Lead verification | PENDING | |
+| Implement — `impl-deep` | DONE | `report.py` + `dashboard.css`; one plan erratum found (leaf-label expectation contradicted §5.2), plan + test corrected in place; commits `chunk-34: implementation`, `chunk-34: tests (leaf-label erratum)`, `chunk-34: plan erratum (leaf-label expectation)` |
+| Lead verification | DONE | pytest 761 passed; validate_traceability exit 0; import boundaries + scope prohibitions exit 0; ruff format/check clean; live Playwright re-audit below |
 | Review — `spec-reviewer` | PENDING | |
 | Gate | PENDING | |
+
+## Lead verification (2026-10-01, after implementation)
+
+Commands (real output):
+
+- `python -m pytest -q` → **761 passed, 32 warnings in 32.00s**.
+- `python -m niche_scout.tools.validate_traceability` → "Traceability valid: 89 required/defined
+  LREQ IDs mapped, 740 matrix nodes, 0 unmarked analytical tests outside exemption (3 exempted
+  non-analytical tests)" — exit 0.
+- `python -m niche_scout.tools.check_import_boundaries` → exit 0.
+- `python -m niche_scout.tools.check_scope_prohibitions` → exit 0.
+- `python -m ruff format --check src/niche_scout/report.py` → "1 file already formatted";
+  `python -m ruff check src/niche_scout/report.py` → "All checks passed!".
+
+Live re-audit (Kilo Playwright, viewport 1440×869, run `run-2026-09-30T12:49:08.901818+00:00`,
+0 console errors):
+
+| Item | Evidence (measured) |
+|---|---|
+| 1 leaf labels | Score-bar / population / contribution y-ticks show leaves: `exterior`, `interior`, `guns`, `nature`, `environment`, `spells`, … Full paths still in the table cells and section text. Colliding leaves disambiguated: `fantasy · 3d/environments`, `fantasy · 3d/characters/humanoids`. |
+| 2 font | Tick font computes to `ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, SFMono-Regular, Menlo, monospace` (was `"Open Sans", verdana, arial`) on all five charts. |
+| 3 legends | *Composite score by rank* → `legendItems: []`; *Composite score vs quality* → `legendItems: []`. The three meaningful charts keep legends. |
+| 4 population | Legend now 3 short items (`discovered population`, `measured zero`, `sample size`) below the plot; plot box 234.5×225.5 px in a 390.3×360 px wrapper, legend 193×67 px at y 1534–1601, clear of the plot bottom (1503.5). |
+| 5 palette | Contribution trace colours `#9fd7ea / #b9dbb0 / #d5dd93 / #e6d489` (= `_RAMP_HEXES` in D/C/R/Q order). Policy bump 18 series cycle the same four stops for both `line.color` and `marker.color`; first trace `mode "lines+markers+text"`, direct label. Population `discovered population #9fd7ea`, `sample size #b9dbb0`, out-of-line `measured zero #e27882` (`--danger`). Scatter `#9fd7ea`. No test asserted `_RAMP_HEXES` against `report` before implementation (the new node did), so the implementation is the first writer. |
+| 6 table | Still **30** headers; first 7 `column_id`s (`category`, `rank`, `market_opportunity_score`, `component_d/c/r/q`) carry no de-emphasis inline style; the remaining 23 carry `font-weight: 400; opacity: 0.82` (23 secondary headers matched). DataTable freeze is present as `dash-fixed-content` (the fixed-column wrapper class in this Dash build). |
+| 7 nav | Link width 64 px in the 73 px rail; link center x 36.0, icon center x 36.0 — **centered** (was +7.5 px). Mobile top bar left unchanged (intrinsic width). |
+| 8 titles | No `gtitle` in any of the five plots (card `H3` only). |
+
+Residual observations (recorded, not blocking):
+
+- The three chart refreshes are client-side Dash updates; the lead's full-suite and live checks
+  confirm behaviour, but the population chart's responsive reflow on viewport change was not
+  re-measured beyond 1440×869 and 375×800.
+- The policy bump keeps its 18-item legend (plan decision: legend retained, direct labels added);
+  the legend is still long, but the direct labels now carry identification, which was the
+  skill-grounded fix. If a future chunk wants the legend hidden, that is a new scope decision.
 
 ## Open items carried forward
 
