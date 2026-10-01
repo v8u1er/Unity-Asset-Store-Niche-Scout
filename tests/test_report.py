@@ -2167,16 +2167,18 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
             rf.CATEGORY_CHARLIE,
         ]
         bar = _graph_for(layout, div_ids["score_bar"])
-        assert bar["data"][0]["y"] == ["Alpha", "Bravo", "Charlie"]
+        expected_labels = ["Ranked · Alpha", "Ranked · Bravo", "Unranked"]
+        assert bar["data"][0]["y"] == expected_labels
         assert rf.CATEGORY_ALPHA not in bar["data"][0]["y"]
         scatter = _graph_for(layout, div_ids["score_quality_scatter"])
-        assert scatter["data"][0]["text"] == ["Alpha", "Bravo", "Charlie"]
+        assert scatter["data"][0]["text"] == expected_labels
         held = _norm(layout)
         for row in view.categories:
             assert row.category in held
-        # A non-colliding leaf carries no suffix; the fixture's four leaves are
-        # unique (Alpha, Bravo, Charlie, NonRankable).
-        assert report._category_leaf_label(scored[0], view) == "Alpha"
+        # Alpha/Ranked and Bravo/Ranked share the leaf ``Ranked``, so both carry
+        # the ``" · <parent>"`` suffix; Charlie/Unranked has the unique leaf
+        # ``Unranked`` and no suffix.
+        assert report._category_leaf_label(scored[0], view) == "Ranked · Alpha"
         assert _norm(layout) == _norm(report.build_dashboard_layout(view))
     finally:
         repository.close()
