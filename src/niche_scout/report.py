@@ -2,11 +2,20 @@
 
 This module is **I/O + render**: it reads persisted rows through the frozen
 ``SqliteRepository`` read surface, reconstructs one :class:`RunReportView`, and
-turns it into a self-contained HTML document or a plain-text equivalent. It
-performs no network I/O, reads no clock, and recomputes no metric, component,
-normalized value, composite score, evidence grade, rankability, or sensitivity
-statistic: every displayed value is a persisted value rendered verbatim
-(display rounding only).
+turns it into a self-contained HTML report, a plain-text equivalent, or a local
+Plotly **Dash application**. It performs no network I/O, reads no clock, and
+recomputes no metric, component, normalized value, composite score, evidence
+grade, rankability, or sensitivity statistic: every displayed value is a
+persisted value rendered verbatim (display rounding only).
+
+The dashboard surface is a served **Dash app** (Chunk 31): a pure
+:func:`build_dashboard_layout` / :func:`build_dashboard_app` pair plus the
+surviving pure figure builders, with fixed component ``id``s from
+:data:`DASHBOARD_COMPONENT_IDS` and fixed chart ``div_id``s from
+:data:`DASHBOARD_CHART_IDS`. The static ``run --report`` path
+(:func:`render_run_report_html` / :func:`render_run_report_text` /
+:func:`write_run_report`) keeps its self-contained-HTML guarantee and is
+untouched by the Dash layer.
 
 Null, explicit zero, invalid, and unavailable remain distinct. A persisted
 ``None`` becomes ``None`` in the view and an explicit "unavailable" marker in
@@ -21,14 +30,14 @@ from __future__ import annotations
 
 import html
 import json
-import json as _json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
 import plotly.graph_objects as go
-from plotly.offline import get_plotlyjs
+from dash import Dash, Input, Output, dash_table, dcc
+from dash import html as dash_html
 
 from .database import SqliteRepository, parse_stratum_statistics
 from .models import (
@@ -77,61 +86,176 @@ COVERAGE_REFERENCE_THRESHOLDS: tuple[tuple[str, float], ...] = (
 """``(("minimum", 0.50), ("strong", 0.80))``."""
 
 #: Fixed ``(chart key, div_id)`` pairs so Plotly never generates a random id.
+#: Chunk 31 amends this tuple: the ``status_heatmap`` and ``component_dumbbell``
+#: pairs are removed (R2/R4); the five surviving charts keep their ids.
 DASHBOARD_CHART_IDS: tuple[tuple[str, str], ...] = (
     ("score_bar", "niche-scout-score-bar"),
     ("contribution_stack", "niche-scout-contribution-stack"),
-    ("status_heatmap", "niche-scout-status-heatmap"),
     ("policy_bump", "niche-scout-policy-bump"),
     ("population_lollipop", "niche-scout-population-lollipop"),
-    ("component_dumbbell", "niche-scout-component-dumbbell"),
     ("score_quality_scatter", "niche-scout-score-quality-scatter"),
 )
-"""Fixed dashboard ``div_id`` values, one per rendered chart."""
+"""Fixed dashboard ``div_id`` values, one per rendered chart (five charts)."""
 
 _DASHBOARD_CHART_ID: dict[str, str] = dict(DASHBOARD_CHART_IDS)
+
+#: Fixed ``(component id, role)`` pairs for the Dash layout tree, so no component
+#: id is generated at runtime and layout determinism is machine-checkable.
+DASHBOARD_COMPONENT_IDS: tuple[tuple[str, str], ...] = (
+    ("chart-score-bar", "score-bar"),
+    ("chart-contribution-stack", "contribution-stack"),
+    ("chart-policy-bump", "policy-bump"),
+    ("chart-population-lollipop", "population-lollipop"),
+    ("chart-score-quality-scatter", "score-quality-scatter"),
+    ("kpi-strip", "kpi-strip"),
+    ("primary-table", "primary-table"),
+    ("detail-panel", "detail-panel"),
+    ("category-selector", "category-selector"),
+    ("footnote", "footnote"),
+)
+"""Fixed Dash component ``id`` values, one per layout element (plan §5.1)."""
+
+#: Fixed ``(chart component id, chart key)`` pairs mapping a Dash component id to
+#: its :data:`DASHBOARD_CHART_IDS` key.
+_DASHBOARD_COMPONENT_CHART_IDS: tuple[tuple[str, str], ...] = tuple(
+    (component_id, chart_key)
+    for (component_id, _role), (chart_key, _div_id) in zip(
+        DASHBOARD_COMPONENT_IDS, DASHBOARD_CHART_IDS
+    )
+)
 
 _NA = "n/a"
 """Explicit unavailable marker for charts; distinct from a measured ``0``."""
 
-_DASHBOARD_CSS = """
-:root {
-  --bg: #12161c;
-  --panel: #1b2029;
-  --panel-2: #222833;
-  --fg: #e6e9ee;
-  --muted: #9aa4b2;
-  --accent: #6ea8fe;
-  --border: #2c3440;
-  --warn: #f2c14e;
-  --refused: #c98b8b;
+#: Plain-language vocabulary for the Dash UI (plan §5.7). Keys are the internal
+#: field tokens; values are ``(human label, one-line plain explanation)``. UI
+#: text uses the human label, never the raw field name or a bare acronym.
+_DASHBOARD_LABELS: dict[str, tuple[str, str]] = {
+    "D": (
+        "Demand",
+        "How much demand the category shows, from the discovered page-view "
+        "index; read it as a trailing-7-day view count.",
+    ),
+    "C": (
+        "Competition",
+        "How crowded the category is by verified catalog breadth; read it as "
+        "crowding, which is unavailable when breadth is incomplete.",
+    ),
+    "R": (
+        "Recent supply",
+        "How much recent supply and how new the assets are; read it as "
+        "recent-ness, not total supply.",
+    ),
+    "Q": (
+        "Quality",
+        "How highly rated the assets are; read it as observed rating strength, "
+        "not sales.",
+    ),
+    "composite": (
+        "Composite score (within-run heuristic)",
+        "A deterministic blend of Demand, Competition, Recent supply, and "
+        "Quality; read it as a within-run ranking aid, not a sales or revenue "
+        "forecast.",
+    ),
+    "coverage": (
+        "Data coverage",
+        "The share of the discovered population in strata with enough usable "
+        "observations; read it as coverage, not as sample fraction.",
+    ),
+    "sample_fraction": (
+        "Sample fraction",
+        "The share of the discovered population that was sampled; read it as a "
+        "sampling share, not as data coverage.",
+    ),
+    "evidence_grade": (
+        "Evidence strength",
+        "An ordinal label (insufficient, weak, moderate, strong); read it as "
+        "evidence strength, not statistical confidence.",
+    ),
+    "top_3_stability": (
+        "Top-3 rank stability",
+        "How stable the top three ranks are across scoring policies; read "
+        "'n/a' as too few rankable candidates.",
+    ),
+    "top_5_stability": (
+        "Top-5 rank stability",
+        "How stable the top five ranks are across scoring policies; read "
+        "'n/a' as too few rankable candidates.",
+    ),
+    "maximum_rank_displacement": (
+        "Max rank shift across policies",
+        "The largest rank movement of any category between scoring policies; "
+        "read a larger value as less stable ordering.",
+    ),
+    "rankability": (
+        "Rankable?",
+        "Whether the category has enough evidence to be ranked; non-rankable "
+        "categories stay visible.",
+    ),
 }
-body { background: var(--bg); color: var(--fg); margin: 0;
-  font-family: system-ui, "Segoe UI", Arial, sans-serif; }
-main { max-width: 1180px; margin: 0 auto; padding: 1.2rem 1.4rem 3rem; }
-h1, h2, h3, h4 { font-weight: 600; }
-h1 { font-size: 1.5rem; margin: 0.4rem 0 1rem; }
-h2 { font-size: 1.15rem; margin: 1.8rem 0 0.6rem;
-  border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
-section.panel { background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0.8rem 1rem; margin: 0.8rem 0; }
-p.heuristic { background: #3a3320; border: 1px solid var(--warn);
-  color: var(--fg); border-radius: 8px; padding: 0.7rem 0.9rem; }
-table { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
-th, td { border: 1px solid var(--border); padding: 0.25rem 0.45rem;
-  text-align: left; vertical-align: top; }
-th { background: var(--panel-2); position: sticky; top: 0; }
-tr.unranked td { color: var(--muted); }
-td.missing { color: var(--refused); font-style: italic; }
-code { background: var(--panel-2); padding: 0 0.2rem; border-radius: 3px; }
-.kpi-strip { display: flex; gap: 0.9rem; flex-wrap: wrap; }
-.kpi { background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0.6rem 0.9rem; min-width: 11rem; }
-.kpi .label { color: var(--muted); font-size: 0.78rem; display: block; }
-.kpi .value { font-size: 1.35rem; font-weight: 600; }
-.kpi .value.na { color: var(--refused); }
-.note { color: var(--muted); font-size: 0.8rem; }
-"""
-"""Inline dark-mode stylesheet; no external asset is referenced."""
+"""Plain-language label vocabulary used by the Dash layout (plan §5.7)."""
+
+#: Fixed one-line caption per chart (D-5), keyed by :data:`DASHBOARD_CHART_IDS`
+#: chart key.
+_DASHBOARD_CHART_CAPTIONS: dict[str, str] = {
+    "score_bar": (
+        "This shows the composite score by rank; read it as best-first, with "
+        "refused categories listed at the bottom and off the score axis."
+    ),
+    "contribution_stack": (
+        "This shows each scored category's weighted Demand/Competition/Recent "
+        "supply/Quality contributions; read the stack height as the composite "
+        "score, with a missing component contributing no segment."
+    ),
+    "policy_bump": (
+        "This shows each category's rank under the three scoring policies; read "
+        "a flat line as a stable rank and a crossing line as sensitivity to the "
+        "policy."
+    ),
+    "population_lollipop": (
+        "This shows the discovered population beside the enriched sample size on "
+        "a log scale; read a small marker as a small sample, and a diamond at "
+        "0 as a measured zero population."
+    ),
+    "score_quality_scatter": (
+        "This shows composite score against quality with marker size set by "
+        "sample fraction; read it as a secondary diagnostic, not a prediction."
+    ),
+}
+"""One-line plain-language caption per chart, shown under each chart title."""
+
+#: Chart titles, using the human vocabulary (never raw field names).
+_DASHBOARD_CHART_TITLES: dict[str, str] = {
+    "score_bar": "Composite score by rank",
+    "contribution_stack": "Weighted component contributions",
+    "policy_bump": "Policy rank comparison",
+    "population_lollipop": "Population and sample size (log scale)",
+    "score_quality_scatter": "Composite score vs quality (marker = sample fraction)",
+}
+
+#: Marker size used when ``sample_fraction`` is unavailable (documented fallback,
+#: never treated as ``0``).
+_SAMPLE_FRACTION_FALLBACK_MARKER: float = 8.0
+#: Marker-size floor; a larger ``sample_fraction`` renders a larger marker.
+_SAMPLE_FRACTION_MIN_MARKER: float = 6.0
+
+#: Fixed x position of the explicit-zero population marker, placed left of the
+#: smallest log-scale tick so a measured ``0`` is off the log axis (R5).
+_POPULATION_EXPLICIT_ZERO_X: float = 0.1
+
+#: Fixed x position of the refused-row ``n/a`` text annotations on the score bar
+#: (they sit at the axis origin with no bar; they never share the scored axis).
+_REFUSED_ANNOTATION_X: float = 0.0
+
+#: Fixed pixel height for every Dash chart row.
+_DASHBOARD_CHART_HEIGHT: int = 360
+
+#: Ordinal ``(grade, colour)`` pairs for the evidence-grade colour on the score
+#: bar (R4). Sourced from :data:`EVIDENCE_GRADE_ORDER` so the ordinal source is
+#: the enum, not a second literal.
+_EVIDENCE_GRADE_COLOURS: tuple[tuple[str, str], ...] = tuple(
+    zip(EVIDENCE_GRADE_ORDER, ("#c98b8b", "#e0a458", "#8fb9a8", "#8fd694"))
+)
 
 HEURISTIC_STATEMENT: str = (
     "This score is a deterministic, within-run heuristic computed from "
@@ -1242,98 +1366,29 @@ def _kpi_tiles(
 # --------------------------------------------------------------------------
 
 
-def _plotly_span(value: float | None) -> float:
-    """Return a zero bar height for a scored row whose composite is ``None``.
+def _policy_axis_labels(view: RunReportView) -> tuple[str, ...]:
+    """Return the policy x-axis labels, derived from the persisted policy list.
 
-    A ``None`` composite has no bar; the row is labelled ``n/a`` in the bar
-    text, and this placeholder keeps the categorical axis aligned. It is never a
-    substitute for a measured value: an explicit ``0.0`` composite renders its
-    real ``0`` value and label.
+    Falls back to the frozen three-policy render order when ``view.sensitivity``
+    is absent; the values are policy names the report never recomputes.
     """
-    return 0.0
+    summary = view.sensitivity
+    if summary is not None and summary.policies:
+        return summary.policies
+    return ("balanced", "demand_heavy", "competition_heavy")
 
 
-def _figure_json(figure: go.Figure) -> str:
-    """Return the figure's JSON document with ``template=None`` and no HTML.
+def _evidence_colour(grade: str) -> str:
+    """Return the ordinal evidence-grade colour, or a neutral colour if unknown.
 
-    Plotly's JSON serialization is stable for a fixed figure; the HTML wrapper
-    is assembled by this module so the document has exactly one inline
-    plotly.js bundle and every chart's ``div_id`` is fixed.
+    The scale is ordinal via :data:`EVIDENCE_GRADE_ORDER`/``_EVIDENCE_GRADE_COLOURS``
+    (R4); an unrecognised grade maps to the weakest colour rather than to a
+    categorical palette.
     """
-    figure.update_layout(template=None)
-    return figure.to_json(validate=True, pretty=False, remove_uids=True)
-
-
-def _chart_script(div_id: str, figure: go.Figure) -> str:
-    """Return the ``Plotly.newPlot`` call for one fixed ``div_id``."""
-    figure_json = _figure_json(figure)
-    config_json = _json.dumps(
-        {"displayModeBar": False, "responsive": True},
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return (
-        "if (document.getElementById({id})) {{"
-        "window.PLOTLYENV=window.PLOTLYENV||{{}};"
-        "Plotly.newPlot({id},{figure},{config});"
-        "}}"
-    ).format(
-        id=_json.dumps(div_id),
-        figure=figure_json,
-        config=config_json,
-    )
-
-
-def _plotly_bundle_script() -> str:
-    """Return the inline plotly.js bundle as one ``<script>`` element.
-
-    The bundle is read from the installed ``plotly`` package (no network). Its
-    internal fetchable-resource constants are rewritten deterministically (see
-    :func:`_neutralize_plotly_urls`) so the document references no external
-    resource and issues no network request; the SVG/XHTML namespace identifiers
-    are left byte-intact so ``document.createElementNS`` keeps working.
-    """
-    return f"<script>{_neutralize_plotly_urls(get_plotlyjs())}</script>"
-
-
-#: SVG/XHTML/XML namespace identifiers the plotly.js bundle uses with
-#: ``document.createElementNS``. They are identifiers, not fetchable resources,
-#: so they are preserved byte-intact.
-_PLOTLY_NAMESPACE_URLS: tuple[str, ...] = (
-    "http://www.w3.org/2000/svg",
-    "http://www.w3.org/1999/xhtml",
-    "http://www.w3.org/1999/xlink",
-    "http://www.w3.org/XML/1998/namespace",
-    "http://www.w3.org/2000/xmlns/",
-)
-
-
-def _neutralize_plotly_urls(bundle: str) -> str:
-    """Break every **fetchable** absolute-URL literal in the plotly.js bundle.
-
-    plotly.js embeds scheme-bearing string constants of two kinds. The
-    SVG/XHTML/XML *namespace identifiers* are not resources: they are compared
-    as opaque strings by ``document.createElementNS`` and must stay byte-intact
-    (rewriting them would break chart rendering). The remaining constants are
-    *fetchable* resources — external-resource defaults (``topojsonURL``, map
-    tile servers) and documentation links — which this function neutralises.
-
-    A deterministic zero-width-space insertion **inside the scheme**
-    (``http\\u200b://``) breaks the literal scheme string so the emitted document
-    contains no fetchable ``http://``/``https://`` (and no bare ``cdn.plot.ly``
-    host), while remaining byte-identical across calls. This is a
-    library-constant rewrite, not a request: the document loads no external
-    asset, and the preserved namespace identifiers reference no network.
-    """
-    for namespace in _PLOTLY_NAMESPACE_URLS:
-        # Break ``cdn.plot.ly`` at the dot too, so no host substring survives.
-        placeholder = namespace.replace("cdn.plot.ly", "cdn.plot\u200b.ly")
-        bundle = bundle.replace(namespace, placeholder)
-    for scheme in ("https://", "http://"):
-        bundle = bundle.replace(scheme, scheme.replace("://", "\u200b://"))
-    for namespace in _PLOTLY_NAMESPACE_URLS:
-        bundle = bundle.replace(namespace.replace("://", "\u200b://"), namespace)
-    return bundle.replace("cdn.plot.ly", "cdn.plot\u200b.ly")
+    position = _evidence_grade_position(grade)
+    if position is None:
+        return _EVIDENCE_GRADE_COLOURS[0][1]
+    return _EVIDENCE_GRADE_COLOURS[position][1]
 
 
 def _base_layout(title: str) -> dict:
@@ -1351,44 +1406,37 @@ def _base_layout(title: str) -> dict:
     }
 
 
-def _figure_html(chart_key: str, figure: go.Figure, *, inline_js: bool) -> str:
-    """Return one chart's self-contained div with a fixed ``div_id``.
-
-    ``inline_js`` is ``True`` for the first chart only, so exactly one inline
-    copy of plotly.js is emitted. The modebar is disabled so no external link is
-    rendered. The figure layout is pinned to ``template=None`` so the emitted
-    JSON is the figure itself, not a baked default template.
-    """
-    div_id = _DASHBOARD_CHART_ID[chart_key]
-    parts = [f'<div id="{div_id}" class="plotly-graph-div"></div>']
-    if inline_js:
-        parts.append(_plotly_bundle_script())
-    parts.append(f"<script>{_chart_script(div_id, figure)}</script>")
-    return "".join(parts)
+def _component_label(name: str) -> str:
+    """Return the human label for a component key (``D`` -> ``Demand``)."""
+    return _DASHBOARD_LABELS[name][0]
 
 
 def _score_bar_figure(view: RunReportView) -> go.Figure:
-    """Ranked horizontal composite-score bar with a gap before refused rows."""
+    """Ranked horizontal composite-score bar with a gap before refused rows.
+
+    Evidence grade is encoded as an **ordinal colour** on the bar (R4): the bar
+    colours come from :func:`_evidence_colour`, and the exact grade text is in
+    the hover and the primary table. The bar trace carries **scored rows only**;
+    refused rows render as ``n/a`` text annotations with no bar and never share
+    the scored axis. An explicit ``0.0`` renders a zero-length bar labelled ``0``
+    while an unavailable (``None``) composite is labelled ``n/a``.
+    """
     scored = _scored_rows(view)
     refused = _refused_rows(view)
     labels = [row.category for row in scored]
     values: list[float] = []
     texts: list[str] = []
+    colours: list[str] = []
+    customdata: list[str] = []
     for row in scored:
         if row.market_opportunity_score is None:
-            values.append(_plotly_span(None))
+            values.append(0.0)
             texts.append(_NA)
         else:
             values.append(float(row.market_opportunity_score))
             texts.append(format(row.market_opportunity_score, ".6g"))
-    if refused:
-        labels.append(" ")
-        values.append(_plotly_span(None))
-        texts.append("")
-        for row in refused:
-            labels.append(f"{row.category} (refused)")
-            values.append(_plotly_span(None))
-            texts.append(_NA)
+        colours.append(_evidence_colour(row.evidence_grade))
+        customdata.append(row.evidence_grade)
     figure = go.Figure(
         go.Bar(
             x=values,
@@ -1396,12 +1444,29 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             orientation="h",
             text=texts,
             textposition="outside",
-            marker={"color": "#6ea8fe"},
-            hovertemplate="%{y}: %{text}<extra></extra>",
+            marker={"color": colours},
+            customdata=customdata,
+            hovertemplate=(
+                "%{y}: %{text}<br>evidence strength: %{customdata}<extra></extra>"
+            ),
         )
     )
+    if refused:
+        figure.add_trace(
+            go.Scatter(
+                x=[_REFUSED_ANNOTATION_X] * (len(refused) + 1),
+                y=[" "] + [f"{row.category} (refused)" for row in refused],
+                mode="text",
+                text=[""] + [_NA] * len(refused),
+                textposition="middle right",
+                name="refused (n/a)",
+                showlegend=False,
+                hovertemplate="%{y}: n/a<extra></extra>",
+            )
+        )
     figure.update_layout(**_base_layout("Composite score by rank"))
-    figure.update_yaxes(autorange="reversed")
+    figure.update_xaxes(title={"text": "composite score"})
+    figure.update_yaxes(autorange="reversed", title={"text": "category"})
     return figure
 
 
@@ -1410,6 +1475,7 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
 
     A missing component contributes no segment: its value is ``None`` (a gap),
     never a zero-height stack segment (plan §5.3(b); AGENTS.md Hard rule 2).
+    The legend uses the plain component names (plan §5.7).
     """
     scored = _scored_rows(view)
     labels = [row.category for row in scored]
@@ -1423,130 +1489,19 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
                     dict(contributions).get(name, None)
                     for contributions in contributions_by_row
                 ],
-                name=f"W_{name} x {name}",
+                name=_component_label(name),
             )
         )
     figure.update_layout(**_base_layout("Weighted component contributions"))
     figure.update_layout(barmode="stack")
+    figure.update_xaxes(title={"text": "category"})
+    figure.update_yaxes(title={"text": "weighted contribution to composite score"})
     return figure
-
-
-def _heatmap_figure(view: RunReportView) -> go.Figure:
-    """Category x status heatmap: numeric D/R/Q coverage plus grade/rankability/C."""
-    rows = view.categories
-    categories = [row.category for row in rows]
-    columns = (
-        "demand stratum eligibility coverage",
-        "recent supply stratum eligibility coverage",
-        "quality stratum eligibility coverage",
-        "evidence grade (ordinal)",
-        "rankability",
-        "breadth completeness status",
-    )
-    coverage_values = [
-        [
-            _coverage_cell(row.demand_stratum_eligibility_coverage),
-            _coverage_cell(row.recent_supply_stratum_eligibility_coverage),
-            _coverage_cell(row.quality_stratum_eligibility_coverage),
-        ]
-        for row in rows
-    ]
-    # Numeric coverage block (rows x 3), drawn with the D/R/Q reference lines.
-    figure = go.Figure()
-    figure.add_trace(
-        go.Heatmap(
-            z=coverage_values,
-            x=list(columns[:3]),
-            y=categories,
-            zmin=0.0,
-            zmax=1.0,
-            colorscale="Blues",
-            colorbar={"title": {"text": "eligibility coverage"}},
-            hovertemplate="%{y}<br>%{x}: %{z:.4f}<extra></extra>",
-        )
-    )
-    for reference_label, threshold in COVERAGE_REFERENCE_THRESHOLDS:
-        figure.add_vline(
-            x=threshold,
-            line_dash="dot",
-            line_color="#f2c14e",
-            annotation_text=f"{reference_label} {threshold:.2f}",
-            annotation_position="top",
-        )
-    # Ordinal evidence-grade block: one column, ordinal colour scale.
-    grade_positions = [_evidence_grade_position(row.evidence_grade) for row in rows]
-    figure.add_trace(
-        go.Heatmap(
-            z=[
-                [position if position is not None else None]
-                for position in grade_positions
-            ],
-            x=["evidence grade (ordinal)"],
-            y=categories,
-            zmin=0,
-            zmax=len(EVIDENCE_GRADE_ORDER) - 1,
-            colorscale="RdYlGn",
-            text=[[row.evidence_grade] for row in rows],
-            hovertemplate="%{y}<br>evidence grade: %{text}<extra></extra>",
-            xaxis="x2",
-        )
-    )
-    # Rankability-status block: one categorical column (plan §5.3(c), R1).
-    figure.add_trace(
-        go.Heatmap(
-            z=[[0.0] for _ in rows],
-            x=["rankability"],
-            y=categories,
-            opacity=0.0,
-            text=[[row.rankability_status] for row in rows],
-            hovertemplate="%{y}<br>rankability: %{text}<extra></extra>",
-            xaxis="x3",
-        )
-    )
-    # C column: categorical breadth completeness status, never "coverage".
-    figure.add_trace(
-        go.Heatmap(
-            z=[[0.0] for _ in rows],
-            x=["breadth completeness status"],
-            y=categories,
-            opacity=0.0,
-            text=[[_breadth_cell(row)] for row in rows],
-            hovertemplate="%{y}<br>%{text}<extra></extra>",
-            xaxis="x4",
-        )
-    )
-    figure.update_layout(**_base_layout("Category x status"))
-    figure.update_layout(
-        grid={"rows": 1, "columns": 4, "pattern": "independent"},
-        xaxis2={"title": {"text": "evidence grade (ordinal)"}, "gridcolor": "#2c3440"},
-        xaxis3={"title": {"text": "rankability"}, "gridcolor": "#2c3440"},
-        xaxis4={
-            "title": {"text": "breadth completeness (C status)"},
-            "gridcolor": "#2c3440",
-        },
-    )
-    return figure
-
-
-def _breadth_cell(row: CategoryReportRow) -> str:
-    """Return the C-status cell text: breadth completeness status + source."""
-    status = row.breadth_completeness_status
-    source = row.breadth_source
-    if status is None and source is None:
-        return _NA
-    status_text = _NA if status is None else status
-    source_text = _NA if source is None else source
-    return f"{status_text} / {source_text}"
-
-
-def _coverage_cell(value: float | None) -> float | None:
-    """Return a numeric coverage cell, or ``None`` for an unavailable value."""
-    return None if value is None else float(value)
 
 
 def _policy_bump_figure(view: RunReportView) -> go.Figure:
     """Three-policy rank bump chart; a null rank is a gap, never ``0``."""
-    policies = ("balanced", "demand_heavy", "competition_heavy")
+    policies = _policy_axis_labels(view)
     figure = go.Figure()
     for category, balanced, demand_heavy, competition_heavy in _policy_rank_rows(view):
         ranks = (balanced, demand_heavy, competition_heavy)
@@ -1562,6 +1517,7 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
             )
         )
     figure.update_layout(**_base_layout("Policy rank comparison"))
+    figure.update_xaxes(title={"text": "scoring policy"})
     figure.update_yaxes(autorange="reversed", title={"text": "rank (1 = best)"})
     return figure
 
@@ -1580,8 +1536,6 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     samples: list[float | None] = []
     annotations: list[str] = []
     zero_x: list[float | None] = []
-    zero_labels: list[str] = []
-    zero_categories: list[str] = []
     for row in scored:
         labels.append(row.category)
         value = row.discovered_population_count
@@ -1595,8 +1549,6 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             populations.append(None)
             annotations.append("0")
             zero_x.append(_POPULATION_EXPLICIT_ZERO_X)
-            zero_labels.append("0")
-            zero_categories.append(row.category)
         else:
             populations.append(float(value))
             annotations.append(format(value, "d"))
@@ -1626,7 +1578,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
                 "symbol": "diamond-open",
                 "line": {"width": 2, "color": "#f2c14e"},
             },
-            text=[text if text is not None else "" for text in zero_x],
+            text=["" if value is None else "0" for value in zero_x],
             textposition="middle right",
             hovertemplate="%{y}: measured 0<extra></extra>",
         )
@@ -1642,37 +1594,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     )
     figure.update_layout(**_base_layout("Population and sample size (log scale)"))
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
-    _ = (zero_labels, zero_categories)
-    return figure
-
-
-#: Fixed x position of the explicit-zero population marker, placed left of the
-#: smallest log-scale tick so a measured ``0`` is off the log axis (R5).
-_POPULATION_EXPLICIT_ZERO_X: float = 0.1
-
-
-def _component_dumbbell_figure(view: RunReportView) -> go.Figure:
-    """Component dumbbell: one connector per scored category across D/C/R/Q."""
-    scored = _scored_rows(view)
-    figure = go.Figure()
-    for row in scored:
-        values = [
-            getattr(row, f"component_{name.lower()}") for name, _ in COMPONENT_WEIGHTS
-        ]
-        present = [value for value in values if value is not None]
-        if len(present) < 2:
-            continue
-        figure.add_trace(
-            go.Scatter(
-                x=[name for name, _ in COMPONENT_WEIGHTS],
-                y=[None if value is None else float(value) for value in values],
-                mode="lines+markers",
-                name=row.category,
-                connectgaps=False,
-            )
-        )
-    figure.update_layout(**_base_layout("Component values by category"))
-    figure.update_yaxes(range=[0.0, 1.0], title={"text": "normalized component"})
+    figure.update_yaxes(title={"text": "category"})
     return figure
 
 
@@ -1709,8 +1631,8 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
             marker={"size": sizes, "color": "#8fd694"},
             customdata=texts,
             hovertemplate=(
-                "%{text}<br>score %{x}<br>Q %{y}<br>sample fraction %{customdata}"
-                "<extra></extra>"
+                "%{text}<br>composite score %{x}<br>"
+                "quality %{y}<br>sample fraction %{customdata}<extra></extra>"
             ),
         )
     )
@@ -1718,99 +1640,470 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
         **_base_layout("Composite score vs quality (marker = sample fraction)")
     )
     figure.update_xaxes(title={"text": "composite score"})
-    figure.update_yaxes(range=[0.0, 1.0], title={"text": "Q (quality)"})
+    figure.update_yaxes(range=[0.0, 1.0], title={"text": "Quality"})
     return figure
 
 
-#: Marker size used when ``sample_fraction`` is unavailable (documented fallback,
-#: never treated as ``0``).
-_SAMPLE_FRACTION_FALLBACK_MARKER: float = 8.0
-#: Marker-size floor; a larger ``sample_fraction`` renders a larger marker.
-_SAMPLE_FRACTION_MIN_MARKER: float = 6.0
+# --------------------------------------------------------------------------
+# Dash application (pure layout + app construction; no server, no I/O)
+# --------------------------------------------------------------------------
 
 
-def render_run_dashboard_html(view: RunReportView) -> str:
-    """Return one self-contained dark-mode dashboard document for ``view``.
+def _chart_figure(chart_key: str, view: RunReportView) -> go.Figure:
+    """Return the pure figure for ``chart_key`` from the surviving builders."""
+    builders = {
+        "score_bar": _score_bar_figure,
+        "contribution_stack": _contribution_figure,
+        "policy_bump": _policy_bump_figure,
+        "population_lollipop": _population_lollipop_figure,
+        "score_quality_scatter": _score_quality_scatter_figure,
+    }
+    return builders[chart_key](view)
 
-    Includes inline Plotly JS (``include_plotlyjs="inline"`` on the first figure
-    and ``False`` on the rest), fixed ``div_id``s from
-    :data:`DASHBOARD_CHART_IDS`, inline CSS, no ``<script src>``, no ``<link>``,
-    no CDN reference, no network, and no clock. The inline plotly.js bundle's own
-    scheme-bearing constants are rewritten deterministically (see
-    :func:`_neutralize_plotly_urls`) so the document contains no ``http://``,
-    ``https://``, or ``cdn.plot.ly`` substring. Also includes
-    ``HEURISTIC_STATEMENT``, the sorted primary table, and the per-category
-    detail panel, so ``LREQ-RPT-020/030/040/050`` hold in the dashboard. Every
-    displayed value is persisted and rendered verbatim (display rounding only).
-    Deterministic and byte-identical for a fixed ``view``.
+
+def _figure_payload(figure: go.Figure) -> dict:
+    """Return a JSON-serializable figure dict for a ``dcc.Graph``.
+
+    ``template=None`` keeps the emitted figure to the figure itself, so two
+    calls with the same view compare equal after normalization; the figure is
+    converted to its plain ``dict`` form so the Dash component tree serializes.
     """
-    parts: list[str] = [
-        "<!DOCTYPE html>",
-        '<html lang="en">',
-        "<head>",
-        '<meta charset="utf-8">',
-        f"<title>Niche Scout dashboard - {_esc(view.run_id)}</title>",
-        f"<style>{_DASHBOARD_CSS}</style>",
-        "</head>",
-        "<body>",
-        "<main>",
-        "<h1>Niche Scout dashboard</h1>",
-        _render_run_header_html(view),
-        f'<p class="heuristic" id="heuristic">{_esc(view.heuristic_statement)}</p>',
-        "<h2>Run KPIs</h2>",
-        _render_kpi_strip_html(view),
-        "<h2>Charts</h2>",
+    figure.update_layout(template=None)
+    return figure.to_plotly_json()
+
+
+def _chart_card(chart_key: str, view: RunReportView) -> "dash_html.Div":
+    """Return one chart card: title, one-line caption, and the fixed-id graph."""
+    div_id = _DASHBOARD_CHART_ID[chart_key]
+    component_id = dict(
+        (key, component_id) for component_id, key in _DASHBOARD_COMPONENT_CHART_IDS
+    )[chart_key]
+    return dash_html.Section(
+        [
+            dash_html.H3(_DASHBOARD_CHART_TITLES[chart_key]),
+            dash_html.P(
+                _DASHBOARD_CHART_CAPTIONS[chart_key],
+                className="chart-caption",
+            ),
+            dcc.Graph(
+                id=div_id,
+                figure=_figure_payload(_chart_figure(chart_key, view)),
+                config={"displayModeBar": False, "responsive": True},
+                style={"height": f"{_DASHBOARD_CHART_HEIGHT}px"},
+            ),
+        ],
+        id=component_id,
+        className="chart-card",
+    )
+
+
+def _kpi_tile(label: str, value: float | int | None) -> "dash_html.Div":
+    """Return one KPI tile; ``None`` renders ``n/a`` and is never ``0`` (R8)."""
+    human_label, explanation = _DASHBOARD_LABELS[label]
+    shown = _NA if value is None else _fmt(value)
+    return dash_html.Div(
+        [
+            dash_html.Span(human_label, className="kpi-label"),
+            dash_html.Span(shown, className="kpi-value"),
+            dash_html.Span(explanation, className="kpi-note"),
+        ],
+        className="kpi-tile",
+        title=explanation,
+    )
+
+
+def _kpi_strip(view: RunReportView) -> "dash_html.Div":
+    """Return the three KPI tiles in fixed order with ``n/a`` for ``None``."""
+    return dash_html.Div(
+        [_kpi_tile(label, value) for label, value in _kpi_tiles(view)],
+        id="kpi-strip",
+        className="kpi-strip",
+    )
+
+
+def _table_column_label(label: str, attribute: str) -> str:
+    """Return the display header for one primary-table column.
+
+    Every ``_PRIMARY_COLUMNS`` label is displayed verbatim so all 30
+    ``LREQ-RPT-020`` labels are visible by default (R5); a separate legend line
+    spells the D/C/R/Q component columns out in plain words (D-5).
+    """
+    _ = attribute
+    return label
+
+
+def _component_legend() -> "dash_html.P":
+    """Return the plain-language legend for the D/C/R/Q component columns."""
+    pairs = ", ".join(
+        f"{name} = {_component_label(name)}" for name, _ in COMPONENT_WEIGHTS
+    )
+    return dash_html.P(
+        f"Component columns: {pairs}.",
+        className="component-legend",
+    )
+
+
+def _table_cell(value: object) -> str:
+    """Format one primary-table cell; ``None`` is the explicit ``n/a`` marker."""
+    if value is None:
+        return _NA
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return format(value, ".6g")
+    return str(value)
+
+
+def _primary_table(view: RunReportView) -> "dash_html.Div":
+    """Return the compact, horizontally scrollable primary table (R5).
+
+    All ``_PRIMARY_COLUMNS`` labels are present by default (no column picker);
+    every category row is shown, including non-rankable rows (LREQ-RPT-040).
+    """
+    columns = [
+        {
+            "name": _table_column_label(label, attribute),
+            "id": attribute,
+        }
+        for label, attribute in _PRIMARY_COLUMNS
     ]
-    chart_figures = (
-        ("score_bar", _score_bar_figure(view)),
-        ("contribution_stack", _contribution_figure(view)),
-        ("status_heatmap", _heatmap_figure(view)),
-        ("policy_bump", _policy_bump_figure(view)),
-        ("population_lollipop", _population_lollipop_figure(view)),
-        ("component_dumbbell", _component_dumbbell_figure(view)),
-        ("score_quality_scatter", _score_quality_scatter_figure(view)),
+    data = [
+        {
+            attribute: _table_cell(getattr(row, attribute))
+            for _, attribute in _PRIMARY_COLUMNS
+        }
+        for row in view.categories
+    ]
+    return dash_html.Div(
+        dash_table.DataTable(
+            id="primary-table-data",
+            columns=columns,
+            data=data,
+            sort_action="native",
+            page_size=len(view.categories) or 1,
+            style_table={"overflowX": "auto", "width": "100%"},
+            style_cell={
+                "fontSize": "0.78rem",
+                "padding": "2px 6px",
+                "textAlign": "left",
+                "whiteSpace": "nowrap",
+            },
+            style_header={"fontWeight": "600"},
+        ),
+        id="primary-table",
+        className="primary-table",
     )
-    for index, (chart_key, figure) in enumerate(chart_figures):
-        parts.append(
-            f'<section class="panel" id="chart-{chart_key}">'
-            + _figure_html(chart_key, figure, inline_js=index == 0)
-            + "</section>"
+
+
+def _detail_metric_rows(row: CategoryReportRow) -> list["dash_html.Li"]:
+    """Return the six labelled raw metric-input list items (``n/a`` safe)."""
+    return [
+        dash_html.Li(
+            [
+                dash_html.Span(label, className="metric-label"),
+                dash_html.Span(" (inferred): ", className="metric-kind"),
+                dash_html.Span(_fmt(value)),
+            ]
         )
-    parts.append(
-        '<p class="note">coverage columns are stratum eligibility coverage; '
-        "the marker in the scatter is sample fraction, a distinct quantity."
-        "</p>"
+        for label, value in _raw_metric_entries(row)
+    ]
+
+
+def _detail_strata(row: CategoryReportRow) -> "dash_html.Div":
+    """Return the sample-strata table for one category, persisted verbatim."""
+    if not row.strata:
+        return dash_html.P(_NA, className="missing")
+    headers = (
+        "stratum",
+        "offset",
+        "stride",
+        "N_h (discovered population)",
+        "n_h (sampled population)",
+        "u_demand_h",
+        "u_recent_h",
+        "u_quality_h",
+        "usable status",
+        "eligibility rule",
     )
-    parts.append("<h2>Warnings</h2>")
-    parts.append(_render_run_warnings_html(view))
-    parts.append("<h2>Primary table</h2>")
-    parts.append(_render_primary_table_html(view))
-    parts.append("<h2>Category details</h2>")
-    for index, row in enumerate(view.categories):
-        parts.append(_render_category_detail_html(view, row, index))
-    parts.extend([f"<script>{_SORT_SCRIPT}</script>", "</main>", "</body>", "</html>"])
-    return "\n".join(parts) + "\n"
+    head = dash_html.Tr([dash_html.Th(label) for label in headers])
+    body = [
+        dash_html.Tr(
+            [
+                dash_html.Td(_table_cell(value))
+                for value in (
+                    stratum.stratum_index,
+                    stratum.stratum_offset,
+                    stratum.stratum_stride,
+                    stratum.population_count,
+                    stratum.selected_count,
+                    stratum.usable_demand_count,
+                    stratum.usable_recent_count,
+                    stratum.usable_quality_count,
+                    stratum.usable_status,
+                    stratum.eligibility_rule,
+                )
+            ]
+        )
+        for stratum in row.strata
+    ]
+    return dash_html.Table(
+        [dash_html.Thead(head), dash_html.Tbody(body)],
+        className="strata",
+    )
 
 
-def _render_kpi_strip_html(view: RunReportView) -> str:
-    tiles: list[str] = []
-    for label, value in _kpi_tiles(view):
-        if value is None:
-            tiles.append(
-                f'<div class="kpi"><span class="label">{_esc(label)}</span>'
-                f'<span class="value na">{_NA}</span></div>'
+def _detail_panel_children(view: RunReportView, row: CategoryReportRow) -> list:
+    """Return the ``LREQ-RPT-030`` detail items for one selected category.
+
+    The shared formula/"how to read" list is **not** here: it is hoisted once in
+    the layout (plan §5.2/§5.6). This panel carries the category-specific
+    formulas/metric inputs/strata/warnings/timestamps and the observed-versus-
+    inferred lists.
+    """
+    children: list = [
+        dash_html.H3(f"Category: {row.category}"),
+        dash_html.P(
+            [
+                dash_html.Span("Rankable? ", className="metric-label"),
+                dash_html.Span(row.rankability_status, className="metric-kind"),
+                dash_html.Br(),
+                dash_html.Span(_rankability_note(row)),
+            ],
+            className="rankability",
+        ),
+        dash_html.H4("Metric inputs"),
+        dash_html.Ul(_detail_metric_rows(row)),
+        dash_html.H4("Observed versus inferred"),
+        dash_html.Ul(
+            [dash_html.Li(label) for label in _OBSERVED_LABELS]
+            + [dash_html.Li(label) for label in _INFERRED_LABELS]
+        ),
+        dash_html.H4("Sample strata"),
+        _detail_strata(row),
+        dash_html.H4("Warnings"),
+    ]
+    if row.warnings:
+        children.append(dash_html.Ul([dash_html.Li(code) for code in row.warnings]))
+    else:
+        children.append(dash_html.P(_NA, className="missing"))
+    children.extend(
+        [
+            dash_html.H4("Timestamps"),
+            dash_html.Dl(
+                [
+                    item
+                    for label, value in (
+                        ("Category computed (UTC)", row.computed_at_utc),
+                        ("Run started (UTC)", view.run_started_at_utc),
+                        ("Scoring cutoff (UTC)", view.scoring_cutoff_utc),
+                        ("Completed (UTC)", view.completed_at_utc),
+                    )
+                    for item in (
+                        dash_html.Dt(label),
+                        dash_html.Dd(_format_timestamp(value)),
+                    )
+                ]
+            ),
+        ]
+    )
+    return children
+
+
+def _category_select_options(view: RunReportView) -> list[dict[str, str]]:
+    """Return one selector option per category, in view order (non-rankable too)."""
+    return [
+        {
+            "label": f"{row.category} ({row.rankability_status})",
+            "value": row.category,
+        }
+        for row in view.categories
+    ]
+
+
+def _default_category(view: RunReportView) -> str:
+    """Return the default selected category: the first row, or ``""`` if empty."""
+    return view.categories[0].category if view.categories else ""
+
+
+def _category_selector(view: RunReportView) -> "dash_html.Div":
+    """Return the category selector driving the detail panel."""
+    return dash_html.Div(
+        [
+            dash_html.Label("Category", htmlFor="category-selector-value"),
+            dcc.Dropdown(
+                id="category-selector-value",
+                options=_category_select_options(view),
+                value=_default_category(view),
+                clearable=False,
+            ),
+        ],
+        id="category-selector",
+        className="category-selector",
+    )
+
+
+def _shared_formula_panel() -> "dash_html.Div":
+    """Return the single shared formula/"how to read" panel (appears once)."""
+    return dash_html.Details(
+        [
+            dash_html.Summary("How to read these numbers (shared)"),
+            dash_html.Ul([dash_html.Li(line) for line in _FORMULA_EXPLANATIONS]),
+        ],
+        className="formula-panel",
+        open=True,
+    )
+
+
+def _footnote(view: RunReportView) -> "dash_html.Div":
+    """Return the one shared footnote (coverage vs sample fraction; n/a vs 0)."""
+    provisional = view.sensitivity is None or all(
+        row.rankability_status != "rankable" for row in view.categories
+    )
+    items = [
+        _DASHBOARD_LABELS["coverage"][1],
+        _DASHBOARD_LABELS["sample_fraction"][1],
+        (
+            "A displayed 'n/a' marks an unavailable value and is never the "
+            "measured number 0."
+        ),
+    ]
+    if provisional:
+        items.append(
+            "This run is provisional: no rankable candidates were recorded, so "
+            "the stability tiles read 'n/a' and the policy ranks show gaps."
+        )
+    return dash_html.Div(
+        [
+            dash_html.H4("Notes"),
+            dash_html.Ul([dash_html.Li(item) for item in items]),
+        ],
+        id="footnote",
+        className="footnote",
+    )
+
+
+def _run_header(view: RunReportView) -> "dash_html.Div":
+    """Return the run header block (id/status/timestamps/preflight)."""
+    items = (
+        ("Run ID", view.run_id),
+        ("Run status", view.status),
+        ("Run started (UTC)", _format_timestamp(view.run_started_at_utc)),
+        ("Scoring cutoff (UTC)", _format_timestamp(view.scoring_cutoff_utc)),
+        ("Identity preflight status", view.identity_preflight_status),
+    )
+    return dash_html.Div(
+        [
+            item
+            for label, value in items
+            for item in (
+                dash_html.Dt(label),
+                dash_html.Dd(_fmt(value)),
             )
-        elif isinstance(value, float):
-            tiles.append(
-                f'<div class="kpi"><span class="label">{_esc(label)}</span>'
-                f'<span class="value">{format(value, ".6g")}</span></div>'
-            )
-        else:
-            tiles.append(
-                f'<div class="kpi"><span class="label">{_esc(label)}</span>'
-                f'<span class="value">{value}</span></div>'
-            )
-    return '<div class="kpi-strip">' + "".join(tiles) + "</div>"
+        ],
+        className="run-header",
+    )
+
+
+def build_dashboard_layout(view: RunReportView) -> "dash_html.Div":
+    """Return the deterministic initial layout tree for ``view`` (no server, no I/O).
+
+    Pure: no clock, no network, no database. Two calls with the same ``view``
+    build equal trees. Every chart's figure is produced by a pure
+    ``_x_figure(view)`` builder; every component carries a fixed ``id`` from
+    :data:`DASHBOARD_COMPONENT_IDS`. ``HEURISTIC_STATEMENT`` appears verbatim
+    exactly once; the primary table carries every ``_PRIMARY_COLUMNS`` label; the
+    selected-category detail covers every ``LREQ-RPT-030`` item for one category,
+    with the shared formula list hoisted to a single panel. Non-rankable
+    categories stay visible in the table and selector (``LREQ-RPT-040``).
+    """
+    first = view.categories[0] if view.categories else None
+    detail_children = (
+        _detail_panel_children(view, first)
+        if first is not None
+        else [dash_html.P("No categories recorded.", className="missing")]
+    )
+    return dash_html.Div(
+        [
+            dash_html.Header(
+                [
+                    dash_html.H1("Niche Scout dashboard"),
+                    _run_header(view),
+                    dash_html.P(
+                        view.heuristic_statement,
+                        id="heuristic",
+                        className="heuristic",
+                    ),
+                ],
+                className="run-header-block",
+            ),
+            _kpi_strip(view),
+            dash_html.Div(
+                [
+                    _chart_card(chart_key, view)
+                    for chart_key, _div_id in DASHBOARD_CHART_IDS
+                ],
+                className="chart-grid",
+            ),
+            dash_html.Section(
+                [
+                    dash_html.H2("Primary table"),
+                    _component_legend(),
+                    _primary_table(view),
+                ],
+                className="primary-table-section",
+            ),
+            dash_html.Section(
+                [
+                    dash_html.H2("Category detail"),
+                    _shared_formula_panel(),
+                    _category_selector(view),
+                    dash_html.Div(
+                        detail_children,
+                        id="detail-panel",
+                        className="detail-panel",
+                    ),
+                ],
+                className="detail-section",
+            ),
+            _footnote(view),
+        ],
+        className="dashboard",
+    )
+
+
+def build_dashboard_app(view: RunReportView) -> Dash:
+    """Return a ``dash.Dash`` whose layout is ``build_dashboard_layout(view)``.
+
+    Pure construction (no ``app.run``, no network, no clock read by this module,
+    no repository access). The returned object is safe to construct in a test:
+    assert on ``app.layout`` and invoke a callback function directly. Dash's
+    default local asset serving is relied on (no CDN); assets are served from
+    the installed ``dash`` package, so no external URL is referenced.
+    """
+    app = Dash(
+        __name__,
+        serve_locally=True,
+        title=f"Niche Scout dashboard - {view.run_id}",
+    )
+    app.layout = build_dashboard_layout(view)
+
+    @app.callback(
+        Output("detail-panel", "children"),
+        Input("category-selector-value", "value"),
+    )
+    def _render_selected_detail(selected_category: str | None):  # noqa: ANN202
+        """Return the ``LREQ-RPT-030`` detail for the selected category."""
+        row = _rows_by_category(view).get(selected_category)
+        if row is None:
+            return [dash_html.P("No category selected.", className="missing")]
+        return _detail_panel_children(view, row)
+
+    return app
+
+
+def _rows_by_category(view: RunReportView) -> dict[str, CategoryReportRow]:
+    """Return ``{category: row}`` for one loaded view (no I/O, no recompute)."""
+    return {row.category: row for row in view.categories}
 
 
 # --------------------------------------------------------------------------
@@ -1944,16 +2237,3 @@ def write_run_report(
         parent.mkdir(parents=True, exist_ok=True)
     path.write_text(rendered, encoding="utf-8", newline="\n")
     return path
-
-
-def render_dashboard_html(repository: SqliteRepository, run_id: str) -> str:
-    """Load and render the read-only dashboard for ``run_id``.
-
-    Convenience for the Chunk 12 ``dashboard`` command. Its body is repointed to
-    :func:`render_run_dashboard_html` over the loaded view, so it now returns the
-    dark-mode Plotly document while keeping the exact ``{repository, run_id}``
-    signature and self-containment guarantee. Performs database reads only and
-    initiates no discovery, enrichment, or network activity (LREQ-CLI-020).
-    Raises :class:`RunNotFoundError` when the run is absent.
-    """
-    return render_run_dashboard_html(load_run_report_view(repository, run_id))

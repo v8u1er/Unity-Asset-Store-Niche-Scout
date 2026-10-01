@@ -9,9 +9,9 @@ never reads credentials from a file or ``argv``, and never restates a frozen
 numeric constant (``MIN_CATEGORIES_PER_RUN``, ``PAGE_SIZE``, sampling constants,
 composite weights): those stay owned by ``models`` and ``config``.
 
-``dashboard`` reads one persisted run through the Chunk 11 read-only renderer and
-prints the HTML to stdout. It constructs no transport and initiates no discovery
-or enrichment (``LREQ-CLI-020``).
+``dashboard`` reads one persisted run through the Chunk 11 read model, builds the
+local Dash app, and serves it on loopback. It constructs no transport and initiates
+no discovery or enrichment (``LREQ-CLI-020``).
 
 The production GraphQL transport callable is composed here from the frozen
 ``collector_graphql.build_graphql_batch_request``, ``build_graphql_headers`` and
@@ -55,6 +55,10 @@ EXIT_USAGE_ERROR: int = 2
 """argparse-compatible usage or configuration error."""
 
 _DEFAULT_GRAPHQL_TIMEOUT_SECONDS: float = 30.0
+
+#: The loopback port the ``dashboard`` command binds by default. An arbitrary
+#: local port, not an SRS §14 constant; the CLI still exposes no ``--port`` flag.
+_DEFAULT_DASHBOARD_PORT: int = 8050
 
 #: The logger root every package module nests under (``niche_scout.pipeline``
 #: is ``logging.getLogger("niche_scout.pipeline")``).
@@ -474,6 +478,30 @@ def run_command(
     return EXIT_OK if pipeline_result.succeeded else EXIT_RUNTIME_ERROR
 
 
+def run_dashboard(
+    app: Any,
+    *,
+    host: str = "127.0.0.1",
+    port: int = _DEFAULT_DASHBOARD_PORT,
+    stdout: TextIO = sys.stdout,
+) -> int:
+    """Serve ``app`` on loopback, print the local URL to ``stdout``, and block.
+
+    Does NOT open a browser. Returns ``EXIT_OK`` on ``KeyboardInterrupt``
+    (normal stop) and ``EXIT_RUNTIME_ERROR`` if the bind fails. Production only;
+    tests monkeypatch or replace this function, never call it.
+    """
+    print(f"niche-scout dashboard: http://{host}:{port}/", file=stdout)
+    try:
+        app.run(host=host, port=port, debug=False, use_reloader=False)
+    except KeyboardInterrupt:
+        return EXIT_OK
+    except (OSError, SystemExit) as exc:
+        print(f"error: dashboard server stopped: {exc}", file=stdout)
+        return EXIT_RUNTIME_ERROR
+    return EXIT_OK
+
+
 def dashboard_command(
     options: CliOptions,
     *,
@@ -481,25 +509,28 @@ def dashboard_command(
     open_repository: Callable[[Path], database.SqliteRepository] = (
         database.SqliteRepository
     ),
-    report_renderer: Callable[[Any, str], str] = report.render_dashboard_html,
+    report_renderer: Callable[[report.RunReportView], Any] = report.build_dashboard_app,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
 ) -> int:
-    """Render one persisted run through the read-only dashboard renderer.
+    """Build and serve the read-only dashboard for one persisted run.
 
     ``options.run_id`` is the optional selector: when it is ``None`` the most
     recent run by ``run_started_at_utc`` is resolved through
-    ``repository.get_latest_run_id()`` (Chunk 30 D-3, amending Ruling 3). An
-    empty ``runs`` table (``get_latest_run_id() is None``) prints a redacted
-    error to ``stderr`` and returns ``EXIT_RUNTIME_ERROR`` without calling the
-    renderer. Otherwise ``report_renderer(repository, run_id)`` is called once
-    and its HTML printed to ``stdout`` — no file write and no browser launch
-    (Ruling 6). Database reads only: no transport is constructed and no
-    discovery or enrichment is initiated. A given-but-unknown run id and a
-    ``RunNotFoundError`` are runtime failures.
+    ``repository.get_latest_run_id()`` (Chunk 30 D-3). An empty ``runs`` table
+    (``get_latest_run_id() is None``) prints a redacted error to ``stderr`` and
+    returns ``EXIT_RUNTIME_ERROR`` without building the app. Otherwise the view is
+    loaded exactly once (``report.load_run_report_view``), the app is built by
+    ``report_renderer(view)``, and ``run_dashboard(app, stdout=stdout)`` binds
+    loopback and blocks (Chunk 31 R2/R3/R7). No file write and no browser launch.
+    Database reads only: no transport is constructed and no discovery or
+    enrichment is initiated. A given-but-unknown run id and a ``RunNotFoundError``
+    are runtime failures.
 
     ``report_renderer`` is an injection seam that defaults to
-    ``report.render_dashboard_html``; production callers never pass it.
+    ``report.build_dashboard_app`` and is an app factory ``(view) -> app``;
+    production callers never pass it. ``run_dashboard`` is monkeypatched by tests
+    so no server is ever bound in the suite.
     """
     owns_repository = repository is None
     if repository is None:
@@ -523,7 +554,8 @@ def dashboard_command(
             return EXIT_RUNTIME_ERROR
 
     try:
-        html = report_renderer(repository, str(run_id))
+        view = report.load_run_report_view(repository, str(run_id))
+        app = report_renderer(view)
     except report.ReportError as exc:
         print(f"error: {exc}", file=stderr)
         return EXIT_RUNTIME_ERROR
@@ -533,8 +565,7 @@ def dashboard_command(
     finally:
         _close_if_owned(owns_repository, repository)
 
-    print(html, file=stdout)
-    return EXIT_OK
+    return run_dashboard(app, stdout=stdout)
 
 
 def _close_if_owned(owns_repository: bool, repository: Any) -> None:

@@ -64,6 +64,7 @@ __all__ = [
     "TRANSPORT_SENTINELS",
     "UrllibRequest",
     "UrllibResponse",
+    "dashboard_app_recorder",
     "dashboard_options",
     "dashboard_repository",
     "empty_repository",
@@ -71,6 +72,7 @@ __all__ = [
     "graphql_headers",
     "graphql_request",
     "multi_run_dashboard_repository",
+    "run_dashboard_recorder",
     "run_options",
     "scenario_artifacts",
     "seed_run",
@@ -511,6 +513,64 @@ class RecordingWriteReport:
     @property
     def call_count(self) -> int:
         return len(self.calls)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard app factory and run_dashboard recorders (Chunk 31).
+# ---------------------------------------------------------------------------
+
+
+class DashboardAppRecorder:
+    """A callable app factory recording each ``view`` and returning a sentinel.
+
+    The Chunk 31 ``report_renderer`` seam is an app factory ``(view) -> app``;
+    this recorder returns a shared ``app`` object without constructing a Dash
+    app, so a test can assert *whether* the factory ran, how often, and against
+    which loaded view, with no server and no I/O.
+    """
+
+    def __init__(self, app: Any | None = None) -> None:
+        self.app = app if app is not None else object()
+        self.views: list[Any] = []
+
+    def __call__(self, view: Any) -> Any:
+        self.views.append(view)
+        return self.app
+
+    @property
+    def call_count(self) -> int:
+        return len(self.views)
+
+
+def dashboard_app_recorder(app: Any | None = None) -> DashboardAppRecorder:
+    """Return a fresh app-factory recorder (plan §9)."""
+    return DashboardAppRecorder(app)
+
+
+class RunDashboardRecorder:
+    """A callable ``run_dashboard`` recorder that never binds a server.
+
+    Records ``(app, host, port, stdout)``-style invocations and returns
+    ``EXIT_OK`` without serving. Used to monkeypatch ``cli.run_dashboard`` so the
+    suite can exercise the command path without binding loopback.
+    """
+
+    def __init__(self, exit_code: int = 0) -> None:
+        self.exit_code = exit_code
+        self.calls: list[Any] = []
+
+    def __call__(self, app: Any, **kwargs: Any) -> int:
+        self.calls.append((app, kwargs))
+        return self.exit_code
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
+
+
+def run_dashboard_recorder(exit_code: int = 0) -> RunDashboardRecorder:
+    """Return a fresh ``run_dashboard`` recorder (plan §9)."""
+    return RunDashboardRecorder(exit_code)
 
 
 # ---------------------------------------------------------------------------

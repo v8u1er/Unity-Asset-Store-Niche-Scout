@@ -35,7 +35,7 @@ import pytest
 from fixtures import cli_fixtures as cf
 from fixtures import config_fixtures
 
-from niche_scout import cli, config, database, models, report
+from niche_scout import cli, config, database, models
 
 # --------------------------------------------------------------------------
 # Constants read from their owners, never restated (SRS §14 is non-configurable).
@@ -548,14 +548,17 @@ def _sampled_identity_keys(scenario) -> tuple[str, ...]:
 @pytest.mark.lreq("LREQ-CLI-020")
 def test_dashboard_reads_database_only_and_never_constructs_a_transport(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
-    """The dashboard renders a persisted run and constructs no transport.
+    """The dashboard builds an app from a persisted run and constructs no transport.
 
     This mirrors
-    ``tests/test_report.py::test_render_dashboard_html_is_database_read_only``
+    ``tests/test_report.py::test_build_dashboard_app_layout_matches_the_layout_builder``
     at the CLI layer; the two nodes are distinct and both stay in the matrix.
     The collector opener and the CLI transport builder are poisoned, so any
-    construction attempt fails this node.
+    construction attempt fails this node. ``cli.run_dashboard`` is replaced with a
+    recorder so no server is bound, and the injected ``report_renderer`` is now an
+    app factory ``(view) -> app``.
     """
     rf = _report_fixtures()
     from niche_scout import collector_coveo
@@ -575,13 +578,15 @@ def test_dashboard_reads_database_only_and_never_constructs_a_transport(
         repository = cf.dashboard_repository(
             db_path, rf.CATEGORY_ALPHA, rf.CATEGORY_BRAVO
         )
-        recorder = cf.ReportRecorder()
+        factory = cf.dashboard_app_recorder()
+        serve = cf.run_dashboard_recorder()
+        monkeypatch.setattr(cli, "run_dashboard", serve)
         stdout = io.StringIO()
         try:
             code = cli.dashboard_command(
                 cf.dashboard_options(config_path, db_path, run_id=rf.RUN_ID),
                 repository=repository,
-                report_renderer=recorder,
+                report_renderer=factory,
                 stdout=stdout,
                 stderr=io.StringIO(),
             )
@@ -592,25 +597,26 @@ def test_dashboard_reads_database_only_and_never_constructs_a_transport(
         cli.build_graphql_transport = original_builder
 
     assert code == cli.EXIT_OK
-    assert recorder.call_count == 1
-    _, run_id = recorder.calls[0]
-    assert run_id == rf.RUN_ID
-    assert recorder.html in stdout.getvalue()
+    assert factory.call_count == 1
+    assert factory.views[0].run_id == rf.RUN_ID
+    assert serve.call_count == 1
+    assert serve.calls[0][0] is factory.app
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_dashboard_missing_run_is_nonzero(tmp_path: Path) -> None:
+def test_dashboard_missing_run_is_nonzero(tmp_path: Path, monkeypatch) -> None:
     """A run id with no ``runs`` row maps ``RunNotFoundError`` to non-zero."""
     rf = _report_fixtures()
     db_path = tmp_path / "missing.sqlite3"
     config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="miss.toml")
     repository = cf.dashboard_repository(db_path, rf.CATEGORY_ALPHA)
+    serve = cf.run_dashboard_recorder()
+    monkeypatch.setattr(cli, "run_dashboard", serve)
     stdout, stderr = _buffers()
     try:
         code = cli.dashboard_command(
             cf.dashboard_options(config_path, db_path, run_id="run-does-not-exist"),
             repository=repository,
-            report_renderer=report.render_dashboard_html,
             stdout=stdout,
             stderr=stderr,
         )
@@ -620,21 +626,27 @@ def test_dashboard_missing_run_is_nonzero(tmp_path: Path) -> None:
     assert code == cli.EXIT_RUNTIME_ERROR
     assert stdout.getvalue() == ""
     assert stderr.getvalue().strip() != ""
+    assert serve.call_count == 0
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_dashboard_selects_completed_and_failed_runs(tmp_path: Path) -> None:
-    """Both a completed and a failed persisted run render through the dashboard.
+def test_dashboard_selects_completed_and_failed_runs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Both a completed and a failed persisted run build an app and are served.
 
     Run selection is the explicit ``--run-id``, never a default or ``--latest``
     (Ruling 3, amended by Chunk 30 D-3: an absent id selects the latest run), so
     a failed run is selectable and renders through the persisted failed-run
-    fallback without a scored row of its own.
+    fallback without a scored row of its own. ``cli.run_dashboard`` is replaced
+    so no server binds; the printed URL stands in for the rendered output.
     """
     rf = _report_fixtures()
     db_path = tmp_path / "both.sqlite3"
     config_path = cf.write_toml_file(tmp_path, cf.DASHBOARD_TOML_BODY, name="both.toml")
     repository = database.SqliteRepository(db_path)
+    serve = cf.run_dashboard_recorder()
+    monkeypatch.setattr(cli, "run_dashboard", serve)
     try:
         completed = rf.run_record((rf.CATEGORY_ALPHA,), run_id="run-11-completed")
         failed = rf.run_record(
@@ -657,28 +669,32 @@ def test_dashboard_selects_completed_and_failed_runs(tmp_path: Path) -> None:
                 ]
             )
         for run_id in ("run-11-completed", "run-11-failed"):
+            factory = cf.dashboard_app_recorder()
             stdout = io.StringIO()
             code = cli.dashboard_command(
                 cf.dashboard_options(config_path, db_path, run_id=run_id),
                 repository=repository,
-                report_renderer=report.render_dashboard_html,
+                report_renderer=factory,
                 stdout=stdout,
                 stderr=io.StringIO(),
             )
             assert code == cli.EXIT_OK
-            assert run_id in stdout.getvalue()
+            assert factory.call_count == 1
+            assert factory.views[0].run_id == run_id
     finally:
         repository.close()
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
+def test_dashboard_without_run_id_renders_latest_run(
+    tmp_path: Path, monkeypatch
+) -> None:
     """An absent ``--run-id`` selects the most recent run by ``run_started_at_utc``.
 
     Chunk 30 D-3 (amending Ruling 3): ``dashboard_command`` resolves
     ``repository.get_latest_run_id()`` when ``options.run_id`` is ``None``. The
     repository holds two completed runs with distinct fixed start instants, so
-    the renderer must be called exactly once with the later run id.
+    the app factory must be called exactly once with the later run id.
     """
     db_path = tmp_path / "latest.sqlite3"
     config_path = cf.write_toml_file(
@@ -687,13 +703,15 @@ def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
     repository = cf.multi_run_dashboard_repository(
         db_path, earlier_run_id="run-earlier", later_run_id="run-later"
     )
-    recorder = cf.ReportRecorder()
+    factory = cf.dashboard_app_recorder()
+    serve = cf.run_dashboard_recorder()
+    monkeypatch.setattr(cli, "run_dashboard", serve)
     stdout, stderr = _buffers()
     try:
         code = cli.dashboard_command(
             cf.dashboard_options(config_path, db_path, run_id=None),
             repository=repository,
-            report_renderer=recorder,
+            report_renderer=factory,
             stdout=stdout,
             stderr=stderr,
         )
@@ -701,27 +719,30 @@ def test_dashboard_without_run_id_renders_latest_run(tmp_path: Path) -> None:
         repository.close()
 
     assert code == cli.EXIT_OK
-    assert recorder.call_count == 1
-    _, run_id = recorder.calls[0]
-    assert run_id == "run-later"
-    assert recorder.html in stdout.getvalue()
+    assert factory.call_count == 1
+    assert factory.views[0].run_id == "run-later"
+    assert serve.call_count == 1
     assert stderr.getvalue() == ""
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
-def test_dashboard_without_run_id_on_empty_database_is_nonzero(tmp_path: Path) -> None:
-    """An empty ``runs`` table is a runtime failure that calls no renderer."""
+def test_dashboard_without_run_id_on_empty_database_is_nonzero(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An empty ``runs`` table is a runtime failure that calls no factory."""
     config_path = cf.write_toml_file(
         tmp_path, cf.DASHBOARD_TOML_BODY, name="empty.toml"
     )
     repository = cf.empty_repository(tmp_path / "empty.sqlite3")
-    recorder = cf.ReportRecorder()
+    factory = cf.dashboard_app_recorder()
+    serve = cf.run_dashboard_recorder()
+    monkeypatch.setattr(cli, "run_dashboard", serve)
     stdout, stderr = _buffers()
     try:
         code = cli.dashboard_command(
             cf.dashboard_options(config_path, tmp_path / "empty.sqlite3", run_id=None),
             repository=repository,
-            report_renderer=recorder,
+            report_renderer=factory,
             stdout=stdout,
             stderr=stderr,
         )
@@ -729,9 +750,63 @@ def test_dashboard_without_run_id_on_empty_database_is_nonzero(tmp_path: Path) -
         repository.close()
 
     assert code == cli.EXIT_RUNTIME_ERROR
-    assert recorder.call_count == 0
+    assert factory.call_count == 0
+    assert serve.call_count == 0
     assert stdout.getvalue() == ""
     assert stderr.getvalue().strip() != ""
+
+
+@pytest.mark.lreq("LREQ-CLI-020")
+def test_dashboard_command_serves_the_built_app_without_writing_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The command builds the app from the loaded view and serves it, no file write.
+
+    With a recording app factory and a recording ``run_dashboard``, the factory
+    is called once with the loaded view, ``run_dashboard`` is called once with
+    that app, and no file is written under ``tmp_path``.
+    """
+    rf = _report_fixtures()
+    db_path = tmp_path / "serve.sqlite3"
+    config_path = cf.write_toml_file(
+        tmp_path, cf.DASHBOARD_TOML_BODY, name="serve.toml"
+    )
+    repository = cf.dashboard_repository(db_path, rf.CATEGORY_ALPHA)
+    factory = cf.dashboard_app_recorder()
+    serve = cf.run_dashboard_recorder()
+    monkeypatch.setattr(cli, "run_dashboard", serve)
+
+    def _non_database_files() -> set[Path]:
+        return {
+            path
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+            and path.suffix not in (".toml", ".sqlite3", ".sqlite")
+            and not path.name.endswith(
+                (".sqlite3-wal", ".sqlite3-shm", ".sqlite-wal", ".sqlite-shm")
+            )
+        }
+
+    before = _non_database_files()
+    stdout = io.StringIO()
+    try:
+        code = cli.dashboard_command(
+            cf.dashboard_options(config_path, db_path, run_id=rf.RUN_ID),
+            repository=repository,
+            report_renderer=factory,
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+    finally:
+        repository.close()
+
+    after = _non_database_files()
+    assert code == cli.EXIT_OK
+    assert factory.call_count == 1
+    assert factory.views[0].run_id == rf.RUN_ID
+    assert serve.call_count == 1
+    assert serve.calls[0][0] is factory.app
+    assert after == before
 
 
 @pytest.mark.lreq("LREQ-CLI-020")
@@ -926,8 +1001,7 @@ def test_build_graphql_transport_sends_matching_cookie_and_csrf_header(
     # No other header is added by the transport: exactly the caller's names.
     assert sorted(names) == sorted(str(name).casefold() for name in headers)
     by_name = {
-        str(name).casefold(): str(value)
-        for name, value in recorded.headers.items()
+        str(name).casefold(): str(value) for name, value in recorded.headers.items()
     }
     assert by_name["x-csrf-token"] == headers["x-csrf-token"]
     assert by_name["cookie"] == "_csrf=" + by_name["x-csrf-token"]
