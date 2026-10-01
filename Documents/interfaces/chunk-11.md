@@ -258,3 +258,34 @@ affected lines above.
   share the scored axis with rankable ones; no confidence interval or error bar;
   coverage and `sample_fraction` stay distinctly labelled. `report.py` may import
   `plotly`; all other boundary rules (§1) are unchanged.
+
+## 11. Chunk 31 revision — Dash app (2026-10-01)
+
+Operator-authorized (chunk-31 D-2/D-3; plan
+`chunk-31-dash-plotly-dashboard.md` §6, §12 R1–R8). This section supersedes the
+affected lines in §1, §2, §5, §7, and §10.
+
+- **§1 boundary rule.** `report.py` may import `dash` (and `plotly`); all other
+  boundary rules are unchanged (no `metrics`/`scoring`/`collector*`/`config`/
+  `pipeline`/`cli`, no clock read). The **dashboard** self-containment guarantee is
+  amended: the dashboard is a **served local app**, not a self-contained HTML
+  document. `render_run_report_html` / `render_run_report_text` /
+  `write_run_report` keep the self-contained-HTML guarantee and the `run --report`
+  file behaviour unchanged.
+- **§2 constants.** Add `DASHBOARD_COMPONENT_IDS`; **remove** the
+  `component_dumbbell` and `status_heatmap` pairs from `DASHBOARD_CHART_IDS` (five
+  pairs remain: score_bar, contribution_stack, policy_bump, population_lollipop,
+  score_quality_scatter).
+- **§5 functions.** **Remove** `render_dashboard_html` and
+  `render_run_dashboard_html`; add
+  `build_dashboard_layout(view: RunReportView) -> html.Div` and
+  `build_dashboard_app(view: RunReportView) -> dash.Dash`. The app is **view-only**:
+  built from a `RunReportView`, and no callback re-queries the database.
+- **§7 display rules.** Every chart carries a one-line plain-language caption and
+  correct legends/axis labels (D-5). Per-category `LREQ-RPT-030` detail is
+  progressive disclosure for the selected category; the shared formula list appears
+  once. The primary table shows **all** `LREQ-RPT-020` labels by default (compact,
+  horizontally scrollable). The coverage heatmap is removed (R4); coverage stays
+  exact in the table and evidence grade is an ordinal colour on the ranked score
+  bar. UI text uses the plain-language label vocabulary in the plan §5.7; tooltips
+  say what a number means and what to watch for (not raw field names).

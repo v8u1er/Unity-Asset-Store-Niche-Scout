@@ -199,3 +199,29 @@ Ruling 3**; Ruling 6 (stdout, no file write, no browser) is retained.
 - **§1 note.** `database.py` is now touched by this chunk (adds
   `get_latest_run_id`; see `chunk-00.md` §12 and `chunk-02.md` §8), superseding the
   "`database.py` was not touched" sentence.
+
+## 10. Chunk 31 revision — dashboard serves a local app (2026-10-01)
+
+Operator-authorized (chunk-31 D-2, R7; plan
+`chunk-31-dash-plotly-dashboard.md` §6.2/§12). This section **amends Ruling 6**.
+
+- **`dashboard_command` (§5).** Keeps its parameter names; the `report_renderer`
+  seam becomes an **app factory** `Callable[[RunReportView], dash.Dash]` defaulting
+  to `report.build_dashboard_app`. The command loads the view once
+  (`load_run_report_view`), builds the app, then calls
+  `run_dashboard(app, stdout=stdout)`. The read-once, read-only, no-transport
+  property (`LREQ-CLI-020`) is unchanged.
+- **New function.**
+  `run_dashboard(app, *, host="127.0.0.1", port=_DEFAULT_DASHBOARD_PORT,
+  stdout=sys.stdout) -> int` binds loopback, prints the local URL to `stdout`,
+  blocks, and launches no browser. `KeyboardInterrupt` after a successful bind →
+  `EXIT_OK`; bind failure → `EXIT_RUNTIME_ERROR`. Production only; tests replace it
+  with a recorder and never bind.
+- **Behavioral contract (§6).** The Ruling 6 wording "print to `stdout`, no file
+  write, no browser launch" is superseded: the command binds loopback, prints the
+  **URL** (not the HTML) to `stdout`, performs no file write, and launches no
+  browser. A missing/unknown run, an empty `runs` table, or an open failure still
+  maps to `EXIT_RUNTIME_ERROR` and calls neither the renderer nor `run_dashboard`.
+  No new option (no `--out`).
+- **§4 `CliOptions`** unchanged; `run_id` remains the optional selector (§9).
+- **§8 open obligations** unchanged (OI-6 stays open and unassigned).
