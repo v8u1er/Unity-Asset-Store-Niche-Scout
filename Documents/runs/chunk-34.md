@@ -171,8 +171,8 @@ removing any column.
 | Preflight (lead) | DONE | tree pre-existing untracked only; `chunk-34` from `ad0bb70`; this log |
 | Live dashboard audit (lead, Kilo Playwright) | DONE | 9 measured findings above; background process `bgp_0f77dd04e001EZ87j1DnbMq8gX` |
 | Skill CLI (lead) | DONE | six queries above; the color-phrase query returned 0 matches (recorded) |
-| Plan — `chunk-planner` | PENDING | |
-| Tests — `test-author` | PENDING | |
+| Plan — `chunk-planner` | DONE | plan frozen; three lead-verified corrections (DataTable `fixed_columns` + inline conditionals; hover customdata normalization; trace-name claim); commit `chunk-34: plan (frozen)` |
+| Tests — `test-author` | DONE | six new §10.1 nodes + §10.2 (a)–(g) amended in place; two fixture names + `__all__`; six `traceability.json` keys; red step 12 failed / 43 passed; commit `chunk-34: tests (red)` |
 | Implement — `impl-deep` | PENDING | |
 | Lead verification | PENDING | |
 | Review — `spec-reviewer` | PENDING | |
