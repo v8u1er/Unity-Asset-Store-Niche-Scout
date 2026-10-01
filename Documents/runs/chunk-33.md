@@ -184,7 +184,7 @@ emoji).
 | Live dashboard audit (lead, Kilo Playwright) | DONE | 8 measured findings above; background process `bgp_0f66c4b53001UIFaleLj1nbdMN` |
 | Skill CLI (lead) | DONE | five queries above |
 | Plan — `chunk-planner` | DONE | First dispatch hit the agent step cap during grounding (no file written); resumed with the grounding + lead rulings LR1–LR5 → wrote `Documents/plans/chunk-33-dashboard-redesign.md` (565 lines, FROZEN, §14 open questions empty). Lead then corrected two internal LR5 contradictions (`:has()` guard + fallback). Committed `chunk-33: plan`. |
-| Tests — `test-author` | PENDING | |
+| Tests — `test-author` | DONE | 5 new nodes in `tests/test_report.py` + 5 keys in `tests/traceability.json`; amended `_DASHBOARD_CSS_HEXES` and extended the token/class tuples. Lead-verified: `pytest tests/test_report.py` → `6 failed, 43 passed` (all six are missing-implementation failures — missing tokens, no `Nav`, no `column-guide`, no `automargin`, stale evidence colour — no syntax/collection errors); full suite `6 failed, 749 passed`; `validate_traceability` → `734 matrix nodes, 0 unmarked`. Committed `chunk-33: tests`. |
 | Implement — `impl-deep` | PENDING | |
 | Lead verification | PENDING | |
 | Review — `spec-reviewer` | PENDING | |
