@@ -262,6 +262,14 @@ chunk-34's own rule, not a chunk-33 supersession.
 
 Nothing else in chunk 33 is superseded.
 
+**Erratum (lead-approved 2026-10-01).** The §10.1 test row for
+`test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique` previously illustrated
+the wrong expected labels (`Alpha`, `Bravo`, `Charlie`, mis-called "the final segments", which
+are actually the **first** segments). The normative §5.2 rule is unchanged; only that
+illustrative expectation (and the corresponding test assertions) is corrected to the real output
+under §5.2, `["Ranked · Alpha", "Ranked · Bravo", "Unranked"]`. No scope, node ID, or LREQ role
+changes.
+
 ---
 
 ## 4. Palette (the plan fixes the ramp)
@@ -644,7 +652,7 @@ ID or traceability key is renamed or removed.
 
 | Node ID | Marker(s) | Asserts |
 |---|---|---|
-| `tests/test_report.py::test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique` | `LREQ-RPT-010` | For the fixture view, the score-bar `y` labels are `Alpha`, `Bravo`, `Charlie` (the final segments), **not** `Alpha/Ranked`; the full `Alpha/Ranked` still appears in the layout (table/detail); the scatter `text` labels are the leaves; a synthetic two-row view whose categories share the leaf (`a/x/Foo`, `b/y/Foo`) yields the two distinct labels `Foo · a/x` and `Foo · b/y`; a non-colliding leaf has no suffix; two builds are equal |
+| `tests/test_report.py::test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique` | `LREQ-RPT-010` | For the fixture view, the score-bar `y` labels are `["Ranked · Alpha", "Ranked · Bravo", "Unranked"]` under §5.2: `Alpha/Ranked` and `Bravo/Ranked` share the leaf `Ranked`, so **both** get the `" · <parent>"` suffix (`Ranked · Alpha`, `Ranked · Bravo`), while `Charlie/Unranked` has the unique leaf `Unranked` and no suffix. The full paths `Alpha/Ranked`, `Bravo/Ranked`, `Charlie/Unranked` are still present in the layout (table cell/detail). The scatter `text` labels are the same three labels. The synthetic collision view `a/x/Foo`/`b/y/Foo` yields `Foo · a/x` and `Foo · b/y`; a non-colliding leaf has no suffix; two builds are equal |
 | `tests/test_report.py::test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones` | `LREQ-RPT-010` | The score-bar figure `layout.showlegend is False`; the scatter figure `layout.showlegend is False`; the contribution, population, and policy-bump figures `layout.showlegend is not False` (truthy/absent → default True) |
 | `tests/test_report.py::test_dashboard_figures_use_mono_numeric_and_sans_label_fonts` | `LREQ-RPT-010` | For all five figures: `layout.font.family == report._FIGURE_FONT_SANS`; `xaxis.tickfont.family == report._FIGURE_FONT_MONO`; `yaxis.tickfont.family == report._FIGURE_FONT_MONO`; `xaxis.title.font.family == report._FIGURE_FONT_SANS` and likewise `yaxis.title.font.family`; no `"title"` key in `layout` (the in-plot title is dropped); the score bar's `yaxis.title.text == "category (leaf)"`, the population `yaxis.title.text == "category (leaf)"`, the contribution `xaxis.title.text == "category (leaf)"` |
 | `tests/test_report.py::test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order` | `LREQ-RPT-020` | The bump figure has one trace per `_policy_rank_rows` row; trace `i` has `line["color"] == report._RAMP_HEXES[i % len(report._RAMP_HEXES)]` **and** `marker["color"] == report._RAMP_HEXES[i % len(report._RAMP_HEXES)]` (§4.1 cyclic rule); each trace carries `mode` containing `"text"` and a non-empty `text` on the first policy point; `connectgaps is False` on every trace |
