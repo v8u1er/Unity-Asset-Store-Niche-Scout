@@ -25,6 +25,7 @@ import json
 import re
 from html import escape as html_escape
 from html.parser import HTMLParser
+from pathlib import Path
 
 import pytest
 from _plotly_utils.utils import PlotlyJSONEncoder
@@ -1066,6 +1067,74 @@ def test_public_report_functions_have_hints_and_docstrings():
 
 _NA_MARKER = "n/a"
 
+# --------------------------------------------------------------------------
+# Chunk 32 — dashboard stylesheet + progressive disclosure. The token/hex/class
+# sets below are the required design-system surface (plan §8.3); the CSS asset
+# is derived from ``report.__file__``, so no fixture is needed.
+# --------------------------------------------------------------------------
+
+_DASHBOARD_CSS_TOKENS = (
+    "--bg",
+    "--surface",
+    "--surface-2",
+    "--border",
+    "--fg",
+    "--muted-fg",
+    "--primary",
+    "--accent",
+    "--positive",
+    "--danger",
+    "--font-sans",
+    "--font-mono",
+    "--measure",
+)
+
+_DASHBOARD_CSS_HEXES = (
+    "#0b1120",
+    "#1b2029",
+    "#222833",
+    "#2c3440",
+    "#e6e9ee",
+    "#9aa6b2",
+    "#6ea8fe",
+    "#f2c14e",
+    "#8fd694",
+    "#e06c75",
+)
+
+_DASHBOARD_CSS_CLASSES = (
+    "dashboard",
+    "run-header-block",
+    "run-header",
+    "heuristic",
+    "kpi-strip",
+    "kpi-tile",
+    "kpi-label",
+    "kpi-value",
+    "kpi-note",
+    "chart-grid",
+    "chart-card",
+    "chart-caption",
+    "primary-table",
+    "detail-panel",
+    "detail-section",
+    "primary-table-section",
+    "formula-panel",
+    "footnote",
+    "component-legend",
+    "category-selector",
+    "strata",
+    "metric-label",
+    "metric-kind",
+    "missing",
+    "rankability",
+)
+
+
+def _dashboard_css_path():
+    """Return the packaged stylesheet path derived from ``report.__file__``."""
+    return Path(report.__file__).parent / "assets" / "dashboard.css"
+
 
 def _norm(component):
     """Return the stable JSON string for a Dash component tree."""
@@ -1579,3 +1648,127 @@ def _view_with_row(tmp_path, row):
     view = report.load_run_report_view(repository, row.run_id)
     repository.close()
     return view
+
+
+# --------------------------------------------------------------------------
+# Chunk 32 — dashboard stylesheet, packaging, and progressive disclosure.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_asset_exists_is_offline_and_uses_the_token_set():
+    """The packaged stylesheet is offline and defines the required design system.
+
+    It exists and is non-empty; it carries no scheme-bearing URL, ``@import``, or
+    ``url(``; it defines every required token and hex; it styles every layout
+    class plus the DataTable classes; and it includes the focus, reduced-motion,
+    and four responsive breakpoints (plan §5, §8.3).
+    """
+    css_path = _dashboard_css_path()
+    assert css_path.is_file(), f"missing stylesheet: {css_path}"
+    text = css_path.read_text(encoding="utf-8")
+    assert text.strip()
+    folded = text.casefold()
+    assert "http://" not in folded
+    assert "https://" not in folded
+    assert "@import" not in folded
+    assert "url(" not in folded
+    for token in _DASHBOARD_CSS_TOKENS:
+        assert token in text, f"missing token {token!r}"
+    for hex_value in _DASHBOARD_CSS_HEXES:
+        assert hex_value in folded, f"missing hex {hex_value!r}"
+    for class_name in _DASHBOARD_CSS_CLASSES:
+        pattern = rf"\.{re.escape(class_name)}\b"
+        assert re.search(pattern, text), f"missing selector for .{class_name}"
+    assert ".dash-cell" in text
+    assert ".dash-header" in text
+    assert ":focus-visible" in text
+    assert "@media (prefers-reduced-motion: reduce)" in text
+    assert "375px" in text
+    assert "@media (min-width: 768px)" in text
+    assert "@media (min-width: 1024px)" in text
+    assert "@media (min-width: 1440px)" in text
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_is_declared_as_package_data():
+    """``pyproject.toml`` ships ``assets/*.css`` and the referenced file exists."""
+    pyproject = (
+        Path(report.__file__).resolve().parents[2] / "pyproject.toml"
+    ).read_text(encoding="utf-8")
+    assert "[tool.setuptools.package-data]" in pyproject
+    assert 'niche_scout = ["assets/*.css"]' in pyproject
+    assert _dashboard_css_path().is_file()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_app_serves_the_package_assets_folder(tmp_path):
+    """Dash serves the packaged ``assets/`` dir holding ``dashboard.css``."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        expected = (Path(report.__file__).parent / "assets").resolve()
+        app = report.build_dashboard_app(view)
+        served = getattr(app.config, "assets_folder", None)
+        if served is None:
+            served = app.config.assets_path
+        assert Path(served).resolve() == expected
+        assert (expected / "dashboard.css").is_file()
+        app2 = report.build_dashboard_app(view)
+        served2 = getattr(app2.config, "assets_folder", None)
+        if served2 is None:
+            served2 = app2.config.assets_path
+        assert Path(served2).resolve() == expected
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-030")
+@pytest.mark.lreq("LREQ-RPT-050")
+def test_dashboard_uses_progressive_disclosure_without_dropping_mandated_content(
+    tmp_path,
+):
+    """Disclosures wrap content but every mandated string stays in the DOM."""
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        details = _components_of_type(layout, "Details")
+        assert len(details) >= 3
+
+        statement = json.dumps(view.heuristic_statement)[1:-1]
+        heuristic = [node for node in details if statement in _norm(node)]
+        assert len(heuristic) == 1
+        heuristic_props = heuristic[0].to_plotly_json()["props"]
+        assert heuristic_props.get("open") is not True
+        assert _norm(heuristic[0]).count(statement) == 1
+
+        formula = [
+            node
+            for node in details
+            if node.to_plotly_json()["props"].get("className") == "formula-panel"
+        ]
+        assert len(formula) == 1
+        assert formula[0].to_plotly_json()["props"].get("open") is not True
+
+        observed = [
+            node for node in details if report._OBSERVED_LABELS[0] in _norm(node)
+        ]
+        assert len(observed) == 1
+        assert report._INFERRED_LABELS[-1] in _norm(observed[0])
+
+        strata = [
+            node for node in details if "N_h (discovered population)" in _norm(node)
+        ]
+        assert len(strata) == 1
+
+        held = _norm(layout)
+        for item in (
+            "Metric inputs",
+            "Observed versus inferred",
+            "Sample strata",
+            "Warnings",
+            "Timestamps",
+        ):
+            assert item in held
+        assert held.count(report._FORMULA_EXPLANATIONS[0]) == 1
+    finally:
+        repository.close()

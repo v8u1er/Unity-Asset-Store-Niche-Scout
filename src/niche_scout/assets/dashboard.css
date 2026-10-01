@@ -1,0 +1,599 @@
+/* Niche Scout dashboard stylesheet (Chunk 32).
+ *
+ * Offline, self-contained design system for the served Dash dashboard. No
+ * external URL, web font, at-import directive, or CDN is referenced: typography
+ * uses the local system font stack below. All colour comes from the :root
+ * tokens.
+ *
+ * Design language: "data-dense dark analytics console" — 12-column grid, 8px
+ * rhythm, semantic tokens, progressive disclosure, direct labels + text (never
+ * colour alone), sortable primary table. Grounded in the ui-ux-pro-max skill:
+ * styles.csv "Data-Dense Dashboard" (12-col grid, 8px gap, overflow:auto tables,
+ * sticky headers, --table-row-height:36px), typography.csv "Dashboard Data"
+ * (code for data, sans for labels), ux-guidelines.csv Reduced Motion / Focus
+ * States / Color Contrast / Color Only / Table Handling / Readable Font Size.
+ */
+
+:root {
+  /* Semantic colour tokens (fixed). */
+  --bg: #0B1120;
+  --surface: #1B2029;
+  --surface-2: #222833;
+  --border: #2C3440;
+  --fg: #E6E9EE;
+  --muted-fg: #9AA6B2;
+  --primary: #6EA8FE;
+  --accent: #F2C14E;
+  --positive: #8FD694;
+  --danger: #E06C75;
+
+  /* Ordinal evidence scale (mirrors the existing figure scale). */
+  --evidence-insufficient: #c98b8b;
+  --evidence-weak: #e0a458;
+  --evidence-moderate: #8fb9a8;
+  --evidence-strong: #8fd694;
+
+  /* Offline system font stacks (no web font, no at-import directive). */
+  --font-sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas,
+    "SFMono-Regular", Menlo, monospace;
+
+  /* Non-colour tokens. */
+  --measure: 72ch;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius: 8px;
+  --chart-height: 360px;
+  --focus-ring: 2px solid var(--primary);
+  --focus-offset: 2px;
+  --z-header: 2;
+  --font-size-base: 1rem;
+  --font-size-small: 0.8125rem;
+  --table-row-height: 36px;
+}
+
+/* ---------------------------------------------------------------- canvas -- */
+
+html {
+  color-scheme: dark;
+  scroll-padding-top: 56px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.dashboard {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  max-inline-size: 1600px;
+  margin-inline: auto;
+  padding: var(--space-4);
+}
+
+.dashboard h1,
+.dashboard h2,
+.dashboard h3,
+.dashboard h4 {
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.25;
+  margin: 0 0 var(--space-2);
+}
+
+.dashboard h1 {
+  font-size: 1.5rem;
+}
+
+.dashboard h2 {
+  font-size: 1.25rem;
+  padding-block-end: var(--space-2);
+  border-block-end: 1px solid var(--border);
+}
+
+.dashboard h3 {
+  font-size: 1.0625rem;
+}
+
+.dashboard h4 {
+  font-size: 0.9375rem;
+  color: var(--muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-block-start: var(--space-4);
+}
+
+.dashboard a {
+  color: var(--primary);
+}
+
+/* ------------------------------------------------------- vertical rhythm -- */
+
+.run-header-block,
+.primary-table-section,
+.detail-section,
+.footnote {
+  margin-block: var(--space-5);
+}
+
+.run-header-block {
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--border);
+}
+
+/* -------------------------------------------------------------- header --- */
+
+.run-header {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+  max-inline-size: var(--measure);
+}
+
+.run-header dt {
+  grid-column: span 12;
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.run-header dd {
+  grid-column: span 12;
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.heuristic {
+  color: var(--muted-fg);
+  max-inline-size: var(--measure);
+}
+
+.heuristic p,
+details.heuristic > p {
+  max-inline-size: var(--measure);
+}
+
+/* --------------------------------------------------------- KPI strip ----- */
+
+.kpi-strip,
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-2);
+}
+
+.kpi-strip {
+  margin-block: var(--space-5);
+}
+
+.kpi-tile {
+  grid-column: span 12;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.kpi-label {
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.kpi-note {
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  max-inline-size: var(--measure);
+}
+
+/* ---------------------------------------------------------- chart grid --- */
+
+.chart-grid {
+  margin-block: var(--space-5);
+}
+
+.chart-card {
+  grid-column: span 12;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.chart-card .js-plotly-plot,
+.chart-card .plot-container,
+.chart-card .svg-container {
+  width: 100%;
+}
+
+.chart-caption {
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  max-inline-size: var(--measure);
+  margin-block: 0 var(--space-2);
+}
+
+/* ----------------------------------------------------------- tables ----- */
+
+.primary-table,
+.strata {
+  overflow-x: auto;
+}
+
+.primary-table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1);
+}
+
+.component-legend {
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  max-inline-size: var(--measure);
+}
+
+/* Dash DataTable generated classes. */
+.dash-table-container {
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow-x: auto;
+}
+
+.dash-spreadsheet-container,
+.dash-spreadsheet-inner,
+.dash-spreadsheet {
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.dash-spreadsheet-inner table {
+  border-collapse: collapse;
+}
+
+.dash-cell {
+  height: var(--table-row-height);
+  max-height: var(--table-row-height);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-spreadsheet-inner tr:nth-child(even) .dash-cell {
+  background: var(--surface-2);
+}
+
+.dash-spreadsheet-inner tr:hover .dash-cell {
+  background: var(--surface-2);
+}
+
+.dash-cell.focused,
+.dash-cell.selected {
+  outline: var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-offset));
+  background: var(--surface-2);
+}
+
+.dash-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--surface-2);
+  color: var(--muted-fg);
+  border-color: var(--border);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dash-header.column-header--sort {
+  cursor: pointer;
+  user-select: none;
+}
+
+.dash-header.column-header--sort:hover {
+  color: var(--primary);
+}
+
+.sort--asc,
+.sort--desc {
+  color: var(--primary);
+}
+
+.dash-fixed-content {
+  background: var(--surface);
+}
+
+.dash-tooltip {
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-small);
+}
+
+/* Sample-strata table (plain HTML table, not a DataTable). */
+.strata table,
+table.strata {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.strata th,
+.strata td {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.strata th {
+  background: var(--surface-2);
+  color: var(--muted-fg);
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.strata tr:nth-child(even) td {
+  background: var(--surface-2);
+}
+
+/* ----------------------------------------------------- detail + panels -- */
+
+.detail-panel,
+.formula-panel,
+.footnote {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.detail-panel {
+  margin-block-start: var(--space-3);
+}
+
+.detail-section .category-selector {
+  margin-block-start: var(--space-3);
+}
+
+.formula-panel {
+  margin-block-start: var(--space-3);
+}
+
+.formula-panel > summary,
+details > summary {
+  cursor: pointer;
+  padding: var(--space-2) 0;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.formula-panel ul,
+.footnote ul {
+  color: var(--muted-fg);
+  max-inline-size: var(--measure);
+}
+
+.footnote {
+  color: var(--muted-fg);
+}
+
+.metric-label {
+  color: var(--muted-fg);
+}
+
+.metric-kind {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--space-1);
+  color: var(--primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-small);
+}
+
+.missing {
+  color: var(--danger);
+  font-style: italic;
+}
+
+.rankability {
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: var(--font-size-small);
+}
+
+/* ------------------------------------------------ dropdown (react-select) -- */
+
+.category-selector label {
+  display: block;
+  margin-block-end: var(--space-1);
+  color: var(--muted-fg);
+  font-size: var(--font-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.Select,
+[class*="dropdown"] {
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+.Select-control {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
+.Select.is-focused .Select-control,
+.Select-control.is-focused,
+.is-focused > .Select-control {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 var(--focus-offset) var(--primary);
+}
+
+.Select-value,
+.Select-value-label {
+  color: var(--fg);
+}
+
+.Select-placeholder {
+  color: var(--muted-fg);
+}
+
+.Select-input > input {
+  color: var(--fg);
+}
+
+.Select-arrow {
+  border-color: var(--muted-fg) transparent transparent;
+}
+
+.Select-menu-outer {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+}
+
+.Select-menu {
+  background: var(--surface-2);
+}
+
+.Select-option {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.Select-option.is-focused {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.Select-option.is-selected {
+  background: var(--primary);
+  color: var(--bg);
+}
+
+/* --------------------------------------------------------- accessibility -- */
+
+summary:focus-visible,
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+.dash-cell:focus-visible,
+.Select-control:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------- small ----- */
+
+@media (min-width: 375px) {
+  .dashboard {
+    padding: var(--space-4);
+  }
+}
+
+/* ------------------------------------------------------------ tablet ----- */
+
+@media (min-width: 768px) {
+  .run-header dt {
+    grid-column: span 4;
+  }
+
+  .run-header dd {
+    grid-column: span 8;
+  }
+
+  .kpi-tile {
+    grid-column: span 4;
+  }
+
+  .chart-card {
+    grid-column: span 6;
+  }
+
+  .dashboard {
+    padding: var(--space-5);
+  }
+}
+
+/* ----------------------------------------------------------- desktop ----- */
+
+@media (min-width: 1024px) {
+  .dashboard {
+    padding: var(--space-6);
+  }
+
+  .chart-card {
+    grid-column: span 6;
+  }
+}
+
+/* ----------------------------------------------------------- wide ------- */
+
+@media (min-width: 1440px) {
+  .chart-card {
+    grid-column: span 4;
+  }
+}

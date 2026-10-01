@@ -1469,6 +1469,19 @@
   "tests/test_report.py::test_build_dashboard_app_layout_matches_the_layout_builder": [
     "LREQ-RPT-010"
   ],
+  "tests/test_report.py::test_dashboard_app_serves_the_package_assets_folder": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_css_asset_exists_is_offline_and_uses_the_token_set": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_css_is_declared_as_package_data": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_uses_progressive_disclosure_without_dropping_mandated_content": [
+    "LREQ-RPT-030",
+    "LREQ-RPT-050"
+  ],
   "tests/test_report.py::test_build_dashboard_layout_is_deterministic_for_a_fixed_view": [
     "LREQ-RPT-010"
   ],

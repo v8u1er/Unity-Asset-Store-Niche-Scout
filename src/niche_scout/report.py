@@ -250,6 +250,23 @@ _REFUSED_ANNOTATION_X: float = 0.0
 #: Fixed pixel height for every Dash chart row.
 _DASHBOARD_CHART_HEIGHT: int = 360
 
+#: Package-relative assets directory name (Dash default; made explicit at build
+#: time). The stylesheet ships in the built package through
+#: ``[tool.setuptools.package-data]`` (Chunk 32).
+_DASHBOARD_ASSETS_DIRNAME: str = "assets"
+
+
+def _dashboard_assets_dir() -> Path:
+    """Return the absolute package assets directory ``<report.py>/assets`` (no I/O).
+
+    Computed from ``Path(__file__).resolve().parent / _DASHBOARD_ASSETS_DIRNAME``.
+    Never reads the directory, never uses the clock. If the directory is absent
+    the path is still returned (Dash reports the missing folder itself). No
+    directory read, no network, and no clock read happen in this module.
+    """
+    return Path(__file__).resolve().parent / _DASHBOARD_ASSETS_DIRNAME
+
+
 #: Ordinal ``(grade, colour)`` pairs for the evidence-grade colour on the score
 #: bar (R4). Sourced from :data:`EVIDENCE_GRADE_ORDER` so the ordinal source is
 #: the enum, not a second literal.
@@ -1873,13 +1890,16 @@ def _detail_panel_children(view: RunReportView, row: CategoryReportRow) -> list:
         ),
         dash_html.H4("Metric inputs"),
         dash_html.Ul(_detail_metric_rows(row)),
-        dash_html.H4("Observed versus inferred"),
-        dash_html.Ul(
-            [dash_html.Li(label) for label in _OBSERVED_LABELS]
-            + [dash_html.Li(label) for label in _INFERRED_LABELS]
+        _disclosure(
+            "Observed versus inferred",
+            [
+                dash_html.Ul(
+                    [dash_html.Li(label) for label in _OBSERVED_LABELS]
+                    + [dash_html.Li(label) for label in _INFERRED_LABELS]
+                )
+            ],
         ),
-        dash_html.H4("Sample strata"),
-        _detail_strata(row),
+        _disclosure("Sample strata", [_detail_strata(row)]),
         dash_html.H4("Warnings"),
     ]
     if row.warnings:
@@ -1942,26 +1962,75 @@ def _category_selector(view: RunReportView) -> "dash_html.Div":
     )
 
 
-def _shared_formula_panel() -> "dash_html.Div":
-    """Return the single shared formula/"how to read" panel (appears once)."""
+def _disclosure(
+    summary: str,
+    children: Sequence[object],
+    *,
+    open: bool = False,
+    className: str | None = None,
+) -> "dash_html.Details":
+    """Return a ``<details>`` with a visible ``<summary>`` and ``children`` verbatim.
+
+    ``open`` defaults to ``False`` (progressive disclosure). ``children`` are
+    rendered unchanged inside the disclosure, so every mandated string stays in
+    the DOM. An empty ``children`` yields a summary-only details, never an
+    omitted element. ``className`` is forwarded when provided.
+    """
+    props: dict[str, object] = {}
+    if className is not None:
+        props["className"] = className
     return dash_html.Details(
+        [dash_html.Summary(summary), *children],
+        open=open,
+        **props,
+    )
+
+
+_HEURISTIC_SUMMARY: str = "What this score is and is not"
+"""Always-visible one-line label for the LREQ-RPT-050 disclosure."""
+
+
+def _heuristic_banner(view: RunReportView) -> "dash_html.Details":
+    """Return the LREQ-RPT-050 statement inside a labelled disclosure.
+
+    Renders ``view.heuristic_statement`` verbatim in a single
+    ``P(className="heuristic")`` under ``_HEURISTIC_SUMMARY``. The statement
+    appears exactly once in the DOM; a persisted/empty statement is rendered
+    as-is and is never replaced by a fallback or by ``HEURISTIC_STATEMENT``.
+    """
+    return _disclosure(
+        _HEURISTIC_SUMMARY,
         [
-            dash_html.Summary("How to read these numbers (shared)"),
-            dash_html.Ul([dash_html.Li(line) for line in _FORMULA_EXPLANATIONS]),
+            dash_html.P(
+                view.heuristic_statement,
+                id="heuristic",
+                className="heuristic",
+            )
         ],
+        className="heuristic-disclosure",
+    )
+
+
+def _shared_formula_panel() -> "dash_html.Details":
+    """The single shared formula/"how to read" panel (appears once; closed)."""
+    return _disclosure(
+        "How to read these numbers (shared)",
+        [dash_html.Ul([dash_html.Li(line) for line in _FORMULA_EXPLANATIONS])],
         className="formula-panel",
-        open=True,
     )
 
 
 def _footnote(view: RunReportView) -> "dash_html.Div":
-    """Return the one shared footnote (coverage vs sample fraction; n/a vs 0)."""
+    """The one shared footnote (n/a-vs-0 and the provisional notice only).
+
+    The coverage-vs-sample-fraction distinction stays in the statement, the
+    shared formula panel, and the table; the two footnote bullets that only
+    restated ``_FORMULA_EXPLANATIONS`` #6/#7 are dropped (Chunk 32 D-3).
+    """
     provisional = view.sensitivity is None or all(
         row.rankability_status != "rankable" for row in view.categories
     )
     items = [
-        _DASHBOARD_LABELS["coverage"][1],
-        _DASHBOARD_LABELS["sample_fraction"][1],
         (
             "A displayed 'n/a' marks an unavailable value and is never the "
             "measured number 0."
@@ -2028,11 +2097,7 @@ def build_dashboard_layout(view: RunReportView) -> "dash_html.Div":
                 [
                     dash_html.H1("Niche Scout dashboard"),
                     _run_header(view),
-                    dash_html.P(
-                        view.heuristic_statement,
-                        id="heuristic",
-                        className="heuristic",
-                    ),
+                    _heuristic_banner(view),
                 ],
                 className="run-header-block",
             ),
@@ -2083,6 +2148,7 @@ def build_dashboard_app(view: RunReportView) -> Dash:
     app = Dash(
         __name__,
         serve_locally=True,
+        assets_folder=str(_dashboard_assets_dir()),
         title=f"Niche Scout dashboard - {view.run_id}",
     )
     app.layout = build_dashboard_layout(view)

@@ -289,3 +289,28 @@ affected lines in §1, §2, §5, §7, and §10.
   exact in the table and evidence grade is an ordinal colour on the ranked score
   bar. UI text uses the plain-language label vocabulary in the plan §5.7; tooltips
   say what a number means and what to watch for (not raw field names).
+
+## 12. Chunk 32 revision — dashboard stylesheet and progressive disclosure (2026-10-01)
+
+Operator-authorized (chunk-32 D-1..D-5; plan
+`chunk-32-dashboard-visual-design.md` §6, §12 R1–R6). This section amends the
+affected lines in §1 and §7. No public surface is added or removed.
+
+- **§1 boundary rule.** `report.py` resolves Dash's `assets_folder` to the packaged
+  directory `src/niche_scout/assets/` and ships `assets/*.css` via
+  `[tool.setuptools.package-data] niche_scout = ["assets/*.css"]`. No network, no
+  clock, no new dependency; all prior boundary rules (§1, §11) are unchanged.
+- **§5 functions.** Signatures of `build_dashboard_layout` and
+  `build_dashboard_app` are **unchanged**. New **private** helpers only:
+  `_dashboard_assets_dir()`, `_disclosure(summary, children, *, open=False,
+  className=None)`, `_heuristic_banner(view)`, and the constant
+  `_HEURISTIC_SUMMARY`. No public function or constant is added or removed.
+- **§7 display rules.** The dashboard loads the packaged `assets/dashboard.css`
+  (offline; no external URL, web font, `@import`, or CDN). The `LREQ-RPT-050`
+  statement, the shared formula panel, the observed-versus-inferred list, and the
+  sample-strata table are rendered inside `<details>` elements whose content
+  remains in the DOM; the shared formula panel and the heuristic disclosure start
+  **closed**, with the one-line summary `_HEURISTIC_SUMMARY` always visible. The
+  footnote keeps the `n/a`-versus-`0` notice and the provisional notice and drops
+  the bullets that only restated the shared formula list. All `LREQ-RPT-020/030/
+  040/050` content and Appendix C codes remain present.
