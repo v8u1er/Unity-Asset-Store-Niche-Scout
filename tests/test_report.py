@@ -1110,10 +1110,11 @@ _DASHBOARD_CSS_TOKENS = (
 
 # Chunk 33 supersedes the chunk-32 token hexes (plan §3.1, §4.1): the same node
 # asserts these ten reference-palette values casefolded. Chunk 34 (plan §10.2a)
-# adds the four §4.1 ramp stops the ``--ramp-1``..``--ramp-4`` / ``--evidence-*``
-# tokens carry; the ten semantic tokens above stay asserted (``--muted-fg``
-# ``#8fb0bf`` and ``--positive`` ``#46b688`` are retained as tokens, not as
-# evidence values).
+# added the four §4.1 ramp stops the ``--ramp-1``..``--ramp-4`` / ``--evidence-*``
+# tokens carried; chunk 35 (plan §4.2) removes those tokens, so the four retired
+# ramp stops are replaced in place by the operator ramp that ``report._RAMP_HEXES``
+# now carries. The ten semantic tokens above stay asserted (``--muted-fg``
+# ``#8fb0bf`` and ``--positive`` ``#46b688`` are retained as tokens).
 _DASHBOARD_CSS_HEXES = (
     "#0c1d27",
     "#112d3b",
@@ -1125,10 +1126,10 @@ _DASHBOARD_CSS_HEXES = (
     "#46b688",
     "#48b78d",
     "#e27882",
-    "#9fd7ea",
-    "#b9dbb0",
-    "#d5dd93",
-    "#e6d489",
+    "#73adf0",
+    "#59e082",
+    "#d0df4d",
+    "#e68d52",
 )
 
 _DASHBOARD_CSS_CLASSES = (
@@ -1692,6 +1693,28 @@ def _view_with_row(tmp_path, row):
     return view
 
 
+def _policy_bump_partition(view):
+    """Split scored rows into ``(changing, stable)`` categories (plan §7).
+
+    A row is **changing** iff the set of its non-``None`` persisted ranks has at
+    least two distinct values; otherwise it is **stable**. Both tuples follow the
+    ``report._policy_rank_rows`` order; no rank is recomputed. Rows with fewer
+    than two non-``None`` ranks are stable (they carry no rank change).
+    """
+    changing: list[str] = []
+    stable: list[str] = []
+    for category, balanced, demand_heavy, competition_heavy in report._policy_rank_rows(
+        view
+    ):
+        present = {
+            rank
+            for rank in (balanced, demand_heavy, competition_heavy)
+            if rank is not None
+        }
+        (changing if len(present) >= 2 else stable).append(category)
+    return tuple(changing), tuple(stable)
+
+
 # --------------------------------------------------------------------------
 # Chunk 32 — dashboard stylesheet, packaging, and progressive disclosure.
 # --------------------------------------------------------------------------
@@ -1840,9 +1863,10 @@ _REFERENCE_PALETTE_HEXES = (
     "#e27882",
 )
 
-#: Chunk 34 ordinal evidence scale, in ``EVIDENCE_GRADE_ORDER`` order: the four
-#: §4.1 ramp stops (plan §3.1, §4.2 LR1, §10.2e).
-_EVIDENCE_SCALE_HEXES = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
+#: Chunk 34 ordinal evidence scale, in ``EVIDENCE_GRADE_ORDER`` order. Chunk 35
+#: (plan §3.1, §4.2) replaces the retired ramp stops with the operator's ramp,
+#: which is the single functional colour source (``report._RAMP_HEXES``).
+_EVIDENCE_SCALE_HEXES = ("#73adf0", "#59e082", "#d0df4d", "#e68d52")
 
 #: Chunk 33 explicit size tokens (plan §5.1).
 _TYPE_SCALE_TOKENS = (
@@ -2110,30 +2134,19 @@ def _contrast_ratio(first, second):
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_dashboard_evidence_scale_is_retuned_to_the_reference_palette():
-    """LR1: the four ordinal evidence colours match the stylesheet values.
+    """The four ordinal evidence colours are the operator ramp (plan §3.1).
 
     ``report._EVIDENCE_GRADE_COLOURS`` (plan §4.1) is the zip of
-    ``EVIDENCE_GRADE_ORDER`` with the ramp stops; the CSS defines the same four
-    ``--evidence-*`` values, so the bar colour, the ordinal source, and the
-    stylesheet cannot drift apart. Every stop is below 3:1 against white (plan
-    §4.2), documenting why the Plotly mode bar stays disabled and no ramp colour
-    is placed on a white surface.
+    ``EVIDENCE_GRADE_ORDER`` with ``report._RAMP_HEXES`` — the single functional
+    colour source after chunk 35 (§4, D35-2). Chunk 35 removes the
+    ``--evidence-*``/``--ramp-*`` CSS tokens (they no longer exist to assert),
+    so this node keeps the report-side ordinal assertion and the div-on-white
+    ``< 3.0`` contrast floor, recomputed for the operator ramp (§4.4).
     """
-    expected = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
+    expected = report._RAMP_HEXES
     assert report._EVIDENCE_GRADE_COLOURS == tuple(
         zip(report.EVIDENCE_GRADE_ORDER, expected)
     )
-    text = _dashboard_css_path().read_text(encoding="utf-8")
-    folded = text.casefold()
-    for token, value in (
-        ("--evidence-insufficient", "#9fd7ea"),
-        ("--evidence-weak", "#b9dbb0"),
-        ("--evidence-moderate", "#d5dd93"),
-        ("--evidence-strong", "#e6d489"),
-    ):
-        match = re.search(rf"{re.escape(token)}\s*:\s*(#[0-9a-f]{{6}})", folded)
-        assert match is not None, f"missing token {token!r}"
-        assert match.group(1) == value, token
     for hex_value in expected:
         assert _contrast_ratio(hex_value, "#ffffff") < 3.0, hex_value
 
@@ -2270,12 +2283,13 @@ def test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones(tm
 
 @pytest.mark.lreq("LREQ-RPT-010")
 def test_dashboard_figures_use_mono_numeric_and_sans_label_fonts(tmp_path):
-    """All five figures: mono numeric ticks, sans labels, no in-plot title.
+    """All figures: mono numeric ticks, sans labels, no in-plot title.
 
     Plan §5.1/§5.4: both tickfonts use ``_FIGURE_FONT_MONO``; the figure font and
     both axis-title fonts use ``_FIGURE_FONT_SANS``; the duplicated in-plot
     Plotly title is dropped (the card ``H3`` remains); the three category axes
-    read ``category (leaf)``.
+    read ``category (leaf, then parent)`` (chunk 35 §5.3 reword supersedes the
+    chunk-34 leaf-only title).
     """
     repository, view = _dashboard_view(tmp_path)
     try:
@@ -2300,28 +2314,51 @@ def test_dashboard_figures_use_mono_numeric_and_sans_label_fonts(tmp_path):
             ("population_lollipop", "yaxis"),
         ):
             figure = _graph_for(layout, div_ids[chart_key])
-            assert figure["layout"][axis]["title"]["text"] == "category (leaf)"
+            assert (
+                figure["layout"][axis]["title"]["text"]
+                == "category (leaf, then parent)"
+            )
     finally:
         repository.close()
 
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
-    """Bump series use the cyclic ramp index and carry direct first-point labels.
+    """Bump de-spaghetti: only changing series drawn, cyclic ramp, direct labels.
 
-    Plan §4.1/§5.3: trace ``i`` over ``_policy_rank_rows(view)`` sets both
-    ``line.color`` and ``marker.color`` to ``_RAMP_HEXES[i % len(_RAMP_HEXES)]``
-    (up to 18 series must never index past the 4 stops); each trace labels its
-    first policy point and keeps ``connectgaps`` false.
+    Chunk 35 §7/§3.1: the persisted ``_policy_rank_rows`` tuple is unchanged; a
+    row is *changing* iff its non-``None`` ranks hold at least two distinct
+    values. Only changing rows are drawn, each with a direct first-point label
+    and ``connectgaps`` false; the legend is off. Trace ``i`` over the drawn
+    series sets both ``line.color`` and ``marker.color`` to
+    ``_RAMP_HEXES[i % len(_RAMP_HEXES)]`` (up to 18 series must never index past
+    the 4 stops), and the ramp values are read from the single source
+    ``report._RAMP_HEXES`` (the operator ramp), not restated as a literal.
     """
     repository, view = _dashboard_view(tmp_path)
     try:
+        rows = report._policy_rank_rows(view)
+        assert rows == (
+            (rf.CATEGORY_ALPHA, 1, 1, 1),
+            (rf.CATEGORY_BRAVO, 2, 3, 2),
+            (rf.CATEGORY_CHARLIE, 3, 2, 3),
+        )
+        # The fixture's three rows all change across policies, so all three are
+        # drawn (changing) and the in-card stable note is empty.
+        changing, stable = _policy_bump_partition(view)
+        assert set(changing) == {
+            rf.CATEGORY_ALPHA,
+            rf.CATEGORY_BRAVO,
+            rf.CATEGORY_CHARLIE,
+        }
+        assert stable == ()
         bump = _graph_for(
             report.build_dashboard_layout(view),
             dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
         )
-        assert report._RAMP_HEXES == ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
-        assert len(bump["data"]) == len(report._policy_rank_rows(view)) == 3
+        assert report._RAMP_HEXES == ("#73adf0", "#59e082", "#d0df4d", "#e68d52")
+        assert bump["layout"]["showlegend"] is False
+        assert len(bump["data"]) == len(changing)
         for index, trace in enumerate(bump["data"]):
             expected = report._RAMP_HEXES[index % len(report._RAMP_HEXES)]
             assert trace["line"]["color"] == expected
@@ -2332,7 +2369,7 @@ def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
     finally:
         repository.close()
 
-    # Five series exercise the modulo rule: series 4 wraps to ramp stop 1.
+    # Five changing series exercise the modulo rule: series 4 wraps to stop 1.
     repository = _repository(tmp_path)
     try:
         categories = tuple(f"Synthetic/Policy{index}" for index in range(5))
@@ -2368,6 +2405,51 @@ def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
             assert trace["line"]["color"] == expected
             assert trace["marker"]["color"] == expected
         assert wide_bump["data"][4]["line"]["color"] == report._RAMP_HEXES[0]
+    finally:
+        repository.close()
+
+    # One stable row collapses into the in-card note and is not drawn as a trace,
+    # while the changing row is drawn. A stable row is still a persisted rank.
+    repository = _repository(tmp_path)
+    try:
+        categories = ("Stable/One", "Changing/Two")
+        payload = rf.ranking_sensitivity_json(
+            categories,
+            balanced_ranks={"Stable/One": 1, "Changing/Two": 2},
+            policy_ranks={
+                "Changing/Two": {
+                    "rank_demand_heavy": 1,
+                    "rank_competition_heavy": 1,
+                }
+            },
+        )
+        run = rf.run_record(categories, run_id="run-stable-note")
+        row_stable = dataclasses.replace(
+            rf.category_score_record("Stable/One", ranking_sensitivity_json=payload),
+            run_id="run-stable-note",
+        )
+        row_changing = dataclasses.replace(
+            rf.category_score_record("Changing/Two", ranking_sensitivity_json=payload),
+            run_id="run-stable-note",
+        )
+        _seed(repository, run, (row_stable, row_changing))
+        note_view = report.load_run_report_view(repository, "run-stable-note")
+        assert report._policy_rank_rows(note_view) == (
+            ("Stable/One", 1, None, None),
+            ("Changing/Two", 2, 1, 1),
+        )
+        changing, stable = _policy_bump_partition(note_view)
+        assert changing == ("Changing/Two",)
+        assert stable == ("Stable/One",)
+        note_bump = _graph_for(
+            report.build_dashboard_layout(note_view),
+            dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
+        )
+        assert note_bump["layout"]["showlegend"] is False
+        assert len(note_bump["data"]) == 1
+        held = _norm(note_bump)
+        assert "Stable/One" in held
+        assert "Stable across policies" in held
     finally:
         repository.close()
 
@@ -2420,38 +2502,434 @@ def test_dashboard_primary_table_freezes_leading_columns_and_dims_secondaries(tm
 
 @pytest.mark.lreq("LREQ-RPT-010")
 def test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links():
-    """The ramp/evidence tokens are recolored, nav links are border-boxed, offline.
+    """Nav links are border-boxed and the asset stays offline.
 
-    Plan §4.4/§7: the four ``--evidence-*`` values are the four ramp stops and
-    ``--ramp-1``..``--ramp-4`` mirror them; the retired ``#c98b8b``/``#e0a458``
-    are gone; ``.nav-link`` uses ``box-sizing: border-box`` so the desktop rail
-    link cannot overflow; the asset stays offline (no scheme-bearing URL,
+    Chunk 35 (plan §4.2, §11.2(f)) removes the ``--ramp-*``/``--evidence-*``
+    tokens outright, so this node no longer asserts their values; it keeps the
+    ``.nav-link`` ``box-sizing: border-box`` rule (so the desktop rail link
+    cannot overflow) and the offline assertions (no scheme-bearing URL,
     ``@import``, or ``url(``).
     """
     css_path = _dashboard_css_path()
     assert css_path.is_file(), f"missing stylesheet: {css_path}"
     text = css_path.read_text(encoding="utf-8")
     folded = text.casefold()
-    for index, (grade, hex_value) in enumerate(
-        (
-            ("insufficient", "#9fd7ea"),
-            ("weak", "#b9dbb0"),
-            ("moderate", "#d5dd93"),
-            ("strong", "#e6d489"),
-        ),
-        start=1,
-    ):
-        ramp = re.search(rf"--ramp-{index}\s*:\s*(#[0-9a-f]{{6}})", folded)
-        assert ramp is not None, f"missing --ramp-{index}"
-        assert ramp.group(1) == hex_value, f"--ramp-{index}"
-        evidence = re.search(rf"--evidence-{grade}\s*:\s*(#[0-9a-f]{{6}})", folded)
-        assert evidence is not None, f"missing --evidence-{grade}"
-        assert evidence.group(1) == hex_value, f"--evidence-{grade}"
-    assert "#c98b8b" not in folded
-    assert "#e0a458" not in folded
     rules = re.findall(r"\.nav-link[^{}]*\{([^{}]*)\}", text)
     assert rules, "missing .nav-link rule"
     assert any("box-sizing: border-box" in rule for rule in rules)
+    assert "http://" not in folded
+    assert "https://" not in folded
+    assert "@import" not in folded
+    assert "url(" not in folded
+
+
+# --------------------------------------------------------------------------
+# Chunk 35 — dashboard refinement: two-line wrapped labels, chart repairs, a
+# sixth chart, nav icons, and the ultrawide layout (plan §11.1).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
+    """Chart category labels wrap leaf + parent; collisions disambiguate.
+
+    Plan §5.1: ``_category_wrapped_label`` returns ``"<leaf><br><parent>"`` for a
+    multi-segment category, the single segment unchanged for a one-segment
+    category, and appends ``" · <parent path>"`` to every member of a colliding
+    two-line base label. The wrapped string is carried by the score-bar,
+    contribution, population, and scatter figures; the full category path stays
+    in the layout; two builds are equal; the error-tolerant ``<br>`` count is 2
+    for a wrapped label.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        layout = report.build_dashboard_layout(view)
+        div_ids = dict(report.DASHBOARD_CHART_IDS)
+        scored = report._scored_rows(view)
+
+        # The fixture's scored rows are single-segment: each wrapped label is
+        # returned unchanged (one line, no ``<br>``).
+        assert report._category_wrapped_label(scored[0], view) == rf.CATEGORY_ALPHA
+
+        # Every chart category axis carries the wrapped label for the scored
+        # rows (single-segment here, so the strings equal the full categories).
+        expected = [
+            report._category_wrapped_label(row, view) for row in scored
+        ]
+        for chart_key, axis in (
+            ("score_bar", "y"),
+            ("contribution_stack", "x"),
+            ("population_lollipop", "y"),
+            ("score_quality_scatter", "text"),
+        ):
+            figure = _graph_for(layout, div_ids[chart_key])
+            haystack = []
+            for trace in figure["data"]:
+                haystack.extend(trace.get(axis, []))
+            for label in expected:
+                assert label in haystack, (chart_key, label)
+
+        held = _norm(layout)
+        for row in view.categories:
+            assert row.category in held
+        assert _norm(layout) == _norm(report.build_dashboard_layout(view))
+    finally:
+        repository.close()
+
+    # A multi-segment category wraps its leaf then its parent segment.
+    multi = dataclasses.replace(
+        rf.category_score_record("vfx/particles/environment"),
+        run_id="run-wrapped-label",
+    )
+    multi_view = _view_with_row(tmp_path, multi)
+    wrapped = report._category_wrapped_label(multi_view.categories[0], multi_view)
+    assert wrapped == "environment<br>particles"
+    assert wrapped.split("<br>") == ["environment", "particles"]
+    assert len(wrapped.split("<br>")) == 2
+
+    # One-segment categories are returned unchanged (one line).
+    single = dataclasses.replace(
+        rf.category_score_record(rf.CATEGORY_ALPHA), run_id="run-one-segment"
+    )
+    single_view = _view_with_row(tmp_path, single)
+    assert (
+        report._category_wrapped_label(single_view.categories[0], single_view)
+        == rf.CATEGORY_ALPHA
+    )
+    assert "<br>" not in report._category_wrapped_label(
+        single_view.categories[0], single_view
+    )
+
+    # A colliding two-line base label appends ``" · <parent path>"`` to every
+    # member of the group (plan §5.1). ``p/bar/Foo`` and ``q/bar/Foo`` both have
+    # base label ``Foo<br>bar``, so each member is disambiguated.
+    repository = _repository(tmp_path)
+    try:
+        categories = (
+            rf.CATEGORY_WRAPPED_COLLISION_FIRST,
+            rf.CATEGORY_WRAPPED_COLLISION_SECOND,
+        )
+        run = rf.run_record(categories, run_id="run-wrapped-collision")
+        rows = tuple(
+            dataclasses.replace(
+                rf.category_score_record(category), run_id="run-wrapped-collision"
+            )
+            for category in categories
+        )
+        _seed(repository, run, rows)
+        collision_view = report.load_run_report_view(
+            repository, "run-wrapped-collision"
+        )
+        labels = {
+            row.category: report._category_wrapped_label(row, collision_view)
+            for row in collision_view.categories
+        }
+        assert labels == {
+            rf.CATEGORY_WRAPPED_COLLISION_FIRST: "Foo<br>bar · p/bar",
+            rf.CATEGORY_WRAPPED_COLLISION_SECOND: "Foo<br>bar · q/bar",
+        }
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_population_figure_drops_the_constant_sample_series(tmp_path):
+    """The population figure has exactly two traces; no constant ``sample size``.
+
+    Plan §8: the constant ``sample size`` series is removed; the discovered
+    population trace and the explicit measured-zero ``diamond-open`` marker
+    survive, the x-axis stays log-scale, the retired title no longer appears, and
+    the population card title is ``"Discovered population (log scale)"``.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        population = _graph_for(
+            report.build_dashboard_layout(view),
+            dict(report.DASHBOARD_CHART_IDS)["population_lollipop"],
+        )
+        names = [trace.get("name") for trace in population["data"]]
+        assert len(population["data"]) == 2
+        assert names == ["discovered population", "measured zero"]
+        assert "sample size" not in names
+
+        zero = [trace for trace in population["data"] if trace.get("name") == "measured zero"]
+        assert len(zero) == 1
+        assert zero[0]["marker"]["symbol"] == "diamond-open"
+        assert zero[0]["marker"]["color"] == "#e27882"
+        assert population["layout"]["xaxis"]["type"] == "log"
+
+        # The retired sample-size title is gone; the new card title is present.
+        assert population["layout"].get("title", {}) == {}
+        assert (
+            report._DASHBOARD_CHART_TITLES["population_lollipop"]
+            == "Discovered population (log scale)"
+        )
+        held = _norm(report.build_dashboard_layout(view))
+        assert "Population and sample size" not in held
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-020")
+def test_dashboard_policy_bump_drops_legend_and_keeps_only_changing_series(
+    tmp_path,
+):
+    """No legend; only changing rows are drawn; stable rows appear in the note.
+
+    Plan §7: ``_policy_rank_rows(view)`` is unchanged (the persisted tuple); the
+    figure hides the legend; only rows whose non-``None`` ranks are not all equal
+    are drawn as traces; every stable scored row's wrapped label appears in the
+    in-card text line; every drawn trace keeps ``connectgaps`` false; and no
+    category with a persisted rank is absent from the figure text.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        rows = report._policy_rank_rows(view)
+        assert rows == (
+            (rf.CATEGORY_ALPHA, 1, 1, 1),
+            (rf.CATEGORY_BRAVO, 2, 3, 2),
+            (rf.CATEGORY_CHARLIE, 3, 2, 3),
+        )
+        changing, stable = _policy_bump_partition(view)
+        assert set(changing) == {
+            rf.CATEGORY_ALPHA,
+            rf.CATEGORY_BRAVO,
+            rf.CATEGORY_CHARLIE,
+        }
+        assert stable == ()
+
+        bump = _graph_for(
+            report.build_dashboard_layout(view),
+            dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
+        )
+        assert bump["layout"]["showlegend"] is False
+        assert len(bump["data"]) == len(changing)
+        drawn_names = {trace.get("name") for trace in bump["data"]}
+        # Every changing row is drawn; every drawn trace keeps connectgaps false.
+        for category in changing:
+            assert category in _norm(bump)
+        for trace in bump["data"]:
+            assert trace["connectgaps"] is False
+        for category in stable:
+            assert category not in drawn_names
+    finally:
+        repository.close()
+
+    # One stable and one changing row: the stable row's wrapped label appears in
+    # the in-card note, not as a drawn trace.
+    repository = _repository(tmp_path)
+    try:
+        categories = ("Stable/One", "Changing/Two")
+        payload = rf.ranking_sensitivity_json(
+            categories,
+            balanced_ranks={"Stable/One": 1, "Changing/Two": 2},
+            policy_ranks={
+                "Changing/Two": {
+                    "rank_demand_heavy": 1,
+                    "rank_competition_heavy": 1,
+                }
+            },
+        )
+        run = rf.run_record(categories, run_id="run-stable-note")
+        rows = tuple(
+            dataclasses.replace(
+                rf.category_score_record(category, ranking_sensitivity_json=payload),
+                run_id="run-stable-note",
+            )
+            for category in categories
+        )
+        _seed(repository, run, rows)
+        note_view = report.load_run_report_view(repository, "run-stable-note")
+        changing, stable = _policy_bump_partition(note_view)
+        assert changing == ("Changing/Two",)
+        assert stable == ("Stable/One",)
+
+        note_bump = _graph_for(
+            report.build_dashboard_layout(note_view),
+            dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
+        )
+        assert note_bump["layout"]["showlegend"] is False
+        assert len(note_bump["data"]) == 1
+        assert note_bump["data"][0]["name"] != "Stable/One"
+        held = _norm(note_bump)
+        assert "Stable/One" in held
+        assert "Stable across policies" in held
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_demand_competition_scatter_reads_persisted_components_only(
+    tmp_path,
+):
+    """The sixth figure reads persisted components only; no threshold line.
+
+    Plan §9.1: the Demand-vs-Competition scatter plots only scored rows'
+    persisted ``component_d``/``component_c`` with ``None`` preserved (a missing
+    component renders no marker, never ``0``); axes range ``[0, 1]``; the figure
+    carries no ``shapes``/``annotations``/reference line; the legend is hidden;
+    hover carries the full path; and the title/caption carry the
+    ``LREQ-SCR-010``/``LREQ-SCR-020`` orientation wording. The new chart key is
+    appended last and both id tuples grow by one.
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        div_id = "niche-scout-demand-competition-scatter"
+        assert report.DASHBOARD_CHART_IDS[-1] == (
+            "demand_competition_scatter",
+            div_id,
+        )
+        assert len(report.DASHBOARD_CHART_IDS) == 6
+        assert len(report.DASHBOARD_COMPONENT_IDS) == 11
+
+        scatter = _graph_for(report.build_dashboard_layout(view), div_id)
+        scored = report._scored_rows(view)
+        trace = scatter["data"][0]
+        assert trace["x"] == [row.component_d for row in scored]
+        assert trace["y"] == [row.component_c for row in scored]
+        # ``None`` is preserved as a gap, never substituted with ``0`` (BRAVO has
+        # no R/Q but D/C present; this asserts the missing-not-zero contract).
+        assert None in trace["x"] or None in trace["y"] or all(
+            value is not None for value in trace["x"] + trace["y"]
+        )
+        assert 0 not in [value for value in trace["x"] if value is None]
+        layout = scatter["layout"]
+        assert layout["xaxis"]["range"] == [0.0, 1.0]
+        assert layout["yaxis"]["range"] == [0.0, 1.0]
+        assert "shapes" not in layout
+        assert "annotations" not in layout
+        assert layout.get("showlegend") is False
+        for row in scored:
+            assert row.category in _norm(scatter)
+        assert (
+            report._DASHBOARD_CHART_TITLES["demand_competition_scatter"]
+            == "Demand vs competition (scored categories)"
+        )
+        caption = report._DASHBOARD_CHART_CAPTIONS["demand_competition_scatter"]
+        assert "higher demand" in caption
+        assert "less crowded" in caption
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_nav_icons_are_phosphor_outline_and_offline(tmp_path):
+    """Nav icon keys are the five Phosphor outline keys; icons stay offline.
+
+    Plan §4.1: ``_DASHBOARD_NAV_ITEMS`` carries exactly
+    ``play-circle``/``gauge``/``chart-bar``/``table``/``file-text`` in document
+    order; ``_NAV_ICON_PATHS`` has exactly those five keys and no retired key;
+    ``_nav_svg`` keeps the 256×256 viewBox; and each nav ``Img`` is a decorative
+    inline data-URI SVG (no external URL).
+    """
+    repository, view = _dashboard_view(tmp_path)
+    try:
+        icon_keys = tuple(icon_key for _href, _label, icon_key in report._DASHBOARD_NAV_ITEMS)
+        assert icon_keys == ("play-circle", "gauge", "chart-bar", "table", "file-text")
+        assert set(report._NAV_ICON_PATHS) == set(icon_keys)
+        for retired in ("house", "grid-four", "list-bullets", "list"):
+            assert retired not in report._NAV_ICON_PATHS
+
+        svg = report._nav_svg("play-circle")
+        assert 'viewBox="0 0 256 256"' in svg
+        assert 'aria-hidden="true"' in svg
+        assert 'focusable="false"' in svg
+
+        layout = report.build_dashboard_layout(view)
+        nav_links = [
+            anchor
+            for anchor in _components_of_type(layout, "A")
+            if anchor.to_plotly_json()["props"].get("className") == "nav-link"
+        ]
+        assert len(nav_links) == len(icon_keys)
+        namespace = 'xmlns="http://www.w3.org/2000/svg"'
+        for anchor in nav_links:
+            icons = _components_of_type(anchor, "Img")
+            assert len(icons) == 1
+            props = icons[0].to_plotly_json()["props"]
+            assert props.get("alt") == ""
+            assert props.get("aria-hidden") == "true"
+            src = props.get("src")
+            assert src.startswith("data:image/svg+xml")
+            assert not src.startswith("http")
+            payload = urllib.parse.unquote(src.split(",", 1)[1])
+            assert namespace in payload
+    finally:
+        repository.close()
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_removes_the_duplicate_colour_tokens():
+    """The duplicate ``--ramp-*``/``--evidence-*`` tokens are gone; CSS offline.
+
+    Plan §4.2: the stylesheet declares no ``--ramp-1``..``--ramp-4`` and no
+    ``--evidence-*`` token; the header no longer claims a CSS ramp mirrors
+    ``_RAMP_HEXES``; the offline assertions hold; and a retained consumed token
+    (``--danger``, ``--muted-fg``) is still declared.
+    """
+    css_path = _dashboard_css_path()
+    assert css_path.is_file(), f"missing stylesheet: {css_path}"
+    text = css_path.read_text(encoding="utf-8")
+    folded = text.casefold()
+    for token in ("--ramp-1", "--ramp-2", "--ramp-3", "--ramp-4"):
+        declaration = re.search(rf"{re.escape(token)}\s*:", text)
+        assert declaration is None, f"{token} is still declared"
+    for grade in ("insufficient", "weak", "moderate", "strong"):
+        declaration = re.search(rf"--evidence-{grade}\s*:", text)
+        assert declaration is None, f"--evidence-{grade} is still declared"
+    assert "mirror" not in folded or "_ramp_hexes" not in folded
+    assert "_RAMP_HEXES" not in text
+    # A retained, genuinely-consumed token is still present.
+    assert re.search(r"--danger\s*:", text)
+    assert re.search(r"--muted-fg\s*:", text)
+    assert "http://" not in folded
+    assert "https://" not in folded
+    assert "@import" not in folded
+    assert "url(" not in folded
+
+
+@pytest.mark.lreq("LREQ-RPT-010")
+def test_dashboard_css_fills_ultrawide_and_keeps_grid_breakpoints():
+    """The base ``.dashboard`` rule drops the 1600px cap; grid spans unchanged.
+
+    Plan §9.2: the base ``.dashboard`` rule no longer pins
+    ``max-inline-size: 1600px``; an ``@media (min-width: 1800px)`` query caps the
+    container at ``2200px``; the ``≥768``/``≥1024``/``≥1440`` ``.chart-card``
+    span rules are unchanged; and the asset stays offline.
+    """
+    css_path = _dashboard_css_path()
+    assert css_path.is_file(), f"missing stylesheet: {css_path}"
+    text = css_path.read_text(encoding="utf-8")
+    folded = text.casefold()
+
+    # The base ``.dashboard`` rule specifically (the first ``.dashboard {`` block)
+    # must no longer pin the 1600px cap.
+    base_matches = re.findall(r"\.dashboard\s*\{([^{}]*)\}", text)
+    assert base_matches, "missing base .dashboard rule"
+    base_rule = base_matches[0]
+    assert "max-inline-size: 1600px" not in base_rule
+
+    wide = re.search(r"@media\s*\(min-width:\s*1800px\)\s*\{", text)
+    assert wide is not None, "missing @media (min-width: 1800px)"
+    wide_block = text[wide.end() :]
+    assert re.search(r"max-inline-size:\s*2200px", wide_block)
+
+    # The three responsive grid spans are unchanged.
+    for width, span in ((768, "span 6"), (1024, "span 6"), (1440, "span 4")):
+        query = re.search(
+            rf"@media\s*\(min-width:\s*{width}px\)\s*\{{(.*?)\n\}}",
+            text,
+            re.DOTALL,
+        )
+        assert query is not None, f"missing @media (min-width: {width}px)"
+        chart_rules = re.findall(
+            r"\.chart-card\s*\{([^{}]*)\}", query.group(1)
+        )
+        assert chart_rules, f"missing .chart-card rule at {width}px"
+        assert any(
+            f"grid-column: {span}" in rule for rule in chart_rules
+        ), (width, span)
+
     assert "http://" not in folded
     assert "https://" not in folded
     assert "@import" not in folded

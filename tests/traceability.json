@@ -1641,6 +1641,27 @@
   "tests/test_report.py::test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links": [
     "LREQ-RPT-010"
   ],
+  "tests/test_report.py::test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_population_figure_drops_the_constant_sample_series": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_policy_bump_drops_legend_and_keeps_only_changing_series": [
+    "LREQ-RPT-020"
+  ],
+  "tests/test_report.py::test_dashboard_demand_competition_scatter_reads_persisted_components_only": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_nav_icons_are_phosphor_outline_and_offline": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_css_removes_the_duplicate_colour_tokens": [
+    "LREQ-RPT-010"
+  ],
+  "tests/test_report.py::test_dashboard_css_fills_ultrawide_and_keeps_grid_breakpoints": [
+    "LREQ-RPT-010"
+  ],
   "tests/test_sampling.py::test_census_member_digest_is_standard_nul_digest": [
     "LREQ-SMP-060"
   ],

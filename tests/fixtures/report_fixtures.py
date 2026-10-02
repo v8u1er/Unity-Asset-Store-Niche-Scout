@@ -61,6 +61,11 @@ CATEGORY_HIGH_INPUT_SECOND = "Defect/HighScoreInputSecond"
 #: path to both labels.
 CATEGORY_COLLISION_FIRST = "a/x/Foo"
 CATEGORY_COLLISION_SECOND = "b/y/Foo"
+#: Chunk 35 wrapped-label collision vector (plan §11.5): two distinct paths whose
+#: *two-line* base label collides (``Foo<br>bar``), so ``_category_wrapped_label``
+#: must append ``" · <parent path>"`` to both members of the group.
+CATEGORY_WRAPPED_COLLISION_FIRST = "p/bar/Foo"
+CATEGORY_WRAPPED_COLLISION_SECOND = "q/bar/Foo"
 
 # --------------------------------------------------------------------------
 # Frozen ``stratum_statistics_json`` payloads (one per vector).
@@ -540,6 +545,8 @@ __all__ = [
     "CATEGORY_PRIMARY",
     "CATEGORY_ZERO_POPULATION",
     "CATEGORY_ZULU",
+    "CATEGORY_WRAPPED_COLLISION_FIRST",
+    "CATEGORY_WRAPPED_COLLISION_SECOND",
     "COMPLETED_AT_UTC",
     "COMPUTED_AT_UTC",
     "EMPTY_RANKING_SENSITIVITY_JSON",
