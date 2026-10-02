@@ -271,7 +271,7 @@ def _dashboard_assets_dir() -> Path:
 #: rank order (Chunk 34 §4.1). Single literal source for the curve/bar colours;
 #: the stylesheet ``--ramp-1``..``--ramp-4`` and ``--evidence-*`` values mirror
 #: it. Stop 1 = best rank.
-_RAMP_HEXES: tuple[str, ...] = ("#9fd7ea", "#b9dbb0", "#d5dd93", "#e6d489")
+_RAMP_HEXES: tuple[str, ...] = ("#73adf0", "#59e082", "#d0df4d", "#e68d52")
 """The four ramp stop hexes, best rank first; the evidence scale's source."""
 
 #: Ordinal ``(grade, colour)`` pairs for the evidence-grade colour on the score
