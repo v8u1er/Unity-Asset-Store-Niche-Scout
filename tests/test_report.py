@@ -2161,12 +2161,13 @@ def test_dashboard_evidence_scale_is_retuned_to_the_reference_palette():
 
 @pytest.mark.lreq("LREQ-RPT-010")
 def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_path):
-    """Chart labels are the final ``/`` segment; same-leaf groups disambiguate.
+    """Chart labels are the two-line wrapped label; same-leaf groups disambiguate.
 
-    Plan §5.2: ``_category_leaf_label`` returns the leaf; when two or more rows
-    in the same view share a leaf, every member of the group gets
-    ``" · <parent path>"``. The full path stays in the layout (table/detail) and
-    in hover customdata; no number, rank, or measured value changes.
+    Plan §5.2/§5.1: the chart tick is now the wrapped label ``"<leaf><br><parent>"``
+    (chunk 35 supersedes the chunk-34 leaf-only label), while the retained
+    ``_category_leaf_label`` still disambiguates a same-leaf group. The full path
+    stays in the layout (table/detail) and in hover customdata; no number, rank,
+    or measured value changes.
     """
     repository, view = _dashboard_view(tmp_path)
     try:
@@ -2178,24 +2179,37 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
             rf.CATEGORY_BRAVO,
             rf.CATEGORY_CHARLIE,
         ]
+        # Every scored fixture row is two-segment, so its wrapped label is
+        # ``"<leaf><br><parent>"`` (plan §5.1).
+        expected_labels = [
+            report._category_wrapped_label(row, view) for row in scored
+        ]
+        assert expected_labels == [
+            "Ranked<br>Alpha",
+            "Ranked<br>Bravo",
+            "Unranked<br>Charlie",
+        ]
         bar = _graph_for(layout, div_ids["score_bar"])
-        expected_labels = ["Ranked · Alpha", "Ranked · Bravo", "Unranked"]
         assert bar["data"][0]["y"] == expected_labels
         assert rf.CATEGORY_ALPHA not in bar["data"][0]["y"]
-        # The refused annotation trace is the leaf plus the "(refused)" marker
-        # (with a leading spacer entry), never the full category path; plan
-        # §1.1/§5.2 make every chart category label a leaf.
+        # The refused annotation trace carries the wrapped label plus the
+        # ``"(refused)"`` marker (with a leading spacer entry), never the full
+        # category path.
         refused_trace = bar["data"][1]
         assert rf.CATEGORY_NON_RANKABLE not in refused_trace["y"]
-        assert "NonRankable (refused)" in refused_trace["y"]
+        assert (
+            report._category_wrapped_label(
+                report._rows_by_category(view)[rf.CATEGORY_NON_RANKABLE], view
+            )
+            + " (refused)"
+        ) in refused_trace["y"]
         scatter = _graph_for(layout, div_ids["score_quality_scatter"])
         assert scatter["data"][0]["text"] == expected_labels
         held = _norm(layout)
         for row in view.categories:
             assert row.category in held
-        # Alpha/Ranked and Bravo/Ranked share the leaf ``Ranked``, so both carry
-        # the ``" · <parent>"`` suffix; Charlie/Unranked has the unique leaf
-        # ``Unranked`` and no suffix.
+        # ``_category_leaf_label`` is retained: Alpha/Ranked and Bravo/Ranked
+        # share the leaf ``Ranked``, so both carry the ``" · <parent>"`` suffix.
         assert report._category_leaf_label(scored[0], view) == "Ranked · Alpha"
         assert _norm(layout) == _norm(report.build_dashboard_layout(view))
     finally:
@@ -2257,22 +2271,27 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
 
 @pytest.mark.lreq("LREQ-RPT-010")
 def test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones(tmp_path):
-    """The two single-series figures hide the legend; the three others keep it.
+    """Single-series figures hide the legend; the multi-series two keep theirs.
 
-    Plan §5.3: *Composite score by rank* and *Composite score vs quality* drop
-    the meaningless one-item legend; contribution, population, and policy bump
-    keep theirs (a missing ``showlegend`` key means Plotly's default ``True``).
+    Plan §5.3/§7: *Composite score by rank*, *Composite score vs quality*, the
+    policy bump (de-spaghettied, §7), and the sixth demand/competition scatter
+    (single series, §9.1) hide their legend; contribution and population keep
+    theirs (a missing ``showlegend`` key means Plotly's default ``True``).
     """
     repository, view = _dashboard_view(tmp_path)
     try:
         layout = report.build_dashboard_layout(view)
         div_ids = dict(report.DASHBOARD_CHART_IDS)
-        for chart_key in ("score_bar", "score_quality_scatter"):
+        for chart_key in (
+            "score_bar",
+            "score_quality_scatter",
+            "policy_bump",
+            "demand_competition_scatter",
+        ):
             figure = _graph_for(layout, div_ids[chart_key])
             assert figure["layout"].get("showlegend") is False, chart_key
         for chart_key in (
             "contribution_stack",
-            "policy_bump",
             "population_lollipop",
         ):
             figure = _graph_for(layout, div_ids[chart_key])
@@ -2343,15 +2362,11 @@ def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
             (rf.CATEGORY_BRAVO, 2, 3, 2),
             (rf.CATEGORY_CHARLIE, 3, 2, 3),
         )
-        # The fixture's three rows all change across policies, so all three are
-        # drawn (changing) and the in-card stable note is empty.
+        # ALPHA's ranks ``(1, 1, 1)`` hold one distinct value, so ALPHA is
+        # stable (it belongs in the in-card note); BRAVO and CHARLIE each change.
         changing, stable = _policy_bump_partition(view)
-        assert set(changing) == {
-            rf.CATEGORY_ALPHA,
-            rf.CATEGORY_BRAVO,
-            rf.CATEGORY_CHARLIE,
-        }
-        assert stable == ()
+        assert set(changing) == {rf.CATEGORY_BRAVO, rf.CATEGORY_CHARLIE}
+        assert stable == (rf.CATEGORY_ALPHA,)
         bump = _graph_for(
             report.build_dashboard_layout(view),
             dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
@@ -2370,13 +2385,16 @@ def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
         repository.close()
 
     # Five changing series exercise the modulo rule: series 4 wraps to stop 1.
+    # Each synthetic category's demand-heavy rank differs from its balanced rank,
+    # so every row is changing (``rank_competition_heavy`` stays equal to
+    # balanced, which alone would be stable).
     repository = _repository(tmp_path)
     try:
         categories = tuple(f"Synthetic/Policy{index}" for index in range(5))
         balanced = {category: index + 1 for index, category in enumerate(categories)}
         policy_ranks = {
             category: {
-                "rank_demand_heavy": index + 1,
+                "rank_demand_heavy": (index + 1) % 5 + 1,
                 "rank_competition_heavy": index + 1,
             }
             for index, category in enumerate(categories)
@@ -2394,6 +2412,9 @@ def test_dashboard_policy_bump_has_direct_series_labels_in_ramp_order(tmp_path):
         )
         _seed(repository, run, rows)
         wide_view = report.load_run_report_view(repository, "run-policy-ramp")
+        wide_changing, wide_stable = _policy_bump_partition(wide_view)
+        assert wide_changing == categories
+        assert wide_stable == ()
         wide_bump = _graph_for(
             report.build_dashboard_layout(wide_view),
             dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
@@ -2547,14 +2568,19 @@ def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
         div_ids = dict(report.DASHBOARD_CHART_IDS)
         scored = report._scored_rows(view)
 
-        # The fixture's scored rows are single-segment: each wrapped label is
-        # returned unchanged (one line, no ``<br>``).
-        assert report._category_wrapped_label(scored[0], view) == rf.CATEGORY_ALPHA
+        # The fixture's scored rows are two-segment: each wrapped label is
+        # ``"<leaf><br><parent>"`` (plan §5.1).
+        assert report._category_wrapped_label(scored[0], view) == "Ranked<br>Alpha"
 
         # Every chart category axis carries the wrapped label for the scored
-        # rows (single-segment here, so the strings equal the full categories).
+        # rows.
         expected = [
             report._category_wrapped_label(row, view) for row in scored
+        ]
+        assert expected == [
+            "Ranked<br>Alpha",
+            "Ranked<br>Bravo",
+            "Unranked<br>Charlie",
         ]
         for chart_key, axis in (
             ("score_bar", "y"),
@@ -2589,12 +2615,12 @@ def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
 
     # One-segment categories are returned unchanged (one line).
     single = dataclasses.replace(
-        rf.category_score_record(rf.CATEGORY_ALPHA), run_id="run-one-segment"
+        rf.category_score_record("Solo"), run_id="run-one-segment"
     )
     single_view = _view_with_row(tmp_path, single)
     assert (
         report._category_wrapped_label(single_view.categories[0], single_view)
-        == rf.CATEGORY_ALPHA
+        == "Solo"
     )
     assert "<br>" not in report._category_wrapped_label(
         single_view.categories[0], single_view
@@ -2691,13 +2717,10 @@ def test_dashboard_policy_bump_drops_legend_and_keeps_only_changing_series(
             (rf.CATEGORY_CHARLIE, 3, 2, 3),
         )
         changing, stable = _policy_bump_partition(view)
-        assert set(changing) == {
-            rf.CATEGORY_ALPHA,
-            rf.CATEGORY_BRAVO,
-            rf.CATEGORY_CHARLIE,
-        }
-        assert stable == ()
+        assert set(changing) == {rf.CATEGORY_BRAVO, rf.CATEGORY_CHARLIE}
+        assert stable == (rf.CATEGORY_ALPHA,)
 
+        rows_by_category = {row.category: row for row in view.categories}
         bump = _graph_for(
             report.build_dashboard_layout(view),
             dict(report.DASHBOARD_CHART_IDS)["policy_bump"],
@@ -2705,13 +2728,23 @@ def test_dashboard_policy_bump_drops_legend_and_keeps_only_changing_series(
         assert bump["layout"]["showlegend"] is False
         assert len(bump["data"]) == len(changing)
         drawn_names = {trace.get("name") for trace in bump["data"]}
-        # Every changing row is drawn; every drawn trace keeps connectgaps false.
+        # Each changing row is drawn; every drawn trace keeps connectgaps false.
         for category in changing:
-            assert category in _norm(bump)
+            wrapped = report._category_wrapped_label(
+                rows_by_category[category], view
+            )
+            assert wrapped in _norm(bump)
         for trace in bump["data"]:
             assert trace["connectgaps"] is False
+        # The stable row is not a drawn trace, but its wrapped label appears in
+        # the in-card note (``"Stable across policies: ..."``).
         for category in stable:
-            assert category not in drawn_names
+            wrapped = report._category_wrapped_label(
+                rows_by_category[category], view
+            )
+            assert wrapped not in drawn_names
+            assert wrapped in _norm(bump)
+        assert "Stable across policies" in _norm(bump)
     finally:
         repository.close()
 
