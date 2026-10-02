@@ -75,7 +75,11 @@ interfaces `VERIFIED`. No later chunk is a prerequisite for this dashboard-only 
   traces (no constant sample series); sixth chart renders 18 markers with both axes
   titled; nav shows play-circle/gauge/chart-bar/table/file-text and the old house icon
   is gone; all y-axis labels wrap to two lines (`environment` over `particles`).
-- review: DONE — `spec-reviewer`: `VERDICT: PASS` with Minors only.
+- review: DONE — `spec-reviewer`: `VERDICT: PASS` with four Minors (all test-surface;
+  none behavioural). Minor 4 fixed (`tests/test_report.py` reformatted, 2 E501 fixed,
+  `8565cc1`); Minors 1–3 (a title-map assertion, literal tuple-length assertions, a
+  tautological missing-not-zero guard) accepted and recorded, no behaviour/interface
+  impact. No re-review required for a PASS.
 - gate: DONE — all bullets evidenced; `GATE: PASSED` (below).
 
 ## Verification evidence (lead)
@@ -131,5 +135,9 @@ interfaces `VERIFIED`. No later chunk is a prerequisite for this dashboard-only 
   sufficiency, `runs.taxonomy_sha256` empty-hash rejection. No SRS gap was resolved
   silently; the only SRS-shaped question (sixth-chart threshold) was answered by the
   operator with "no threshold".
+- Reviewer Minors 1–3 accepted (recorded here, not fixed): the sixth-chart and
+  population test nodes assert the title map / literal tuple lengths rather than the
+  rendered text, and the missing-not-zero guard is tautological on the fixture. Tests
+  only; no behaviour, number, content, or interface change.
 
 GATE: PASSED
