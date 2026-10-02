@@ -2181,9 +2181,7 @@ def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_p
         ]
         # Every scored fixture row is two-segment, so its wrapped label is
         # ``"<leaf><br><parent>"`` (plan §5.1).
-        expected_labels = [
-            report._category_wrapped_label(row, view) for row in scored
-        ]
+        expected_labels = [report._category_wrapped_label(row, view) for row in scored]
         assert expected_labels == [
             "Ranked<br>Alpha",
             "Ranked<br>Bravo",
@@ -2574,9 +2572,7 @@ def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
 
         # Every chart category axis carries the wrapped label for the scored
         # rows.
-        expected = [
-            report._category_wrapped_label(row, view) for row in scored
-        ]
+        expected = [report._category_wrapped_label(row, view) for row in scored]
         assert expected == [
             "Ranked<br>Alpha",
             "Ranked<br>Bravo",
@@ -2619,8 +2615,7 @@ def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
     )
     single_view = _view_with_row(tmp_path, single)
     assert (
-        report._category_wrapped_label(single_view.categories[0], single_view)
-        == "Solo"
+        report._category_wrapped_label(single_view.categories[0], single_view) == "Solo"
     )
     assert "<br>" not in report._category_wrapped_label(
         single_view.categories[0], single_view
@@ -2678,7 +2673,11 @@ def test_dashboard_population_figure_drops_the_constant_sample_series(tmp_path):
         assert names == ["discovered population", "measured zero"]
         assert "sample size" not in names
 
-        zero = [trace for trace in population["data"] if trace.get("name") == "measured zero"]
+        zero = [
+            trace
+            for trace in population["data"]
+            if trace.get("name") == "measured zero"
+        ]
         assert len(zero) == 1
         assert zero[0]["marker"]["symbol"] == "diamond-open"
         assert zero[0]["marker"]["color"] == "#e27882"
@@ -2730,18 +2729,14 @@ def test_dashboard_policy_bump_drops_legend_and_keeps_only_changing_series(
         drawn_names = {trace.get("name") for trace in bump["data"]}
         # Each changing row is drawn; every drawn trace keeps connectgaps false.
         for category in changing:
-            wrapped = report._category_wrapped_label(
-                rows_by_category[category], view
-            )
+            wrapped = report._category_wrapped_label(rows_by_category[category], view)
             assert wrapped in _norm(bump)
         for trace in bump["data"]:
             assert trace["connectgaps"] is False
         # The stable row is not a drawn trace, but its wrapped label appears in
         # the in-card note (``"Stable across policies: ..."``).
         for category in stable:
-            wrapped = report._category_wrapped_label(
-                rows_by_category[category], view
-            )
+            wrapped = report._category_wrapped_label(rows_by_category[category], view)
             assert wrapped not in drawn_names
             assert wrapped in _norm(bump)
         assert "Stable across policies" in _norm(bump)
@@ -2822,8 +2817,10 @@ def test_dashboard_demand_competition_scatter_reads_persisted_components_only(
         assert trace["y"] == [row.component_c for row in scored]
         # ``None`` is preserved as a gap, never substituted with ``0`` (BRAVO has
         # no R/Q but D/C present; this asserts the missing-not-zero contract).
-        assert None in trace["x"] or None in trace["y"] or all(
-            value is not None for value in trace["x"] + trace["y"]
+        assert (
+            None in trace["x"]
+            or None in trace["y"]
+            or all(value is not None for value in trace["x"] + trace["y"])
         )
         assert 0 not in [value for value in trace["x"] if value is None]
         layout = scatter["layout"]
@@ -2857,7 +2854,9 @@ def test_dashboard_nav_icons_are_phosphor_outline_and_offline(tmp_path):
     """
     repository, view = _dashboard_view(tmp_path)
     try:
-        icon_keys = tuple(icon_key for _href, _label, icon_key in report._DASHBOARD_NAV_ITEMS)
+        icon_keys = tuple(
+            icon_key for _href, _label, icon_key in report._DASHBOARD_NAV_ITEMS
+        )
         assert icon_keys == ("play-circle", "gauge", "chart-bar", "table", "file-text")
         assert set(report._NAV_ICON_PATHS) == set(icon_keys)
         for retired in ("house", "grid-four", "list-bullets", "list"):
@@ -2955,13 +2954,12 @@ def test_dashboard_css_fills_ultrawide_and_keeps_grid_breakpoints():
             re.DOTALL,
         )
         assert query is not None, f"missing @media (min-width: {width}px)"
-        chart_rules = re.findall(
-            r"\.chart-card\s*\{([^{}]*)\}", query.group(1)
-        )
+        chart_rules = re.findall(r"\.chart-card\s*\{([^{}]*)\}", query.group(1))
         assert chart_rules, f"missing .chart-card rule at {width}px"
-        assert any(
-            f"grid-column: {span}" in rule for rule in chart_rules
-        ), (width, span)
+        assert any(f"grid-column: {span}" in rule for rule in chart_rules), (
+            width,
+            span,
+        )
 
     assert "http://" not in folded
     assert "https://" not in folded
