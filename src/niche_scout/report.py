@@ -256,6 +256,14 @@ _POPULATION_EXPLICIT_ZERO_X: float = 0.1
 #: (they sit at the axis origin with no bar; they never share the scored axis).
 _REFUSED_ANNOTATION_X: float = 0.0
 
+#: Maximum number of **changing** policy-bump series drawn. Changing rows beyond
+#: this bound are not drawn as traces, but their persisted ranks are disclosed in
+#: the in-card note (``Not shown (beyond top N): ...``), so no rank is silently
+#: dropped. Bounds the visual density of a run with many changing categories
+#: (Chunk 35 §7); the selection is deterministic (balanced rank ascending, then
+#: category name).
+_POLICY_BUMP_MAX_SERIES: int = 10
+
 #: Fixed pixel height for every Dash chart row.
 _DASHBOARD_CHART_HEIGHT: int = 360
 
@@ -1867,18 +1875,21 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
 
     The persisted ``_policy_rank_rows(view)`` tuple is unchanged: every category
     with a persisted rank stays visible. A row is **changing** iff the set of its
-    non-``None`` ranks has at least two distinct values; only changing rows are
-    drawn, one ``go.Scatter`` each with a direct first-point label and
-    ``connectgaps`` false. Stable rows (fewer than two distinct non-``None``
-    ranks) are collected into a single in-card note, ``Stable across policies:
-    <comma-separated wrapped labels>``. The legend is off; a null rank is a gap,
-    never ``0``; no rank is recomputed, reordered, or dropped.
+    non-``None`` ranks has at least two distinct values; changing rows are drawn
+    one ``go.Scatter`` each with a direct first-point label and ``connectgaps``
+    false, ordered deterministically by balanced rank ascending (``None`` last),
+    then category name, and capped at :data:`_POLICY_BUMP_MAX_SERIES` drawn
+    traces. Stable rows (fewer than two distinct non-``None`` ranks) and any
+    changing rows beyond the cap are collected into a single in-card note that
+    names each omitted row's wrapped label and full category path. The legend is
+    off; a null rank is a gap, never ``0``; no rank is recomputed, reordered, or
+    dropped.
     """
     policies = _policy_axis_labels(view)
     rows_by_category = {row.category: row for row in _scored_rows(view)}
     figure = go.Figure()
     stable_notes: list[str] = []
-    drawn_index = 0
+    changing: list[tuple[int | None, str, tuple[int | None, ...]]] = []
     for category, balanced, demand_heavy, competition_heavy in _policy_rank_rows(view):
         ranks = (balanced, demand_heavy, competition_heavy)
         present = {rank for rank in ranks if rank is not None}
@@ -1890,9 +1901,21 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
             wrapped = _category_wrapped_label(rows_by_category[category], view)
             stable_notes.append(f"{wrapped} ({category})")
             continue
+        changing.append((balanced, category, ranks))
+    # Deterministic draw order: balanced rank ascending, ``None`` last, then
+    # category name ascending. Only persisted ranks are read; none is recomputed.
+    changing.sort(
+        key=lambda item: (
+            item[0] is None,
+            item[0] if item[0] is not None else 0,
+            item[1],
+        )
+    )
+    drawn = changing[:_POLICY_BUMP_MAX_SERIES]
+    omitted = changing[_POLICY_BUMP_MAX_SERIES:]
+    for drawn_index, (_balanced, category, ranks) in enumerate(drawn):
         label = _category_wrapped_label(rows_by_category[category], view)
         colour = _RAMP_HEXES[drawn_index % len(_RAMP_HEXES)]
-        drawn_index += 1
         figure.add_trace(
             go.Scatter(
                 x=list(policies),
@@ -1911,10 +1934,21 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
     figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "scoring policy"})
     figure.update_yaxes(autorange="reversed", title={"text": "rank (1 = best)"})
+    sentences: list[str] = []
     if stable_notes:
-        note = "Stable across policies: " + ", ".join(stable_notes)
+        sentences.append("Stable across policies: " + ", ".join(stable_notes))
+    if omitted:
+        omitted_notes = [
+            f"{_category_wrapped_label(rows_by_category[category], view)} ({category})"
+            for _balanced, category, _ranks in omitted
+        ]
+        sentences.append(
+            f"Not shown (beyond top {_POLICY_BUMP_MAX_SERIES}): "
+            + ", ".join(omitted_notes)
+        )
+    if sentences:
         figure.add_annotation(
-            text=note,
+            text=" ".join(sentences),
             xref="paper",
             yref="paper",
             x=0.0,
