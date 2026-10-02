@@ -94,8 +94,9 @@ DASHBOARD_CHART_IDS: tuple[tuple[str, str], ...] = (
     ("policy_bump", "niche-scout-policy-bump"),
     ("population_lollipop", "niche-scout-population-lollipop"),
     ("score_quality_scatter", "niche-scout-score-quality-scatter"),
+    ("demand_competition_scatter", "niche-scout-demand-competition-scatter"),
 )
-"""Fixed dashboard ``div_id`` values, one per rendered chart (five charts)."""
+"""Fixed dashboard ``div_id`` values, one per rendered chart (six charts)."""
 
 _DASHBOARD_CHART_ID: dict[str, str] = dict(DASHBOARD_CHART_IDS)
 
@@ -107,6 +108,7 @@ DASHBOARD_COMPONENT_IDS: tuple[tuple[str, str], ...] = (
     ("chart-policy-bump", "policy-bump"),
     ("chart-population-lollipop", "population-lollipop"),
     ("chart-score-quality-scatter", "score-quality-scatter"),
+    ("chart-demand-competition-scatter", "demand-competition-scatter"),
     ("kpi-strip", "kpi-strip"),
     ("primary-table", "primary-table"),
     ("detail-panel", "detail-panel"),
@@ -213,13 +215,19 @@ _DASHBOARD_CHART_CAPTIONS: dict[str, str] = {
         "policy."
     ),
     "population_lollipop": (
-        "This shows the discovered population beside the enriched sample size on "
-        "a log scale; read a small marker as a small sample, and a diamond at "
-        "0 as a measured zero population."
+        "This shows the discovered population on a log scale; read a small "
+        "marker as a small population, and a diamond at 0 as a measured zero "
+        "population."
     ),
     "score_quality_scatter": (
         "This shows composite score against quality with marker size set by "
         "sample fraction; read it as a secondary diagnostic, not a prediction."
+    ),
+    "demand_competition_scatter": (
+        "This shows each scored category by its Demand and Competition components; "
+        "read top-left as higher demand with less crowding (higher Competition = "
+        "less crowded), and a missing component as no plotted point. This is a "
+        "within-run heuristic, not a sales or demand prediction."
     ),
 }
 """One-line plain-language caption per chart, shown under each chart title."""
@@ -229,8 +237,9 @@ _DASHBOARD_CHART_TITLES: dict[str, str] = {
     "score_bar": "Composite score by rank",
     "contribution_stack": "Weighted component contributions",
     "policy_bump": "Policy rank comparison",
-    "population_lollipop": "Population and sample size (log scale)",
+    "population_lollipop": "Discovered population (log scale)",
     "score_quality_scatter": "Composite score vs quality (marker = sample fraction)",
+    "demand_competition_scatter": "Demand vs competition (scored categories)",
 }
 
 #: Marker size used when ``sample_fraction`` is unavailable (documented fallback,
@@ -267,10 +276,10 @@ def _dashboard_assets_dir() -> Path:
     return Path(__file__).resolve().parent / _DASHBOARD_ASSETS_DIRNAME
 
 
-#: One sequential analogous ramp (pastel cyan -> pastel yellow), four stops in
-#: rank order (Chunk 34 §4.1). Single literal source for the curve/bar colours;
-#: the stylesheet ``--ramp-1``..``--ramp-4`` and ``--evidence-*`` values mirror
-#: it. Stop 1 = best rank.
+#: One sequential analogous ramp (blue -> green -> lime -> orange), four stops in
+#: rank order (Chunk 35 §3.2/§4). The single functional colour source for the
+#: curve/bar colours: after Chunk 35 no stylesheet token mirrors it. Stop 1 =
+#: best rank.
 _RAMP_HEXES: tuple[str, ...] = ("#73adf0", "#59e082", "#d0df4d", "#e68d52")
 """The four ramp stop hexes, best rank first; the evidence scale's source."""
 
@@ -1390,6 +1399,43 @@ def _category_leaf_label(row: CategoryReportRow, view: RunReportView) -> str:
     return leaf
 
 
+def _category_wrapped_label(row: CategoryReportRow, view: RunReportView) -> str:
+    """Return the two-line chart label for ``row``: leaf plus its parent segment.
+
+    The returned string is a Plotly multi-line tick label: line 1 is the final
+    ``/``-segment (the leaf), line 2 is the immediately preceding segment, joined
+    by ``"<br>"``. ``"vfx/particles/environment"`` -> ``"environment<br>particles"``.
+    A category with one segment is returned unchanged (one line). A category with
+    exactly two segments -> ``"leaf<br>first-segment"``.
+
+    When two or more rows in ``view`` share the same *two-line* label, the label
+    is disambiguated deterministically by appending ``" · <full parent path>"`` to
+    line 2, so no two visible ticks collide; the suffix is applied to every member
+    of a colliding group, never to a non-colliding row. Deterministic: counts are
+    taken over ``view.categories`` (an ordered tuple); no set/dict iteration; no
+    clock, no I/O. Never changes a number, rank, or measured value. The full path
+    stays in the primary table cell, the column guide, the selector, and the
+    category detail heading; hover ``customdata`` also carries the full path.
+    """
+    segments = row.category.split("/")
+    if len(segments) == 1:
+        return row.category
+    leaf = segments[-1]
+    parent = segments[-2]
+    base = f"{leaf}<br>{parent}"
+    counts: dict[str, int] = {}
+    for candidate in view.categories:
+        candidate_segments = candidate.category.split("/")
+        if len(candidate_segments) == 1:
+            candidate_base = candidate.category
+        else:
+            candidate_base = f"{candidate_segments[-1]}<br>{candidate_segments[-2]}"
+        counts[candidate_base] = counts.get(candidate_base, 0) + 1
+    if counts[base] > 1:
+        return f"{leaf}<br>{parent} · {row.category.rsplit('/', 1)[0]}"
+    return base
+
+
 def _component_contributions(
     row: CategoryReportRow,
 ) -> tuple[tuple[str, float], ...]:
@@ -1557,52 +1603,49 @@ def _component_label(name: str) -> str:
     return _DASHBOARD_LABELS[name][0]
 
 
-#: Fixed nav items in document order: ``(href, label, icon key)`` (Chunk 33 §7.1).
+#: Fixed nav items in document order: ``(href, label, icon key)`` (Chunk 33 §7.1;
+#: icons re-ruled in Chunk 35 §4.1 to clearer Phosphor outline metaphors).
 _DASHBOARD_NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
-    ("#run-header-block", "Run", "house"),
-    ("#kpi-strip", "KPIs", "grid-four"),
+    ("#run-header-block", "Run", "play-circle"),
+    ("#kpi-strip", "KPIs", "gauge"),
     ("#chart-grid", "Charts", "chart-bar"),
-    ("#primary-table-section", "Table", "list-bullets"),
-    ("#detail-section", "Detail", "list"),
+    ("#primary-table-section", "Table", "table"),
+    ("#detail-section", "Detail", "file-text"),
 )
 
-#: Inline Phosphor-style outline SVG paths per icon key (Chunk 33 §7.2/LR2).
-#: ``dash_html`` has no SVG components in Dash 4.4.1 and ``dcc.Markdown`` strips
-#: the ``<svg>`` wrapper, so each icon is served as a ``dash_html.Img`` over a
-#: percent-encoded ``data:image/svg+xml`` URI (an inline asset, not a fetched
-#: URL).
+#: Inline Phosphor outline SVG paths per icon key (Chunk 35 §4.1; 256x256
+#: geometry). ``dash_html`` has no SVG components in Dash 4.4.1 and
+#: ``dcc.Markdown`` strips the ``<svg>`` wrapper, so each icon is served as a
+#: ``dash_html.Img`` over a percent-encoded ``data:image/svg+xml`` URI (an inline
+#: asset, not a fetched URL).
 _NAV_ICON_PATHS: dict[str, str] = {
-    "house": (
-        '<path d="M213.66 101.66l-80-80a8 8 0 0 0-11.32 0l-80 80a8 8 0 0 0 '
-        "11.32 11.32L72 94.63V208a16 16 0 0 0 16 16h32a16 16 0 0 0 16-16v-40h48v40"
-        "a16 16 0 0 0 16 16h32a16 16 0 0 0 16-16V94.63l18.34 18.35a8 8 0 0 0 "
-        "11.32-11.32ZM200 208h-32v-40a16 16 0 0 0-16-16h-48a16 16 0 0 0-16 16v40"
-        'H88V88.63l72-72 72 72Z"/>'
+    "play-circle": (
+        '<path d="M128 24a104 104 0 1 0 104 104A104.11 104.11 0 0 0 128 24Zm0 192a88 '
+        "88 0 1 1 88-88 88.1 88.1 0 0 1-88 88Zm44.44-92.44l-64 40A8 8 0 0 1 96 156V100"
+        'a8 8 0 0 1 12.44-6.56l64 40a8 8 0 0 1 0 13.12Z"/>'
     ),
-    "grid-four": (
-        '<path d="M104 48H48a16 16 0 0 0-16 16v56a16 16 0 0 0 16 16h56a16 16 0 0 0 '
-        "16-16V64a16 16 0 0 0-16-16Zm0 72H48V64h56Zm104-72h-56a16 16 0 0 0-16 16v56"
-        "a16 16 0 0 0 16 16h56a16 16 0 0 0 16-16V64a16 16 0 0 0-16-16Zm0 72h-56V64"
-        "h56Zm-104 32H48a16 16 0 0 0-16 16v56a16 16 0 0 0 16 16h56a16 16 0 0 0 "
-        "16-16v-56a16 16 0 0 0-16-16Zm0 72H48v-56h56Zm104-72h-56a16 16 0 0 0-16 16"
-        "v56a16 16 0 0 0 16 16h56a16 16 0 0 0 16-16v-56a16 16 0 0 0-16-16Zm0 72"
-        'h-56v-56h56Z"/>'
+    "gauge": (
+        '<path d="M207.06 80.6A104 104 0 1 0 24 128a103.14 103.14 0 0 0 24.94 66.6'
+        "A16 16 0 0 0 61.26 192h133.48a16 16 0 0 0 12.32-2.6A104 104 0 0 0 207.06 "
+        "80.6ZM128 40a88 88 0 0 1 72.57 137.62L144.44 120a8 8 0 0 0-11.32 0L77 176.4"
+        'A88 88 0 0 1 128 40Zm-40.9 144l35.65-48.06 35.64 48.06Z"/>'
     ),
     "chart-bar": (
         '<path d="M224 200h-8v-56a16 16 0 0 0-16-16h-40a16 16 0 0 0-16 16v56h-24V96'
         "a16 16 0 0 0-16-16H64a16 16 0 0 0-16 16v104h-8a8 8 0 0 0 0 16h184a8 8 0 0 "
         '0 0-16Zm-64 0v-56h40v56Zm-80 0V96h40v104Z"/>'
     ),
-    "list-bullets": (
-        '<circle cx="80" cy="64" r="16"/><circle cx="80" cy="128" r="16"/>'
-        '<circle cx="80" cy="192" r="16"/>'
-        '<path d="M216 56H112a8 8 0 0 0 0 16h104a8 8 0 0 0 0-16Zm0 64H112a8 8 0 0 0 '
-        '0 16h104a8 8 0 0 0 0-16Zm0 64H112a8 8 0 0 0 0 16h104a8 8 0 0 0 0-16Z"/>'
+    "table": (
+        '<path d="M224 48H32a8 8 0 0 0-8 8v136a16 16 0 0 0 16 16h176a16 16 0 0 0 '
+        "16-16V56a8 8 0 0 0-8-8ZM96 184H40v-40h56Zm0-56H40v-40h56Zm80 56h-64v-40h64Zm"
+        '0-56h-64v-40h64Zm40 56h-24v-40h24Zm0-56h-24v-40h24Z"/>'
     ),
-    "list": (
-        '<path d="M224 128a8 8 0 0 1-8 8H40a8 8 0 0 1 0-16h176a8 8 0 0 1 8 8ZM40 '
-        "72h176a8 8 0 0 0 0-16H40a8 8 0 0 0 0 16Zm176 112H40a8 8 0 0 0 0 16h176a8 "
-        '8 0 0 0 0-16Z"/>'
+    "file-text": (
+        '<path d="M213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 '
+        "0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66ZM160 51.31L188.69 "
+        "80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48Zm-32-80a8 8 0 0 1-8 8H96a8 8 0 "
+        "0 1 0-16h64a8 8 0 0 1 8 8Zm0 32a8 8 0 0 1-8 8H96a8 8 0 0 1 0-16h64a8 8 0 0 "
+        '1 8 8Z"/>'
     ),
 }
 
@@ -1723,7 +1766,7 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
     """
     scored = _scored_rows(view)
     refused = _refused_rows(view)
-    labels = [_category_leaf_label(row, view) for row in scored]
+    labels = [_category_wrapped_label(row, view) for row in scored]
     values: list[float] = []
     texts: list[str] = []
     colours: list[str] = []
@@ -1757,7 +1800,9 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             go.Scatter(
                 x=[_REFUSED_ANNOTATION_X] * (len(refused) + 1),
                 y=[" "]
-                + [f"{_category_leaf_label(row, view)} (refused)" for row in refused],
+                + [
+                    f"{_category_wrapped_label(row, view)} (refused)" for row in refused
+                ],
                 mode="text",
                 text=[""] + [_NA] * len(refused),
                 textposition="middle right",
@@ -1770,7 +1815,9 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
     figure.update_layout(**_base_layout())
     figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "composite score"})
-    figure.update_yaxes(autorange="reversed", title={"text": "category (leaf)"})
+    figure.update_yaxes(
+        autorange="reversed", title={"text": "category (leaf, then parent)"}
+    )
     return figure
 
 
@@ -1782,7 +1829,7 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
     The legend uses the plain component names (plan §5.7).
     """
     scored = _scored_rows(view)
-    labels = [_category_leaf_label(row, view) for row in scored]
+    labels = [_category_wrapped_label(row, view) for row in scored]
     figure = go.Figure()
     contributions_by_row = [_component_contributions(row) for row in scored]
     for index, (name, _weight) in enumerate(COMPONENT_WEIGHTS):
@@ -1798,28 +1845,54 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
             )
         )
     figure.update_layout(**_base_layout())
-    figure.update_layout(barmode="stack")
-    figure.update_xaxes(title={"text": "category (leaf)"})
+    figure.update_layout(
+        barmode="stack",
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.28,
+            "xanchor": "center",
+            "x": 0.5,
+            "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO, "size": 11},
+        },
+        margin={"l": 8, "r": 56, "t": 48, "b": 64},
+    )
+    figure.update_xaxes(title={"text": "category (leaf, then parent)"})
     figure.update_yaxes(title={"text": "weighted contribution to composite score"})
     return figure
 
 
 def _policy_bump_figure(view: RunReportView) -> go.Figure:
-    """Three-policy rank bump chart; a null rank is a gap, never ``0``."""
+    """Policy rank bump chart; only changing series are drawn (Chunk 35 §7).
+
+    The persisted ``_policy_rank_rows(view)`` tuple is unchanged: every category
+    with a persisted rank stays visible. A row is **changing** iff the set of its
+    non-``None`` ranks has at least two distinct values; only changing rows are
+    drawn, one ``go.Scatter`` each with a direct first-point label and
+    ``connectgaps`` false. Stable rows (fewer than two distinct non-``None``
+    ranks) are collected into a single in-card note, ``Stable across policies:
+    <comma-separated wrapped labels>``. The legend is off; a null rank is a gap,
+    never ``0``; no rank is recomputed, reordered, or dropped.
+    """
     policies = _policy_axis_labels(view)
     rows_by_category = {row.category: row for row in _scored_rows(view)}
     figure = go.Figure()
-    for index, (
-        category,
-        balanced,
-        demand_heavy,
-        competition_heavy,
-    ) in enumerate(_policy_rank_rows(view)):
+    stable_notes: list[str] = []
+    drawn_index = 0
+    for category, balanced, demand_heavy, competition_heavy in _policy_rank_rows(view):
         ranks = (balanced, demand_heavy, competition_heavy)
-        if sum(rank is not None for rank in ranks) < 2:
+        present = {rank for rank in ranks if rank is not None}
+        if len(present) < 2:
+            # Stable (or a single persisted rank): no drawn trace; note it with
+            # both its two-line wrapped label and its full category path so the
+            # identity is unambiguous in the in-card note. Its persisted rank is
+            # never dropped or hidden.
+            wrapped = _category_wrapped_label(rows_by_category[category], view)
+            stable_notes.append(f"{wrapped} ({category})")
             continue
-        label = _category_leaf_label(rows_by_category[category], view)
-        colour = _RAMP_HEXES[index % len(_RAMP_HEXES)]
+        label = _category_wrapped_label(rows_by_category[category], view)
+        colour = _RAMP_HEXES[drawn_index % len(_RAMP_HEXES)]
+        drawn_index += 1
         figure.add_trace(
             go.Scatter(
                 x=list(policies),
@@ -1835,29 +1908,43 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
             )
         )
     figure.update_layout(**_base_layout())
+    figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "scoring policy"})
     figure.update_yaxes(autorange="reversed", title={"text": "rank (1 = best)"})
+    if stable_notes:
+        note = "Stable across policies: " + ", ".join(stable_notes)
+        figure.add_annotation(
+            text=note,
+            xref="paper",
+            yref="paper",
+            x=0.0,
+            y=-0.22,
+            xanchor="left",
+            yanchor="top",
+            showarrow=False,
+            font={"color": "#e6f0f4", "family": _FIGURE_FONT_SANS, "size": 11},
+        )
     return figure
 
 
 def _population_lollipop_figure(view: RunReportView) -> go.Figure:
-    """Log-scale population lollipop with a sample-size marker; ``0`` != ``None``.
+    """Log-scale population lollipop; ``0`` != ``None`` (Chunk 35 §8).
 
     A measured ``0`` population (R5) is a **distinct explicit-zero marker**
     labelled ``0``, placed off the log axis at a fixed ``zero_x`` position; a
     ``None`` (unavailable) renders no population marker and an ``n/a`` label.
-    The two states must remain visibly distinct (§1.2; plan §5.3, Q5/R5).
+    The two states must remain visibly distinct (§1.2; plan §5.3, Q5/R5). The
+    constant ``sample size`` series was removed (Chunk 35 §8): it carried no
+    signal because ``enriched_sample_count`` is identical for every row.
     """
     scored = _scored_rows(view)
     labels: list[str] = []
     populations: list[float | None] = []
-    samples: list[float | None] = []
     annotations: list[str] = []
     zero_x: list[float | None] = []
     for row in scored:
-        labels.append(_category_leaf_label(row, view))
+        labels.append(_category_wrapped_label(row, view))
         value = row.discovered_population_count
-        sample = row.enriched_sample_count
         if value is None:
             populations.append(None)
             annotations.append(_NA)
@@ -1871,7 +1958,6 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             populations.append(float(value))
             annotations.append(format(value, "d"))
             zero_x.append(None)
-        samples.append(None if sample is None else float(sample))
     customdata = [[row.category] for row in scored]
     figure = go.Figure()
     figure.add_trace(
@@ -1906,15 +1992,6 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             ),
         )
     )
-    figure.add_trace(
-        go.Scatter(
-            x=samples,
-            y=labels,
-            mode="markers",
-            name="sample size",
-            marker={"size": 7, "color": _RAMP_HEXES[1]},
-        )
-    )
     figure.update_layout(**_base_layout())
     figure.update_layout(
         legend={
@@ -1926,7 +2003,7 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
         }
     )
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
-    figure.update_yaxes(title={"text": "category (leaf)"})
+    figure.update_yaxes(title={"text": "category (leaf, then parent)"})
     return figure
 
 
@@ -1953,7 +2030,7 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
                 _SAMPLE_FRACTION_MIN_MARKER + float(row.sample_fraction) * 40.0
             )
             texts.append(format(row.sample_fraction, ".4g"))
-        labels.append(_category_leaf_label(row, view))
+        labels.append(_category_wrapped_label(row, view))
     customdata = [[row.category, text] for row, text in zip(scored, texts)]
     figure = go.Figure(
         go.Scatter(
@@ -1976,6 +2053,49 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
     return figure
 
 
+def _demand_competition_scatter_figure(view: RunReportView) -> go.Figure:
+    """Demand-vs-Competition scatter of scored categories (no threshold lines).
+
+    x is persisted ``row.component_d`` and y is persisted ``row.component_c`` for
+    :func:`_scored_rows` only. A row whose ``component_d`` **or** ``component_c``
+    is ``None`` renders **no marker** (a gap), never a marker at ``0`` — the
+    missing-not-zero contract. No quadrant, median, or split reference line and no
+    threshold value is drawn or implied: the SRS defines no "high demand / low
+    competition" threshold (SRS §8.2 LREQ-SCR-010 / LREQ-SCR-020), so none may be
+    invented. Fixed ``xaxis``/``yaxis`` range ``[0, 1]`` (the components' clamp
+    domain), monochrome ramp-1 markers, marker size fixed. Hover shows the wrapped
+    label and the full category path.
+    """
+    scored = _scored_rows(view)
+    xs = [row.component_d for row in scored]
+    ys = [row.component_c for row in scored]
+    labels = [_category_wrapped_label(row, view) for row in scored]
+    customdata = [[row.category] for row in scored]
+    figure = go.Figure(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            text=labels,
+            marker={"size": 10, "color": _RAMP_HEXES[0]},
+            customdata=customdata,
+            hovertemplate=(
+                "%{text}<br>category: %{customdata[0]}<br>Demand %{x}<br>"
+                "Competition %{y}<extra></extra>"
+            ),
+        )
+    )
+    figure.update_layout(**_base_layout())
+    figure.update_layout(showlegend=False)
+    figure.update_xaxes(
+        range=[0.0, 1.0], title={"text": "Demand (higher = more demand)"}
+    )
+    figure.update_yaxes(
+        range=[0.0, 1.0], title={"text": "Competition (higher = less crowded)"}
+    )
+    return figure
+
+
 # --------------------------------------------------------------------------
 # Dash application (pure layout + app construction; no server, no I/O)
 # --------------------------------------------------------------------------
@@ -1989,6 +2109,7 @@ def _chart_figure(chart_key: str, view: RunReportView) -> go.Figure:
         "policy_bump": _policy_bump_figure,
         "population_lollipop": _population_lollipop_figure,
         "score_quality_scatter": _score_quality_scatter_figure,
+        "demand_competition_scatter": _demand_competition_scatter_figure,
     }
     return builders[chart_key](view)
 

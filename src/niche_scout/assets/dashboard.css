@@ -33,20 +33,12 @@
   --positive: #48b78d;
   --danger: #e27882;
 
-  /* One sequential analogous ramp, pastel cyan -> pastel yellow (Chunk 34
-   * §4.1): four stops in rank order. Figures bake the same hexes as literals
-   * because they serialize to JSON, so these tokens document the ramp and
-   * mirror ``report._RAMP_HEXES``. */
-  --ramp-1: #9fd7ea;
-  --ramp-2: #b9dbb0;
-  --ramp-3: #d5dd93;
-  --ramp-4: #e6d489;
-
-  /* Ordinal evidence scale — the ramp's four stops (plan §4.1, LR1). */
-  --evidence-insufficient: #9fd7ea;
-  --evidence-weak: #b9dbb0;
-  --evidence-moderate: #d5dd93;
-  --evidence-strong: #e6d489;
+  /* Chunk 35 (§4.2) removes the non-functional ramp/evidence colour tokens:
+   * no rule consumed them. The figure palette is owned by the report module
+   * and baked as literals there, because figures serialize to JSON and a CSS
+   * variable cannot reach them. The report-owned figure palette is
+   * #73adf0, #59e082, #d0df4d, #e68d52 (best rank first); it is documented
+   * here for reference only and is not a stylesheet token. */
 
   /* Offline system font stacks (no web font, no at-import directive). */
   --font-sans: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -113,7 +105,7 @@ body {
   font-size: var(--font-size-body);
   font-weight: var(--weight-body);
   line-height: 1.5;
-  max-inline-size: 1600px;
+  max-inline-size: none;
   margin-inline: auto;
   padding: var(--space-4);
   /* Base/mobile: fixed top bar must not obscure content, so inset the content
@@ -864,5 +856,17 @@ input:focus-visible,
 @media (min-width: 1440px) {
   .chart-card {
     grid-column: span 4;
+  }
+}
+
+/* ----------------------------------------------------------- ultrawide --- */
+/* Chunk 35 (§9.2): above 1600px the grid fills the viewport; below 1800px the
+ * base rule's ``max-inline-size: none`` applies; at 1800px and above the
+ * content is capped at 2200px and centred so very wide monitors stay readable.
+ * The 1/2/3-column ``.chart-card`` span breakpoints are unchanged. */
+
+@media (min-width: 1800px) {
+  .dashboard {
+    max-inline-size: 2200px;
   }
 }
