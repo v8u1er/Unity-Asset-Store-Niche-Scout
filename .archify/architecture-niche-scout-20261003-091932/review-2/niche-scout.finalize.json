@@ -1,0 +1,413 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-03T06:35:36.911Z",
+  "specification": {
+    "path": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\candidate.json",
+    "sha256": "cdb1aa7743058eabb6ce63a6b53b334064a77d15880c22795888d088367e4422",
+    "bytes": 13276
+  },
+  "artifact": {
+    "path": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\niche-scout.html",
+    "sha256": "f13835085096ab78b2d22bd18083b82b5ed4003bd7acda8643d42786984ebd53",
+    "bytes": 793354
+  },
+  "stages": {
+    "validate": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": null,
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\<redacted-user>\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\candidate.json",
+        "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\niche-scout.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.scratch\\repo-mirror",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "deliver",
+        "receiptId": "9a1c1fcf-e21e-4692-93f4-c00d2f00cc5e",
+        "stage": "render",
+        "type": "architecture",
+        "input": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\candidate.json",
+        "output": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\niche-scout.html",
+        "error": "Architecture layout validation failed:\n- [composition/label-route-clearance] showcase architecture label \"persist_run_sampling\" on connections[8] id \"sampling-to-database\" \"sampling\" -> \"database\" label \"persist_run_sampling\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 2 [650, 732] -> [650, 970] (label rect [617, 789, 106, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.\n- [composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[11] id \"graphql-to-database\" \"graphql\" -> \"database\" label \"enrichment rows\" segment 1 [849, 679] -> [849, 770] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.\n- [composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 0 [826, 494] -> [826, 732] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+        "diagnostics": [
+          {
+            "code": "composition/label-route-clearance",
+            "severity": "error",
+            "message": "[composition/label-route-clearance] showcase architecture label \"persist_run_sampling\" on connections[8] id \"sampling-to-database\" \"sampling\" -> \"database\" label \"persist_run_sampling\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 2 [650, 732] -> [650, 970] (label rect [617, 789, 106, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 8,
+              "id": "sampling-to-database",
+              "from": "sampling",
+              "to": "database"
+            },
+            "evidence": {
+              "label": "persist_run_sampling",
+              "otherRelationship": {
+                "diagramType": "architecture",
+                "collection": "connections",
+                "index": 12,
+                "id": "pipeline-to-metrics",
+                "from": "pipeline",
+                "to": "metrics"
+              },
+              "segmentIndex": 2,
+              "clearancePx": 0,
+              "minimumPx": 4,
+              "labelRect": {
+                "relation": {
+                  "id": "sampling-to-database",
+                  "from": "sampling",
+                  "to": "database",
+                  "label": "persist_run_sampling"
+                },
+                "relationIndex": 8,
+                "label": "persist_run_sampling",
+                "x": 617,
+                "y": 789,
+                "width": 106,
+                "height": 14,
+                "lx": 670,
+                "ly": 799
+              },
+              "from": [
+                650,
+                732
+              ],
+              "to": [
+                650,
+                970
+              ]
+            },
+            "supportedFixes": [
+              "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+            ]
+          },
+          {
+            "code": "composition/label-route-clearance",
+            "severity": "error",
+            "message": "[composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[11] id \"graphql-to-database\" \"graphql\" -> \"database\" label \"enrichment rows\" segment 1 [849, 679] -> [849, 770] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 16,
+              "id": "pipeline-to-database",
+              "from": "pipeline",
+              "to": "database"
+            },
+            "evidence": {
+              "label": "insert runs + category_scores",
+              "otherRelationship": {
+                "diagramType": "architecture",
+                "collection": "connections",
+                "index": 11,
+                "id": "graphql-to-database",
+                "from": "graphql",
+                "to": "database"
+              },
+              "segmentIndex": 1,
+              "clearancePx": 0,
+              "minimumPx": 4,
+              "labelRect": {
+                "relation": {
+                  "id": "pipeline-to-database",
+                  "from": "pipeline",
+                  "to": "database",
+                  "label": "insert runs + category_scores"
+                },
+                "relationIndex": 16,
+                "label": "insert runs + category_scores",
+                "x": 776.9,
+                "y": 726,
+                "width": 149.2,
+                "height": 14,
+                "lx": 851.5,
+                "ly": 736
+              },
+              "from": [
+                849,
+                679
+              ],
+              "to": [
+                849,
+                770
+              ]
+            },
+            "supportedFixes": [
+              "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+            ]
+          },
+          {
+            "code": "composition/label-route-clearance",
+            "severity": "error",
+            "message": "[composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 0 [826, 494] -> [826, 732] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 16,
+              "id": "pipeline-to-database",
+              "from": "pipeline",
+              "to": "database"
+            },
+            "evidence": {
+              "label": "insert runs + category_scores",
+              "otherRelationship": {
+                "diagramType": "architecture",
+                "collection": "connections",
+                "index": 12,
+                "id": "pipeline-to-metrics",
+                "from": "pipeline",
+                "to": "metrics"
+              },
+              "segmentIndex": 0,
+              "clearancePx": 0,
+              "minimumPx": 4,
+              "labelRect": {
+                "relation": {
+                  "id": "pipeline-to-database",
+                  "from": "pipeline",
+                  "to": "database",
+                  "label": "insert runs + category_scores"
+                },
+                "relationIndex": 16,
+                "label": "insert runs + category_scores",
+                "x": 776.9,
+                "y": 726,
+                "width": 149.2,
+                "height": 14,
+                "lx": 851.5,
+                "ly": 736
+              },
+              "from": [
+                826,
+                494
+              ],
+              "to": [
+                826,
+                732
+              ]
+            },
+            "supportedFixes": [
+              "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+            ]
+          }
+        ],
+        "provenance": "failed",
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      },
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "not-run",
+      "execution": "blocked-by-validate"
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "composition/label-route-clearance",
+      "severity": "error",
+      "message": "[composition/label-route-clearance] showcase architecture label \"persist_run_sampling\" on connections[8] id \"sampling-to-database\" \"sampling\" -> \"database\" label \"persist_run_sampling\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 2 [650, 732] -> [650, 970] (label rect [617, 789, 106, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 8,
+        "id": "sampling-to-database",
+        "from": "sampling",
+        "to": "database"
+      },
+      "evidence": {
+        "label": "persist_run_sampling",
+        "otherRelationship": {
+          "diagramType": "architecture",
+          "collection": "connections",
+          "index": 12,
+          "id": "pipeline-to-metrics",
+          "from": "pipeline",
+          "to": "metrics"
+        },
+        "segmentIndex": 2,
+        "clearancePx": 0,
+        "minimumPx": 4,
+        "labelRect": {
+          "relation": {
+            "id": "sampling-to-database",
+            "from": "sampling",
+            "to": "database",
+            "label": "persist_run_sampling"
+          },
+          "relationIndex": 8,
+          "label": "persist_run_sampling",
+          "x": 617,
+          "y": 789,
+          "width": 106,
+          "height": 14,
+          "lx": 670,
+          "ly": 799
+        },
+        "from": [
+          650,
+          732
+        ],
+        "to": [
+          650,
+          970
+        ]
+      },
+      "supportedFixes": [
+        "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+      ]
+    },
+    {
+      "code": "composition/label-route-clearance",
+      "severity": "error",
+      "message": "[composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[11] id \"graphql-to-database\" \"graphql\" -> \"database\" label \"enrichment rows\" segment 1 [849, 679] -> [849, 770] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 16,
+        "id": "pipeline-to-database",
+        "from": "pipeline",
+        "to": "database"
+      },
+      "evidence": {
+        "label": "insert runs + category_scores",
+        "otherRelationship": {
+          "diagramType": "architecture",
+          "collection": "connections",
+          "index": 11,
+          "id": "graphql-to-database",
+          "from": "graphql",
+          "to": "database"
+        },
+        "segmentIndex": 1,
+        "clearancePx": 0,
+        "minimumPx": 4,
+        "labelRect": {
+          "relation": {
+            "id": "pipeline-to-database",
+            "from": "pipeline",
+            "to": "database",
+            "label": "insert runs + category_scores"
+          },
+          "relationIndex": 16,
+          "label": "insert runs + category_scores",
+          "x": 776.9,
+          "y": 726,
+          "width": 149.2,
+          "height": 14,
+          "lx": 851.5,
+          "ly": 736
+        },
+        "from": [
+          849,
+          679
+        ],
+        "to": [
+          849,
+          770
+        ]
+      },
+      "supportedFixes": [
+        "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+      ]
+    },
+    {
+      "code": "composition/label-route-clearance",
+      "severity": "error",
+      "message": "[composition/label-route-clearance] showcase architecture label \"insert runs + category_scores\" on connections[16] id \"pipeline-to-database\" \"pipeline\" -> \"database\" label \"insert runs + category_scores\" is 0px from connections[12] id \"pipeline-to-metrics\" \"pipeline\" -> \"metrics\" label \"CategoryMetricInput\" segment 0 [826, 494] -> [826, 732] (label rect [777, 726, 149, 14]; minimum 4px) — adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 16,
+        "id": "pipeline-to-database",
+        "from": "pipeline",
+        "to": "database"
+      },
+      "evidence": {
+        "label": "insert runs + category_scores",
+        "otherRelationship": {
+          "diagramType": "architecture",
+          "collection": "connections",
+          "index": 12,
+          "id": "pipeline-to-metrics",
+          "from": "pipeline",
+          "to": "metrics"
+        },
+        "segmentIndex": 0,
+        "clearancePx": 0,
+        "minimumPx": 4,
+        "labelRect": {
+          "relation": {
+            "id": "pipeline-to-database",
+            "from": "pipeline",
+            "to": "database",
+            "label": "insert runs + category_scores"
+          },
+          "relationIndex": 16,
+          "label": "insert runs + category_scores",
+          "x": 776.9,
+          "y": 726,
+          "width": 149.2,
+          "height": 14,
+          "lx": 851.5,
+          "ly": 736
+        },
+        "from": [
+          826,
+          494
+        ],
+        "to": [
+          826,
+          732
+        ]
+      },
+      "supportedFixes": [
+        "adjust labelAt, labelDx, labelDy, or labelSegment; otherwise adjust the other relationship route/via/channel"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\review-2\\niche-scout.finalize.json",
+    "summaryReceipt": "C:\\Users\\<redacted-user>\\Documents\\Python Projects\\Unity Asset Store Niche Scout\\.archify\\architecture-niche-scout-20261003-091932\\review-2\\niche-scout.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "validate",
+  "finishedAt": "2026-10-03T06:35:39.847Z",
+  "durationMs": 2936,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-03T06:05:36.432Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}
