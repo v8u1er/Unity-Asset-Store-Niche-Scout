@@ -270,6 +270,21 @@ _POLICY_BUMP_MAX_SERIES: int = 10
 #: box via ``autosize`` so Plotly does not fall back to its ~450px default.
 _DASHBOARD_CHART_HEIGHT: int = 540
 
+#: Chunk 37 §5.1 (D37-1/2/3): the shared bottom band every chart reserves for
+#: the x-axis title and an optional horizontal legend. ``_base_layout`` sets
+#: ``margin.b`` to this value for every figure and the two multi-series figures
+#: anchor their legend at the container bottom inside the band (``yref:
+#: "container"``, ``y: 0``). A single constant means no chart's plot area sits
+#: lower than another's, so the plot bottoms align on one baseline across a row
+#: (Scandinavian grid) while legend space is never taken from the plot. 130px is
+#: the worst measured need (the weighted-contribution chart: rotated 13px
+#: full-path x labels up to 162px long, the x-axis title, and one legend row);
+#: :func:`_base_layout` raises it to any larger automargined need, so a longer
+#: label grows the band instead of being clipped. Mirrored by the
+#: ``--chart-legend-band`` token in ``assets/dashboard.css``; the two stay in
+#: sync.
+_FIGURE_BOTTOM_BAND: int = 130
+
 #: Package-relative assets directory name (Dash default; made explicit at build
 #: time). The stylesheet ships in the built package through
 #: ``[tool.setuptools.package-data]`` (Chunk 32).
@@ -301,6 +316,23 @@ _RAMP_HEXES: tuple[str, ...] = ("#73adf0", "#59e082", "#d0df4d", "#e68d52")
 _EVIDENCE_GRADE_COLOURS: tuple[tuple[str, str], ...] = tuple(
     zip(EVIDENCE_GRADE_ORDER, _RAMP_HEXES)
 )
+
+#: Chunk 37 §5.3 (D37-5/6): the single green-circle marker spec shared by the
+#: three bottom charts (population lollipop, score-vs-quality scatter,
+#: demand-vs-competition scatter). ``_RAMP_HEXES[1]`` is the operator ramp's
+#: green stop — the same green the contribution legend and the evidence scale
+#: already use — so the three bottom charts reference one dict instead of
+#: restating a colour literal and their markers stay identical. ``symbol`` is an
+#: explicit ``circle`` and ``line.width: 0`` removes the marker border: Plotly's
+#: size-array markers otherwise default to a 1px white outline, which is the
+#: mismatched bordered circle this dict replaces. The lollipop's explicit-zero
+#: diamond is built separately and keeps its red outline.
+_GREEN_CIRCLE_MARKER: dict[str, object] = {
+    "size": 10,
+    "color": _RAMP_HEXES[1],
+    "symbol": "circle",
+    "line": {"width": 0},
+}
 
 HEURISTIC_STATEMENT: str = (
     "This score is a deterministic, within-run heuristic computed from "
@@ -1568,8 +1600,17 @@ def _base_layout() -> dict:
         "font": {"color": "#e6f0f4", "size": 12, "family": _FIGURE_FONT_SANS},
         # Chunk 36 §5.1: the audited fixed margins. ``t:12`` removes the empty
         # band the card ``H3`` already fills, ``r:56`` leaves room for the
-        # outside bar value labels, and ``b:40`` holds the x-axis title.
-        "margin": {"l": 8, "r": 56, "t": 12, "b": 40},
+        # outside bar value labels. Chunk 37 §5.1 (D37-1/2/3): ``b`` is now the
+        # shared :data:`_FIGURE_BOTTOM_BAND` for *every* figure so the x-axis
+        # title sits at one height and the plot bottoms align across a chart
+        # row; the two multi-series figures place their legend inside this band
+        # at the container bottom.
+        "margin": {
+            "l": 8,
+            "r": 56,
+            "t": 12,
+            "b": _FIGURE_BOTTOM_BAND,
+        },
         "showlegend": True,
         "legend": {
             "bgcolor": "#0c2432",
@@ -1782,7 +1823,9 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             texts.append(_NA)
         else:
             values.append(float(row.market_opportunity_score))
-            texts.append(format(row.market_opportunity_score, ".6g"))
+            # Chunk 37 §5.4 (D37-9): the composite data label shows two decimals
+            # (the display rounding value), never the full ``.6g`` payload.
+            texts.append(f"{float(row.market_opportunity_score):.2f}")
         colours.append(_evidence_colour(row.evidence_grade))
         customdata.append([row.category, row.evidence_grade])
     figure = go.Figure(
@@ -1866,9 +1909,17 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
             "bgcolor": "#0c2432",
             "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO, "size": 11},
         },
-        margin={"l": 8, "r": 56, "t": 12, "b": 120},
+        # Chunk 37 §5.1 (D37-1/2/3): no one-off bottom margin; the shared band in
+        # ``_base_layout`` gives this plot bottom the same baseline as every
+        # other chart in the row.
     )
-    figure.update_xaxes(title={"text": "category (full path)"})
+    # Chunk 37 §5.1 (D37-1/2/3): every category axis, including this chart's
+    # ``x`` axis, uses ``automargin`` so its tick labels reserve their own space.
+    # The y-axis already carried it; the x-axis now does too. A rotated tick that
+    # would otherwise be silently truncated is measured into the shared bottom
+    # band instead, which keeps this plot bottom on the row baseline (the
+    # automargin side absorbs the label, not the plot area).
+    figure.update_xaxes(title={"text": "category (full path)"}, automargin=True)
     figure.update_yaxes(title={"text": "weighted contribution to composite score"})
     return figure
 
@@ -2009,7 +2060,9 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             y=labels,
             mode="markers",
             name="discovered population",
-            marker={"size": 12, "color": _RAMP_HEXES[0]},
+            # Chunk 37 §5.3 (D37-5/6): the shared green circle marker, no border
+            # and no outline, so all three bottom charts match.
+            marker=dict(_GREEN_CIRCLE_MARKER),
             text=annotations,
             textposition="middle right",
             customdata=customdata,
@@ -2024,6 +2077,9 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             y=list(labels),
             mode="markers+text",
             name="measured zero",
+            # The measured-zero marker is deliberately NOT the shared green
+            # circle: it stays an outlined red diamond so the explicit ``0``
+            # remains visibly distinct from a measured population (Hard rule 2).
             marker={
                 "size": 12,
                 "color": "#e27882",
@@ -2055,7 +2111,8 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             "bgcolor": "#0c2432",
             "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO, "size": 11},
         },
-        margin={"l": 8, "r": 56, "t": 12, "b": 64},
+        # Chunk 37 §5.1 (D37-1/2/3): the shared bottom band in ``_base_layout``
+        # already reserves the legend space, so no one-off margin is set.
     )
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
     figure.update_yaxes(title={"text": "category (full path)"})
@@ -2093,7 +2150,16 @@ def _score_quality_scatter_figure(view: RunReportView) -> go.Figure:
             y=ys,
             mode="markers",
             text=labels,
-            marker={"size": sizes, "color": _RAMP_HEXES[0]},
+            # Chunk 37 §5.3 (D37-5/6): the shared green circle marker. The
+            # sample-fraction *size* scale is kept (it encodes the value); the
+            # colour, circle symbol, and borderless styling now match the other
+            # bottom charts. ``_GREEN_CIRCLE_MARKER`` carries no ``line`` key;
+            # ``dict()`` copies it and only ``size`` is overridden, so no default
+            # white border is reintroduced.
+            marker={
+                **_GREEN_CIRCLE_MARKER,
+                "size": sizes,
+            },
             customdata=customdata,
             hovertemplate=(
                 "%{text}<br>category: %{customdata[0]}<br>composite score %{x}<br>"
@@ -2132,7 +2198,9 @@ def _demand_competition_scatter_figure(view: RunReportView) -> go.Figure:
             y=ys,
             mode="markers",
             text=labels,
-            marker={"size": 10, "color": _RAMP_HEXES[0]},
+            # Chunk 37 §5.3 (D37-5/6): the shared green circle marker, borderless,
+            # identical to the other two bottom charts.
+            marker=dict(_GREEN_CIRCLE_MARKER),
             customdata=customdata,
             hovertemplate=(
                 "%{text}<br>category: %{customdata[0]}<br>Demand %{x}<br>"
@@ -2179,20 +2247,52 @@ def _figure_payload(figure: go.Figure) -> dict:
     height (:data:`_DASHBOARD_CHART_HEIGHT`) from the ``dcc.Graph`` container;
     forcing ``autosize=False`` would pin the SVG to Plotly's ~450px fallback and
     leave an empty band in the taller card.
+
+    Chunk 37 §5.1 (D37-1/2/3): Plotly's ``automargin`` may resolve the bottom
+    margin *larger* than the figure's explicit ``margin.b`` when a rotated tick
+    label or the x-axis title needs more room; when it does, that chart's plot
+    area shrinks and its plot bottom no longer matches the row. Resolving the
+    margin here to the maximum automargin demand (``xaxis._automargin`` paired
+    with ``xaxis._offset``) raises the band for that chart, so a longer label
+    grows the band instead of being clipped. The two private resolvers exist
+    only after Plotly has laid the figure out (e.g. it was displayed); an
+    unlaid figure keeps the shared :data:`_FIGURE_BOTTOM_BAND`, which is already
+    the worst-case need, so the result is deterministic either way. Pure: reads
+    only the built figure and :data:`_FIGURE_BOTTOM_BAND`; no clock, no I/O.
     """
     figure.update_layout(template=None)
-    return figure.to_plotly_json()
+    layout = figure.to_plotly_json()["layout"]
+    bottom = _FIGURE_BOTTOM_BAND
+    for axis_name in ("xaxis", "yaxis"):
+        axis = figure.layout[axis_name]
+        if axis is None:
+            continue
+        automargin = getattr(axis, "_automargin", None)
+        offset = getattr(axis, "_offset", None)
+        if automargin is not None and offset is not None and automargin > 0:
+            bottom = max(bottom, int(automargin + offset))
+    layout["margin"] = {**layout.get("margin", {}), "b": bottom}
+    return {"data": figure.to_plotly_json()["data"], "layout": layout}
 
 
 def _chart_card(chart_key: str, view: RunReportView) -> "dash_html.Div":
-    """Return one chart card: title, one-line caption, and the fixed-id graph."""
+    """Return one chart card: title, one-line caption, and the fixed-id graph.
+
+    Chunk 37 §5.1 (D37-1/2/3): the card uses an explicit three-row grid
+    (``1fr`` title, ``1fr`` caption, ``auto`` plot). Every card in a row shares
+    the grid row's height, so the title/caption bands stretch to the tallest
+    pair, and the plot row consumes the remainder once the shared bottom band
+    (:data:`_FIGURE_BOTTOM_BAND`) is reserved in every figure. The equal band is
+    what makes every chart *plot* bottom land on one baseline across a row, not
+    just the card boxes.
+    """
     div_id = _DASHBOARD_CHART_ID[chart_key]
     component_id = dict(
         (key, component_id) for component_id, key in _DASHBOARD_COMPONENT_CHART_IDS
     )[chart_key]
     return dash_html.Section(
         [
-            dash_html.H3(_DASHBOARD_CHART_TITLES[chart_key]),
+            dash_html.H3(_DASHBOARD_CHART_TITLES[chart_key], className="chart-title"),
             dash_html.P(
                 _DASHBOARD_CHART_CAPTIONS[chart_key],
                 className="chart-caption",

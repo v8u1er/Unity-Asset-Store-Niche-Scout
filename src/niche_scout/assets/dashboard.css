@@ -73,10 +73,20 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  /* Chunk 37 §5.1 (D37-4): the card padding rule. One value for every card
+   * (KPI tile, chart card, table, detail/formula panel, footnote): 16px on all
+   * four sides, so no card starts its content at a different inset. */
+  --card-padding: var(--space-4);
   --radius: 8px;
   /* Chunk 36 §5.2: raised from 360px to ~1.5x so the full single-line
    * category tick names fit the chart axes without overlap. */
   --chart-height: 540px;
+  /* Chunk 37 §5.1 (D37-1/2/3): the shared bottom band (figure ``margin.b``)
+   * that every chart's axes reserve for the x-axis title and an optional
+   * horizontal legend, so the plot bottom of every chart in a row lands on one
+   * baseline. Its value mirrors ``report._FIGURE_BOTTOM_BAND``; the two stay in
+   * sync. */
+  --chart-legend-band: 130px;
   --focus-ring: 2px solid var(--primary);
   --focus-offset: 2px;
   --z-header: 2;
@@ -327,6 +337,13 @@ details.heuristic > p {
   gap: var(--space-2);
 }
 
+/* Chunk 37 §5.1 (D37-1): every row of the chart grid is one equal-height band,
+ * so all card boxes in a row share a top and a bottom. ``grid-auto-rows: 1fr``
+ * plus the stretched default alignment is the Scandinavian-grid rule. */
+.chart-grid {
+  grid-auto-rows: 1fr;
+}
+
 .kpi-strip {
   margin-block: var(--space-5);
   scroll-margin-top: var(--nav-topbar-height);
@@ -338,7 +355,7 @@ details.heuristic > p {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-3);
+  padding: var(--card-padding);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -377,12 +394,26 @@ details.heuristic > p {
 .chart-card {
   grid-column: span 12;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-3);
+  /* Chunk 37 §5.1 (D37-1/2/3): a three-row grid (title ``1fr``, caption
+   * ``1fr``, plot ``auto``) so every card in a row stretches its title and
+   * caption bands to the tallest pair and the plot row consumes the remainder.
+   * With ``grid-auto-rows: 1fr`` on ``.chart-grid`` the cards are equal height
+   * and their bottom padding is the shared ``--card-padding``. */
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  min-block-size: 0;
+  /* Chunk 37 §5.1 (D37-1/2/3): this card's row-template guarantees the
+   * ``.chart-grid`` row is as tall as its tallest card, and the shared graph
+   * block-end margin (below) reserves the bottom legend band inside each so no
+   * chart's axes reach lower than another's. */
+  padding: var(--card-padding);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.chart-card .chart-title {
+  margin-block-start: 0;
 }
 
 .chart-card .js-plotly-plot,
@@ -398,6 +429,13 @@ details.heuristic > p {
   max-inline-size: var(--measure);
   margin-block: 0 var(--space-2);
 }
+
+/* Chunk 37 §5.1 (D37-1/2/3): the legend band is reserved inside the figure
+   itself (``report._FIGURE_BOTTOM_BAND``, mirrored by the
+   ``--chart-legend-band`` token above): the two multi-series figures draw their
+   legend at the container bottom of that band, and every other figure keeps the
+   band empty, so no chart's axes reach lower than another's and all plot
+   bottoms in a row align. */
 
 /* ----------------------------------------------------------- tables ----- */
 
@@ -614,7 +652,7 @@ table.strata {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: var(--space-3);
+  padding: var(--card-padding);
 }
 
 .detail-panel {

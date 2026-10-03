@@ -1531,7 +1531,7 @@ def test_dashboard_charts_carry_explanations_and_human_labels(tmp_path):
 
 @pytest.mark.lreq("LREQ-RPT-020")
 def test_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
-    """A measured ``0.0`` is a bar labelled ``0``; a ``None`` is labelled ``n/a``."""
+    """A measured ``0.0`` is a bar labelled ``0.00``; a ``None`` is labelled ``n/a``."""
     zero_row = rf.category_score_record(
         rf.CATEGORY_ALPHA,
         market_opportunity_score=0.0,
@@ -1546,7 +1546,8 @@ def test_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
         view = report.load_run_report_view(repository, rf.RUN_ID)
         bar = _graph_for(report.build_dashboard_layout(view), "niche-scout-score-bar")
         assert bar["data"][0]["x"] == [0.0]
-        assert bar["data"][0]["text"] == ["0"]
+        # Chunk 37 §5.4 (D37-9): data labels carry exactly two decimals.
+        assert bar["data"][0]["text"] == ["0.00"]
         assert _NA_MARKER not in bar["data"][0]["text"]
     finally:
         repository.close()
@@ -1570,7 +1571,7 @@ def test_dashboard_distinguishes_null_from_explicit_zero(tmp_path):
         view2 = report.load_run_report_view(repository2, "run-unavailable")
         bar2 = _graph_for(report.build_dashboard_layout(view2), "niche-scout-score-bar")
         assert bar2["data"][0]["text"] == [_NA_MARKER]
-        assert bar2["data"][0]["text"] != ["0"]
+        assert bar2["data"][0]["text"] != ["0.00"]
     finally:
         repository2.close()
 
