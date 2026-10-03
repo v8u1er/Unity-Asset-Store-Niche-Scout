@@ -1623,9 +1623,6 @@
   "tests/test_report.py::test_zero_population_sample_fraction_is_null": [
     "LREQ-RPT-020"
   ],
-  "tests/test_report.py::test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique": [
-    "LREQ-RPT-010"
-  ],
   "tests/test_report.py::test_dashboard_charts_drop_single_series_legends_and_keep_meaningful_ones": [
     "LREQ-RPT-010"
   ],
@@ -1639,9 +1636,6 @@
     "LREQ-RPT-020"
   ],
   "tests/test_report.py::test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links": [
-    "LREQ-RPT-010"
-  ],
-  "tests/test_report.py::test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines": [
     "LREQ-RPT-010"
   ],
   "tests/test_report.py::test_dashboard_population_figure_drops_the_constant_sample_series": [

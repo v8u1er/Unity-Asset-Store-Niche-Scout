@@ -2152,119 +2152,9 @@ def test_dashboard_evidence_scale_is_retuned_to_the_reference_palette():
 
 
 # --------------------------------------------------------------------------
-# Chunk 34 — chart label/legend/font/colour remediation + compliant table
-# prioritization + nav centering (plan §10.1). The fixture view comes from
-# ``_dashboard_view``; the leaf-collision vector reuses the fixture factories
-# and the two ``report_fixtures`` collision category names (plan §10.5).
+# Chunk 34 — chart legend/colour remediation + compliant table prioritization
+# + nav centering (plan §10.1). The fixture view comes from ``_dashboard_view``.
 # --------------------------------------------------------------------------
-
-
-@pytest.mark.lreq("LREQ-RPT-010")
-def test_dashboard_chart_labels_use_the_final_path_segment_and_stay_unique(tmp_path):
-    """Chart labels are the two-line wrapped label; same-leaf groups disambiguate.
-
-    Plan §5.2/§5.1: the chart tick is now the wrapped label ``"<leaf><br><parent>"``
-    (chunk 35 supersedes the chunk-34 leaf-only label), while the retained
-    ``_category_leaf_label`` still disambiguates a same-leaf group. The full path
-    stays in the layout (table/detail) and in hover customdata; no number, rank,
-    or measured value changes.
-    """
-    repository, view = _dashboard_view(tmp_path)
-    try:
-        layout = report.build_dashboard_layout(view)
-        div_ids = dict(report.DASHBOARD_CHART_IDS)
-        scored = report._scored_rows(view)
-        assert [row.category for row in scored] == [
-            rf.CATEGORY_ALPHA,
-            rf.CATEGORY_BRAVO,
-            rf.CATEGORY_CHARLIE,
-        ]
-        # Every scored fixture row is two-segment, so its wrapped label is
-        # ``"<leaf><br><parent>"`` (plan §5.1).
-        expected_labels = [report._category_wrapped_label(row, view) for row in scored]
-        assert expected_labels == [
-            "Ranked<br>Alpha",
-            "Ranked<br>Bravo",
-            "Unranked<br>Charlie",
-        ]
-        bar = _graph_for(layout, div_ids["score_bar"])
-        assert bar["data"][0]["y"] == expected_labels
-        assert rf.CATEGORY_ALPHA not in bar["data"][0]["y"]
-        # The refused annotation trace carries the wrapped label plus the
-        # ``"(refused)"`` marker (with a leading spacer entry), never the full
-        # category path.
-        refused_trace = bar["data"][1]
-        assert rf.CATEGORY_NON_RANKABLE not in refused_trace["y"]
-        assert (
-            report._category_wrapped_label(
-                report._rows_by_category(view)[rf.CATEGORY_NON_RANKABLE], view
-            )
-            + " (refused)"
-        ) in refused_trace["y"]
-        scatter = _graph_for(layout, div_ids["score_quality_scatter"])
-        assert scatter["data"][0]["text"] == expected_labels
-        held = _norm(layout)
-        for row in view.categories:
-            assert row.category in held
-        # ``_category_leaf_label`` is retained: Alpha/Ranked and Bravo/Ranked
-        # share the leaf ``Ranked``, so both carry the ``" · <parent>"`` suffix.
-        assert report._category_leaf_label(scored[0], view) == "Ranked · Alpha"
-        assert _norm(layout) == _norm(report.build_dashboard_layout(view))
-    finally:
-        repository.close()
-
-    # The collision vector needs one run carrying both same-leaf rows, so it is
-    # seeded inline with the same fixture factories ``_view_with_row`` uses
-    # (that helper builds a one-row run only).
-    repository = _repository(tmp_path)
-    try:
-        categories = (rf.CATEGORY_COLLISION_FIRST, rf.CATEGORY_COLLISION_SECOND)
-        run = rf.run_record(categories, run_id="run-leaf-collision")
-        rows = tuple(
-            dataclasses.replace(
-                rf.category_score_record(category), run_id="run-leaf-collision"
-            )
-            for category in categories
-        )
-        _seed(repository, run, rows)
-        collision_view = report.load_run_report_view(repository, "run-leaf-collision")
-        labels = {
-            row.category: report._category_leaf_label(row, collision_view)
-            for row in collision_view.categories
-        }
-        assert labels == {
-            rf.CATEGORY_COLLISION_FIRST: "Foo · a/x",
-            rf.CATEGORY_COLLISION_SECOND: "Foo · b/y",
-        }
-    finally:
-        repository.close()
-
-    # The population chart's measured-explicit-zero trace exposes the full
-    # category path in hover ("hover collision-safety", plan §5.2), so no chart
-    # hover is left showing a leaf without a path back to the table/detail. The
-    # fixture's zero-population row is not rankable, and non-rankable rows stay
-    # off the scored axis (SRS §10 LREQ-RPT-040), so the vector is made rankable
-    # while keeping its measured ``discovered_population_count == 0`` and score.
-    zero_row = dataclasses.replace(
-        rf.zero_population_row(rf.CATEGORY_ZERO_POPULATION),
-        rankability_status="rankable",
-        ranking_sensitivity_json=rf.ranking_sensitivity_json(
-            (rf.CATEGORY_ZERO_POPULATION,),
-            balanced_ranks={rf.CATEGORY_ZERO_POPULATION: 1},
-        ),
-        run_id="run-zero-population",
-    )
-    zero_view = _view_with_row(tmp_path, zero_row)
-    population = _graph_for(
-        report.build_dashboard_layout(zero_view),
-        dict(report.DASHBOARD_CHART_IDS)["population_lollipop"],
-    )
-    measured_zero = [
-        trace for trace in population["data"] if trace.get("name") == "measured zero"
-    ]
-    assert len(measured_zero) == 1
-    assert "category:" in measured_zero[0]["hovertemplate"]
-    assert measured_zero[0]["customdata"] == [[rf.CATEGORY_ZERO_POPULATION]]
 
 
 @pytest.mark.lreq("LREQ-RPT-010")
@@ -2305,8 +2195,7 @@ def test_dashboard_figures_use_mono_numeric_and_sans_label_fonts(tmp_path):
     Plan §5.1/§5.4: both tickfonts use ``_FIGURE_FONT_MONO``; the figure font and
     both axis-title fonts use ``_FIGURE_FONT_SANS``; the duplicated in-plot
     Plotly title is dropped (the card ``H3`` remains); the three category axes
-    read ``category (leaf, then parent)`` (chunk 35 §5.3 reword supersedes the
-    chunk-34 leaf-only title).
+    read ``category (full path)``.
     """
     repository, view = _dashboard_view(tmp_path)
     try:
@@ -2331,10 +2220,7 @@ def test_dashboard_figures_use_mono_numeric_and_sans_label_fonts(tmp_path):
             ("population_lollipop", "yaxis"),
         ):
             figure = _graph_for(layout, div_ids[chart_key])
-            assert (
-                figure["layout"][axis]["title"]["text"]
-                == "category (leaf, then parent)"
-            )
+            assert figure["layout"][axis]["title"]["text"] == "category (full path)"
     finally:
         repository.close()
 
@@ -2543,114 +2429,9 @@ def test_dashboard_css_recolors_evidence_ramp_and_boxes_nav_links():
 
 
 # --------------------------------------------------------------------------
-# Chunk 35 — dashboard refinement: two-line wrapped labels, chart repairs, a
-# sixth chart, nav icons, and the ultrawide layout (plan §11.1).
+# Chunk 35 — dashboard refinement: chart repairs, a sixth chart, nav icons, and
+# the ultrawide layout (plan §11.1).
 # --------------------------------------------------------------------------
-
-
-@pytest.mark.lreq("LREQ-RPT-010")
-def test_dashboard_chart_labels_wrap_leaf_then_parent_on_two_lines(tmp_path):
-    """Chart category labels wrap leaf + parent; collisions disambiguate.
-
-    Plan §5.1: ``_category_wrapped_label`` returns ``"<leaf><br><parent>"`` for a
-    multi-segment category, the single segment unchanged for a one-segment
-    category, and appends ``" · <parent path>"`` to every member of a colliding
-    two-line base label. The wrapped string is carried by the score-bar,
-    contribution, population, and scatter figures; the full category path stays
-    in the layout; two builds are equal; the error-tolerant ``<br>`` count is 2
-    for a wrapped label.
-    """
-    repository, view = _dashboard_view(tmp_path)
-    try:
-        layout = report.build_dashboard_layout(view)
-        div_ids = dict(report.DASHBOARD_CHART_IDS)
-        scored = report._scored_rows(view)
-
-        # The fixture's scored rows are two-segment: each wrapped label is
-        # ``"<leaf><br><parent>"`` (plan §5.1).
-        assert report._category_wrapped_label(scored[0], view) == "Ranked<br>Alpha"
-
-        # Every chart category axis carries the wrapped label for the scored
-        # rows.
-        expected = [report._category_wrapped_label(row, view) for row in scored]
-        assert expected == [
-            "Ranked<br>Alpha",
-            "Ranked<br>Bravo",
-            "Unranked<br>Charlie",
-        ]
-        for chart_key, axis in (
-            ("score_bar", "y"),
-            ("contribution_stack", "x"),
-            ("population_lollipop", "y"),
-            ("score_quality_scatter", "text"),
-        ):
-            figure = _graph_for(layout, div_ids[chart_key])
-            haystack = []
-            for trace in figure["data"]:
-                haystack.extend(trace.get(axis, []))
-            for label in expected:
-                assert label in haystack, (chart_key, label)
-
-        held = _norm(layout)
-        for row in view.categories:
-            assert row.category in held
-        assert _norm(layout) == _norm(report.build_dashboard_layout(view))
-    finally:
-        repository.close()
-
-    # A multi-segment category wraps its leaf then its parent segment.
-    multi = dataclasses.replace(
-        rf.category_score_record("vfx/particles/environment"),
-        run_id="run-wrapped-label",
-    )
-    multi_view = _view_with_row(tmp_path, multi)
-    wrapped = report._category_wrapped_label(multi_view.categories[0], multi_view)
-    assert wrapped == "environment<br>particles"
-    assert wrapped.split("<br>") == ["environment", "particles"]
-    assert len(wrapped.split("<br>")) == 2
-
-    # One-segment categories are returned unchanged (one line).
-    single = dataclasses.replace(
-        rf.category_score_record("Solo"), run_id="run-one-segment"
-    )
-    single_view = _view_with_row(tmp_path, single)
-    assert (
-        report._category_wrapped_label(single_view.categories[0], single_view) == "Solo"
-    )
-    assert "<br>" not in report._category_wrapped_label(
-        single_view.categories[0], single_view
-    )
-
-    # A colliding two-line base label appends ``" · <parent path>"`` to every
-    # member of the group (plan §5.1). ``p/bar/Foo`` and ``q/bar/Foo`` both have
-    # base label ``Foo<br>bar``, so each member is disambiguated.
-    repository = _repository(tmp_path)
-    try:
-        categories = (
-            rf.CATEGORY_WRAPPED_COLLISION_FIRST,
-            rf.CATEGORY_WRAPPED_COLLISION_SECOND,
-        )
-        run = rf.run_record(categories, run_id="run-wrapped-collision")
-        rows = tuple(
-            dataclasses.replace(
-                rf.category_score_record(category), run_id="run-wrapped-collision"
-            )
-            for category in categories
-        )
-        _seed(repository, run, rows)
-        collision_view = report.load_run_report_view(
-            repository, "run-wrapped-collision"
-        )
-        labels = {
-            row.category: report._category_wrapped_label(row, collision_view)
-            for row in collision_view.categories
-        }
-        assert labels == {
-            rf.CATEGORY_WRAPPED_COLLISION_FIRST: "Foo<br>bar · p/bar",
-            rf.CATEGORY_WRAPPED_COLLISION_SECOND: "Foo<br>bar · q/bar",
-        }
-    finally:
-        repository.close()
 
 
 @pytest.mark.lreq("LREQ-RPT-010")

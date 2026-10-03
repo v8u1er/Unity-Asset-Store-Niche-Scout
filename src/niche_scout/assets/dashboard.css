@@ -74,7 +74,9 @@
   --space-5: 24px;
   --space-6: 32px;
   --radius: 8px;
-  --chart-height: 360px;
+  /* Chunk 36 §5.2: raised from 360px to ~1.5x so the full single-line
+   * category tick names fit the chart axes without overlap. */
+  --chart-height: 540px;
   --focus-ring: 2px solid var(--primary);
   --focus-offset: 2px;
   --z-header: 2;
@@ -678,7 +680,14 @@ details > summary {
   font-size: var(--font-size-small);
 }
 
-/* ------------------------------------------------ dropdown (react-select) -- */
+/* ------------------------------------------------ dropdown (Dash 3.x native) --
+ * Chunk 36 root cause: Dash 3.x replaced react-select with a native dropdown
+ * rendered as ``.dash-dropdown-wrapper`` containing a ``<button
+ * class="dash-dropdown">`` trigger plus a ``.dash-dropdown-content`` listbox.
+ * The retired react-select rules matched nothing, so the trigger button
+ * kept the browser's default white background. These rules style the real
+ * markup with the reference tokens (skill styles.csv dark-mode-oled: no white
+ * surfaces, visible focus, text contrast >=4.5:1). */
 
 .category-selector label {
   display: block;
@@ -690,67 +699,113 @@ details > summary {
   letter-spacing: 0.04em;
 }
 
-.Select,
-[class*="dropdown"] {
+.category-selector [class*="dash-dropdown"] {
   color: var(--fg);
   font-family: var(--font-sans);
 }
 
-.Select-control {
+.dash-dropdown-wrapper {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dash-dropdown {
+  width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  text-align: start;
+  cursor: pointer;
 }
 
-.Select.is-focused .Select-control,
-.Select-control.is-focused,
-.is-focused > .Select-control {
+.dash-dropdown:hover {
   border-color: var(--primary);
-  box-shadow: 0 0 0 var(--focus-offset) var(--primary);
 }
 
-.Select-value,
-.Select-value-label {
+.dash-dropdown:focus-visible,
+.dash-dropdown-focus-target:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.dash-dropdown-value,
+.dash-dropdown-value-item {
   color: var(--fg);
 }
 
-.Select-placeholder {
+.dash-dropdown-trigger-icon {
   color: var(--muted-fg);
 }
 
-.Select-input > input {
-  color: var(--fg);
-}
-
-.Select-arrow {
-  border-color: var(--muted-fg) transparent transparent;
-}
-
-.Select-menu-outer {
+.dash-dropdown-content {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--fg);
 }
 
-.Select-menu {
+/* The search row is a nested Dash grid whose default surface is the browser
+ * white; the panel and its search field must stay on the dark reference
+ * palette (no white surface in a dark console). */
+.dash-dropdown-search-container,
+.dash-dropdown-grid-container {
   background: var(--surface-2);
-}
-
-.Select-option {
-  background: var(--surface-2);
+  border-color: var(--border);
   color: var(--fg);
 }
 
-.Select-option.is-focused {
+.dash-dropdown-search,
+.dash-dropdown-search::placeholder {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.dash-dropdown-search::placeholder {
+  color: var(--muted-fg);
+}
+
+.dash-dropdown-search:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* Dash 3.x injects its own palette via high-specificity rules
+ * (``.dash-options-list-option:not(:has(input[disabled])):hover`` sets
+ * ``--Dash-Fill-Interactive-Strong``); the reference tokens must stay
+ * authoritative, so colour is set with ``!important`` here, mirroring the
+ * DataTable guard above. */
+.dash-dropdown-content [role="option"],
+.dash-dropdown-content .dash-dropdown-option,
+.dash-dropdown-content .dash-options-list-option {
+  background: var(--surface-2);
+  color: var(--fg) !important;
+}
+
+/* Dash wraps the visible label in nested spans that carry their own default
+ * accent colour; force every text node in the row to inherit the row colour so
+ * no default (purple/white) leaks through on any state. */
+.dash-dropdown-content [role="option"] *,
+.dash-dropdown-content .dash-options-list-option *,
+.dash-dropdown-content .dash-options-list-option-text {
+  color: inherit !important;
+}
+
+.dash-dropdown-content [role="option"]:hover,
+.dash-dropdown-content .dash-dropdown-option:hover,
+.dash-dropdown-content .dash-options-list-option:hover {
   background: var(--border);
-  color: var(--fg);
+  color: var(--fg) !important;
 }
 
-.Select-option.is-selected {
+.dash-dropdown-content [role="option"][aria-selected="true"],
+.dash-dropdown-content .dash-dropdown-option.is-selected,
+.dash-dropdown-content .dash-options-list-option.selected {
   background: var(--primary);
-  color: var(--bg);
+  color: var(--bg) !important;
 }
 
 /* --------------------------------------------------------- accessibility -- */
@@ -760,7 +815,7 @@ a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 .dash-cell:focus-visible,
-.Select-control:focus-visible,
+.dash-dropdown:focus-visible,
 .nav-link:focus-visible,
 .skip-link:focus-visible {
   outline: var(--focus-ring);

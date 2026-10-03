@@ -264,8 +264,11 @@ _REFUSED_ANNOTATION_X: float = 0.0
 #: category name).
 _POLICY_BUMP_MAX_SERIES: int = 10
 
-#: Fixed pixel height for every Dash chart row.
-_DASHBOARD_CHART_HEIGHT: int = 360
+#: Fixed pixel height for every Dash chart row. Raised from 360 to 540 (chunk 36
+#: §5.1) so the full single-line category names fit on the y-axis without tick
+#: overlap while the plot area stays readable; the figure is told to fill this
+#: box via ``autosize`` so Plotly does not fall back to its ~450px default.
+_DASHBOARD_CHART_HEIGHT: int = 540
 
 #: Package-relative assets directory name (Dash default; made explicit at build
 #: time). The stylesheet ships in the built package through
@@ -1408,40 +1411,22 @@ def _category_leaf_label(row: CategoryReportRow, view: RunReportView) -> str:
 
 
 def _category_wrapped_label(row: CategoryReportRow, view: RunReportView) -> str:
-    """Return the two-line chart label for ``row``: leaf plus its parent segment.
+    """Return the full single-line chart label for ``row``: its whole category path.
 
-    The returned string is a Plotly multi-line tick label: line 1 is the final
-    ``/``-segment (the leaf), line 2 is the immediately preceding segment, joined
-    by ``"<br>"``. ``"vfx/particles/environment"`` -> ``"environment<br>particles"``.
-    A category with one segment is returned unchanged (one line). A category with
-    exactly two segments -> ``"leaf<br>first-segment"``.
+    ``"vfx/particles/environment"`` -> ``"vfx/particles/environment"``. The full
+    path is unique per category, so no two chart labels can collide and no
+    disambiguation suffix is needed; the previous two-line ``"<leaf><br><parent>"``
+    form collided whenever two rows shared the same leaf/parent pair (e.g.
+    ``particles<br>vfx``). A category with one segment is returned unchanged.
 
-    When two or more rows in ``view`` share the same *two-line* label, the label
-    is disambiguated deterministically by appending ``" · <full parent path>"`` to
-    line 2, so no two visible ticks collide; the suffix is applied to every member
-    of a colliding group, never to a non-colliding row. Deterministic: counts are
-    taken over ``view.categories`` (an ordered tuple); no set/dict iteration; no
-    clock, no I/O. Never changes a number, rank, or measured value. The full path
-    stays in the primary table cell, the column guide, the selector, and the
-    category detail heading; hover ``customdata`` also carries the full path.
+    Deterministic and pure: the label is a pure function of ``row.category``; the
+    ``view`` argument is retained only so call sites keep a uniform signature (no
+    set/dict iteration, no clock, no I/O). Never changes a number, rank, or
+    measured value. The full path is also in the primary table cell, the column
+    guide, the selector, the category detail heading, and the hover ``customdata``.
     """
-    segments = row.category.split("/")
-    if len(segments) == 1:
-        return row.category
-    leaf = segments[-1]
-    parent = segments[-2]
-    base = f"{leaf}<br>{parent}"
-    counts: dict[str, int] = {}
-    for candidate in view.categories:
-        candidate_segments = candidate.category.split("/")
-        if len(candidate_segments) == 1:
-            candidate_base = candidate.category
-        else:
-            candidate_base = f"{candidate_segments[-1]}<br>{candidate_segments[-2]}"
-        counts[candidate_base] = counts.get(candidate_base, 0) + 1
-    if counts[base] > 1:
-        return f"{leaf}<br>{parent} · {row.category.rsplit('/', 1)[0]}"
-    return base
+    _ = view
+    return row.category
 
 
 def _component_contributions(
@@ -1581,7 +1566,10 @@ def _base_layout() -> dict:
         "paper_bgcolor": "#112d3b",
         "plot_bgcolor": "#112d3b",
         "font": {"color": "#e6f0f4", "size": 12, "family": _FIGURE_FONT_SANS},
-        "margin": {"l": 8, "r": 56, "t": 48, "b": 40},
+        # Chunk 36 §5.1: the audited fixed margins. ``t:12`` removes the empty
+        # band the card ``H3`` already fills, ``r:56`` leaves room for the
+        # outside bar value labels, and ``b:40`` holds the x-axis title.
+        "margin": {"l": 8, "r": 56, "t": 12, "b": 40},
         "showlegend": True,
         "legend": {
             "bgcolor": "#0c2432",
@@ -1592,7 +1580,12 @@ def _base_layout() -> dict:
             "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
-            "tickfont": {"family": _FIGURE_FONT_MONO, "color": "#e6f0f4"},
+            # Chunk 36 §5.3: larger tick text (~11 as the audited target).
+            "tickfont": {
+                "family": _FIGURE_FONT_MONO,
+                "color": "#e6f0f4",
+                "size": 11,
+            },
             "title": {"font": {"family": _FIGURE_FONT_SANS, "color": "#e6f0f4"}},
         },
         "yaxis": {
@@ -1600,7 +1593,11 @@ def _base_layout() -> dict:
             "zerolinecolor": "#1f394e",
             "automargin": True,
             "title_standoff": 16,
-            "tickfont": {"family": _FIGURE_FONT_MONO, "color": "#e6f0f4"},
+            "tickfont": {
+                "family": _FIGURE_FONT_MONO,
+                "color": "#e6f0f4",
+                "size": 11,
+            },
             "title": {"font": {"family": _FIGURE_FONT_SANS, "color": "#e6f0f4"}},
         },
     }
@@ -1795,6 +1792,8 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
             orientation="h",
             text=texts,
             textposition="outside",
+            textfont={"family": _FIGURE_FONT_MONO, "size": 11},
+            cliponaxis=False,
             marker={"color": colours},
             customdata=customdata,
             hovertemplate=(
@@ -1823,9 +1822,7 @@ def _score_bar_figure(view: RunReportView) -> go.Figure:
     figure.update_layout(**_base_layout())
     figure.update_layout(showlegend=False)
     figure.update_xaxes(title={"text": "composite score"})
-    figure.update_yaxes(
-        autorange="reversed", title={"text": "category (leaf, then parent)"}
-    )
+    figure.update_yaxes(autorange="reversed", title={"text": "category (full path)"})
     return figure
 
 
@@ -1855,17 +1852,23 @@ def _contribution_figure(view: RunReportView) -> go.Figure:
     figure.update_layout(**_base_layout())
     figure.update_layout(
         barmode="stack",
+        # Chunk 36 §5.6: the legend is an explicit horizontal band anchored at
+        # the container bottom (``yref: "container"``), below the rotated
+        # category tick labels and the x-axis title, so it clears the bars and
+        # never overlaps the labels regardless of how many the x-axis carries.
         legend={
             "orientation": "h",
-            "yanchor": "top",
-            "y": -0.28,
+            "yref": "container",
+            "yanchor": "bottom",
+            "y": 0.0,
             "xanchor": "center",
             "x": 0.5,
+            "bgcolor": "#0c2432",
             "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO, "size": 11},
         },
-        margin={"l": 8, "r": 56, "t": 48, "b": 64},
+        margin={"l": 8, "r": 56, "t": 12, "b": 120},
     )
-    figure.update_xaxes(title={"text": "category (leaf, then parent)"})
+    figure.update_xaxes(title={"text": "category (full path)"})
     figure.update_yaxes(title={"text": "weighted contribution to composite score"})
     return figure
 
@@ -1923,8 +1926,14 @@ def _policy_bump_figure(view: RunReportView) -> go.Figure:
                 mode="lines+markers+text",
                 name=label,
                 legendgroup=label,
+                # Chunk 36 §5.7: label only the first point (the balanced-rank
+                # endpoint); per-point labels overlapped each other and the
+                # neighbouring series. ``cliponaxis=False`` keeps the edge label
+                # visible; ``connectgaps`` stays false and colours stay ramped.
                 text=[label, "", ""],
                 textposition="middle right",
+                textfont={"family": _FIGURE_FONT_MONO, "size": 11},
+                cliponaxis=False,
                 line={"color": colour},
                 marker={"color": colour},
                 connectgaps=False,
@@ -1986,11 +1995,11 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
         elif value == 0:
             # Off the log axis: a distinct explicit-zero marker labelled ``0``.
             populations.append(None)
-            annotations.append("0")
+            annotations.append("")
             zero_x.append(_POPULATION_EXPLICIT_ZERO_X)
         else:
             populations.append(float(value))
-            annotations.append(format(value, "d"))
+            annotations.append("")
             zero_x.append(None)
     customdata = [[row.category] for row in scored]
     figure = go.Figure()
@@ -2002,8 +2011,11 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
             name="discovered population",
             marker={"size": 12, "color": _RAMP_HEXES[0]},
             text=annotations,
+            textposition="middle right",
             customdata=customdata,
-            hovertemplate="%{y}<br>category: %{customdata[0]}<extra></extra>",
+            hovertemplate=(
+                "%{y}: %{text}<br>category: %{customdata[0]}<extra></extra>"
+            ),
         )
     )
     figure.add_trace(
@@ -2018,7 +2030,10 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
                 "symbol": "diamond-open",
                 "line": {"width": 2, "color": "#e27882"},
             },
-            text=["" if value is None else "0" for value in zero_x],
+            # Chunk 36 §5.8: the explicit-zero value stays in the hover and the
+            # diamond marker stays distinct; adjacent per-point ``0`` texts
+            # collided on the dense log axis, so no per-point text is drawn.
+            text=["" for _ in zero_x],
             textposition="middle right",
             customdata=customdata,
             hovertemplate=(
@@ -2028,16 +2043,22 @@ def _population_lollipop_figure(view: RunReportView) -> go.Figure:
     )
     figure.update_layout(**_base_layout())
     figure.update_layout(
+        # Chunk 36 §5.8: the two-trace legend sits at the container bottom,
+        # clear of the full-path tick labels.
         legend={
             "orientation": "h",
-            "yanchor": "top",
-            "y": -0.28,
+            "yref": "container",
+            "yanchor": "bottom",
+            "y": 0.0,
             "xanchor": "center",
             "x": 0.5,
-        }
+            "bgcolor": "#0c2432",
+            "font": {"color": "#e6f0f4", "family": _FIGURE_FONT_MONO, "size": 11},
+        },
+        margin={"l": 8, "r": 56, "t": 12, "b": 64},
     )
     figure.update_xaxes(type="log", title={"text": "count (log scale)"})
-    figure.update_yaxes(title={"text": "category (leaf, then parent)"})
+    figure.update_yaxes(title={"text": "category (full path)"})
     return figure
 
 
@@ -2154,6 +2175,10 @@ def _figure_payload(figure: go.Figure) -> dict:
     ``template=None`` keeps the emitted figure to the figure itself, so two
     calls with the same view compare equal after normalization; the figure is
     converted to its plain ``dict`` form so the Dash component tree serializes.
+    The figure keeps Plotly's ``autosize`` default so it reads the fixed card
+    height (:data:`_DASHBOARD_CHART_HEIGHT`) from the ``dcc.Graph`` container;
+    forcing ``autosize=False`` would pin the SVG to Plotly's ~450px fallback and
+    leave an empty band in the taller card.
     """
     figure.update_layout(template=None)
     return figure.to_plotly_json()
@@ -2176,6 +2201,8 @@ def _chart_card(chart_key: str, view: RunReportView) -> "dash_html.Div":
                 id=div_id,
                 figure=_figure_payload(_chart_figure(chart_key, view)),
                 config={"displayModeBar": False, "responsive": True},
+                # Chunk 36 §5.1: the figure fills the raised card box; the
+                # dcc.Graph container height drives Plotly's responsive resize.
                 style={"height": f"{_DASHBOARD_CHART_HEIGHT}px"},
             ),
         ],
