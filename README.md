@@ -299,6 +299,10 @@ Open that address in your browser. The dashboard is served only to your own comp
 
 The dashboard gives you a ranked score bar, a breakdown of each category's four signals, a comparison of ranks under the three diagnostic scoring policies, the discovered catalog sizes, and a detail panel for every category. Every value shown comes straight from the saved run — Niche Scout does not recompute anything while you browse.
 
+![Niche Scout dashboard showing the composite score by rank and the weighted component contributions](images/dash_dual_graph.png)
+
+The screenshot shows two of the dashboard charts: **Composite score by rank** (refused categories are listed at the bottom as `n/a`) and **Weighted component contributions**, which stacks each category's Demand, Competition, Recent supply, and Quality shares.
+
 **To view an older run**, find its run ID (Niche Scout prints it in the terminal at the end of a run and includes it in the report) and run:
 
 ```powershell
@@ -461,7 +465,16 @@ Design guarantees worth knowing:
 - **Fixed policy.** Niche Scout's weights, thresholds, and sampling rules are frozen for this version, so the primary score and its sensitivity diagnostics cannot drift apart.
 - **Auditable.** Niche Scout records every run's configuration snapshot, sampling geometry, request metadata (without secrets), and per-category evidence, so you can trace a category's score back to the sampled assets.
 
-More detail: the [technical analysis report](Documents/reports/niche-scout-technical-analysis-2026-10-03.md) and the [interactive architecture diagram](.archify/architecture-niche-scout-20261003-091932/niche-scout.html) (download and open it in a browser).
+### Full architecture map
+
+This is the generated map of the actual code modules, including the network boundary that keeps your credentials out of the analytical core and the pure modules that do the scoring:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/architecture-dark.svg">
+  <img alt="Niche Scout architecture: CLI, config, credentials, pipeline, Coveo discovery, GraphQL enrichment, validation, sampling, metrics, scoring, SQLite database, HTML/text report, and loopback dashboard" src="images/architecture-light.svg">
+</picture>
+
+The [interactive version](.archify/architecture-niche-scout-20261003-091932/niche-scout.html) adds panning, zooming, focus, themes, and image export; download the file and open it in a browser. The [technical analysis report](Documents/reports/niche-scout-technical-analysis-2026-10-03.md) examines the design, its guarantees, and its limits in depth.
 
 ---
 
