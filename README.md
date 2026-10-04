@@ -1,3 +1,5 @@
+<img align="right" width="150" src="images/logo.png" alt="Niche Scout logo">
+
 # Unity Asset Store Niche Scout
 
 **A local research tool for Unity Asset Store publishers: compare a set of asset categories side by side before you decide what to build.**
