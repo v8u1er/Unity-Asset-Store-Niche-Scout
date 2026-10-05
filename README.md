@@ -4,6 +4,8 @@
 
 **A local research tool for Unity Asset Store publishers: compare a set of asset categories side by side before you decide what to build.**
 
+> **Independent project; use at your own risk.** Niche Scout is not affiliated with or endorsed by Unity Technologies. It sends automated requests to Unity Asset Store endpoints using credentials from your own session. Unity's Terms of Service restrict automated access to the Asset Store and its APIs without a separate agreement, and breaches may lead to account suspension or other action. The author provides this software as is, without warranty, and does not authorize or encourage any use that violates Unity's terms. You are solely responsible for reading those terms and deciding whether and how to use this tool.
+
 Unity Asset Store Niche Scout (Niche Scout for short) reads the same public category listings your browser sees on the Unity Asset Store, studies a fair sample of the assets inside each category you choose, and produces a ranked comparison built from four signals:
 
 | Signal | What it means in plain language |
@@ -520,3 +522,13 @@ runtime/                local database and reports (git-ignored)
 ```
 
 The normative requirements live in `Documents/SRS-lean-v2.md`. Analytical tests carry `@pytest.mark.lreq` markers backed by `tests/traceability.json`.
+
+---
+
+## Terms notice
+
+The first time you run `niche-scout run`, it prints the notice at the top of this README and asks you to type `I understand` before it sends any request; your acknowledgement is remembered locally and later runs continue without prompting. `--accept-terms` confirms the notice for a single non-interactive run without prompting and does not remember anything. `niche-scout dashboard` reads your local database only and sends no requests, so it never asks for this acknowledgement.
+
+## License
+
+Niche Scout is released under the MIT License. See [LICENSE](LICENSE) for the full text.
