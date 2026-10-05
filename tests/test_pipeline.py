@@ -71,6 +71,7 @@ def _run_pipeline(**kwargs: Any) -> Any:
     """Call the Chunk 10 entry point through the resolver."""
     return _pipeline_symbol("run_pipeline")(**kwargs)
 
+
 # ---------------------------------------------------------------------------
 # Frozen constants used as golden expectations (read from models, not re-declared)
 # ---------------------------------------------------------------------------
@@ -707,9 +708,7 @@ def test_run_with_fewer_than_min_categories_is_rejected(tmp_path: Path) -> None:
                 sleeper=lambda _seconds: None,
                 run_id="run-10-rejected",
                 taxonomy_path=config.taxonomy_path,
-                taxonomy_sha256=fx.taxonomy_sha256_for(
-                    fx.taxonomy_payload(categories)
-                ),
+                taxonomy_sha256=fx.taxonomy_sha256_for(fx.taxonomy_payload(categories)),
             )
         assert repository.get_run("run-10-rejected") is None, (
             "a rejected run persists nothing"
@@ -892,9 +891,7 @@ def test_projection_contains_required_counts_and_minimum_time(
     assert f"discovered_canonical_assets={union_count}" in combined
     assert f"sampled_assets={union_count}" in combined
     assert f"unique_enrichment_identities={union_count}" in combined
-    assert (
-        f"reused_preflight_identities={fx.EXPECTED_PREFLIGHT_ATTEMPTS}" in combined
-    )
+    assert f"reused_preflight_identities={fx.EXPECTED_PREFLIGHT_ATTEMPTS}" in combined
     assert (
         f"pending_enrichment_identities={EXPECTED_PENDING_ENRICHMENT_IDENTITIES}"
         in combined
@@ -1183,9 +1180,7 @@ def test_run_uses_injected_clock_transports_and_sleeper(tmp_path: Path) -> None:
 
     monkeypatch.setattr(socket.socket, "connect", refuse, raising=False)
     try:
-        result, scenario, _stored = _run_end_to_end(
-            tmp_path, run_id="run-10-injected"
-        )
+        result, scenario, _stored = _run_end_to_end(tmp_path, run_id="run-10-injected")
     finally:
         monkeypatch.undo()
 

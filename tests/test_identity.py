@@ -19,16 +19,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-
 import fixtures.graphql_fixtures as gqlfx
 import fixtures.validation_fixtures as fx
+import pytest
 
 import niche_scout.collector_graphql as collector_graphql
 import niche_scout.validation as v
 from niche_scout.models import (
-    GraphQLOperationCorrelationMode,
     IDENTITY_MAPPING_RULE_VERSION,
+    GraphQLOperationCorrelationMode,
     IdentityResolutionStatus,
 )
 
@@ -43,7 +42,9 @@ FABRICATED_IDENTITY_VALUES = ("", "0", "0.0", "None", "none", "null")
 
 def _candidate_source_fields(record: dict[str, object]) -> list[str]:
     """Return the source fields of every retained candidate, in input order."""
-    return [candidate.source_field for candidate in v.collect_identity_candidates(record)]
+    return [
+        candidate.source_field for candidate in v.collect_identity_candidates(record)
+    ]
 
 
 def _candidate_for(record: dict[str, object], source_field: str) -> v.IdentityCandidate:
@@ -64,7 +65,7 @@ def _candidate_for(record: dict[str, object], source_field: str) -> v.IdentityCa
 
 @pytest.mark.lreq("LREQ-EXT-060")
 def test_collects_all_non_empty_identity_candidates() -> None:
-    """``ec_product_id``, ``permanentid``, ``clickUri``, and ``uri`` are all retained."""
+    """``ec_product_id``, ``permanentid``, ``clickUri``, and ``uri`` are retained."""
     candidates = v.collect_identity_candidates(fx.AGREEING_IDENTITY_RECORD)
 
     assert set(_candidate_source_fields(fx.AGREEING_IDENTITY_RECORD)) == {
@@ -143,7 +144,7 @@ def test_candidate_source_fields_are_retained() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-060")
 def test_uri_fallback_parsing() -> None:
-    """A URI contributes only the trailing numeric identifier of its last path segment."""
+    """A URI contributes only the trailing identifier of its last path segment."""
     # The identifier after the final ``-`` in the last path segment.
     assert v.canonicalize_identity_candidate(fx.URI_WITH_SLUG_IDENTIFIER) == (
         fx.CANONICAL_ASSET_ID
@@ -153,7 +154,8 @@ def test_uri_fallback_parsing() -> None:
         == fx.CANONICAL_ASSET_ID
     )
     assert (
-        _candidate_for(fx.URI_ONLY_RECORD, "uri").canonical_value == fx.CANONICAL_ASSET_ID
+        _candidate_for(fx.URI_ONLY_RECORD, "uri").canonical_value
+        == fx.CANONICAL_ASSET_ID
     )
 
     # A query string does not change the identifier, which comes from the path. The
@@ -188,8 +190,9 @@ def test_uri_fallback_parsing() -> None:
     )
     assert _candidate_for(fx.UNPARSEABLE_URI_RECORD, "uri").canonical_value is None
     assert (
-        _candidate_for({"ec_product_id": fx.URI_NO_TRAILING_IDENTIFIER}, "ec_product_id")
-        .canonical_value
+        _candidate_for(
+            {"ec_product_id": fx.URI_NO_TRAILING_IDENTIFIER}, "ec_product_id"
+        ).canonical_value
         == fx.URI_NO_TRAILING_IDENTIFIER
     )
 
@@ -210,7 +213,9 @@ def test_uri_fallback_parsing() -> None:
     # numeric group appearing earlier in the path is not.
     assert (
         _candidate_for(
-            {"uri": "https://assetstore.unity.com/packages/2d/textures-materials/environment-99"},
+            {
+                "uri": "https://assetstore.unity.com/packages/2d/textures-materials/environment-99"
+            },
             "uri",
         ).canonical_value
         == "99"
@@ -291,11 +296,16 @@ def test_empty_candidates_are_dropped_not_fabricated() -> None:
     assert v.collect_identity_candidates(fx.ABSENT_CANDIDATE_FIELDS_RECORD) == ()
 
     # Non-string values are unusable candidates and are never coerced to text.
-    non_string_candidates = v.collect_identity_candidates(fx.NON_STRING_CANDIDATES_RECORD)
+    non_string_candidates = v.collect_identity_candidates(
+        fx.NON_STRING_CANDIDATES_RECORD
+    )
     assert non_string_candidates == ()
     # In particular, the integer ``1234567`` must not be stringified into a
     # candidate, and ``None`` must not become "None" or "".
-    assert all(candidate.raw_value not in ("1234567", "None", "") for candidate in non_string_candidates)
+    assert all(
+        candidate.raw_value not in ("1234567", "None", "")
+        for candidate in non_string_candidates
+    )
 
     # A mixed record keeps only the usable candidate and invents no placeholder for
     # the rest.
@@ -333,11 +343,18 @@ def test_agreeing_candidates_resolve() -> None:
         assert result.included_in_canonical_denominator is True, name
         assert result.included_in_enrichment_set is True, name
         assert result.mapping_rule_version == IDENTITY_MAPPING_RULE_VERSION, name
-        assert not [issue for issue in result.issues if issue.code == "identity_unresolved"]
+        assert not [
+            issue for issue in result.issues if issue.code == "identity_unresolved"
+        ]
         assert result.issues == (), name
 
     # Single-source records agree with themselves and resolve.
-    for name in ("ec_product_id_only", "permanentid_only", "click_uri_only", "uri_only"):
+    for name in (
+        "ec_product_id_only",
+        "permanentid_only",
+        "click_uri_only",
+        "uri_only",
+    ):
         result = v.resolve_canonical_identity(fx.IDENTITY_RECORDS[name])
 
         assert result.status is IdentityResolutionStatus.RESOLVED, name
@@ -351,7 +368,9 @@ def test_agreeing_candidates_resolve() -> None:
             IdentityResolutionStatus.RESOLVED
         ), raw_form
     assert (
-        v.resolve_canonical_identity({"ec_product_id": "123", "permanentid": " 123 "}).status
+        v.resolve_canonical_identity(
+            {"ec_product_id": "123", "permanentid": " 123 "}
+        ).status
         is IdentityResolutionStatus.RESOLVED
     )
 
@@ -369,7 +388,10 @@ def test_disagreeing_candidates_become_conflict() -> None:
     assert result.included_in_enrichment_set is False
 
     # Both disagreeing candidates are retained verbatim for audit.
-    assert [candidate.raw_value for candidate in result.candidates] == ["1234567", "7654321"]
+    assert [candidate.raw_value for candidate in result.candidates] == [
+        "1234567",
+        "7654321",
+    ]
 
     # The same classification holds when the disagreement is only between a product
     # identifier and a URI-derived one.
@@ -402,7 +424,9 @@ def test_no_canonicalizable_candidate_becomes_unresolved() -> None:
 
     # An unparseable candidate does not silently vote: it is reported, and the
     # record does not become conflict-free by omission or resolve to a guess.
-    assert tuple(issue.code for issue in result.issues) == ("identity_candidate_unparseable",)
+    assert tuple(issue.code for issue in result.issues) == (
+        "identity_candidate_unparseable",
+    )
 
 
 @pytest.mark.lreq("LREQ-EXT-070")
@@ -563,7 +587,13 @@ def test_state_excluded_annotation() -> None:
 @pytest.mark.lreq("LREQ-GQL-060")
 def test_state_unknown_annotation() -> None:
     """A missing, null, or wrong-typed state is annotated as unknown."""
-    for name in ("null", "wrong_type", "wrong_type_list", "wrong_type_bool", "excluded_empty"):
+    for name in (
+        "null",
+        "wrong_type",
+        "wrong_type_list",
+        "wrong_type_bool",
+        "excluded_empty",
+    ):
         annotation = v.annotate_state_eligibility(fx.STATE_VECTORS[name])
 
         assert annotation.is_published is False, name
@@ -592,7 +622,10 @@ def test_state_annotation_keeps_asset_in_discovered_breadth() -> None:
         assert annotation.remains_in_discovered_breadth is True, name
 
     for state_value in ("published", "draft", None, 7, ["published"], True, ""):
-        assert v.annotate_state_eligibility(state_value).remains_in_discovered_breadth is True
+        assert (
+            v.annotate_state_eligibility(state_value).remains_in_discovered_breadth
+            is True
+        )
 
 
 @pytest.mark.lreq("LREQ-GQL-060")
@@ -601,7 +634,11 @@ def test_state_annotation_is_not_metric_eligibility() -> None:
     for name, state_value in fx.STATE_VECTORS.items():
         annotation = v.annotate_state_eligibility(state_value)
 
-        flags = (annotation.is_published, annotation.state_excluded, annotation.state_unknown)
+        flags = (
+            annotation.is_published,
+            annotation.state_excluded,
+            annotation.state_unknown,
+        )
         assert sum(flag is True for flag in flags) == 1, name
         assert all(isinstance(flag, bool) for flag in flags), name
 
@@ -619,13 +656,24 @@ def test_state_annotation_is_not_metric_eligibility() -> None:
     assert not any(
         forbidden in field_name
         for field_name in field_names
-        for forbidden in ("metric", "eligible_for", "demand", "rating", "quality", "score")
+        for forbidden in (
+            "metric",
+            "eligible_for",
+            "demand",
+            "rating",
+            "quality",
+            "score",
+        )
     )
 
     # Annotating a state never produces a metric-eligibility attribute, so a caller
     # cannot mistake the annotation for the D/R/Q decision.
     annotation = v.annotate_state_eligibility("published")
-    for forbidden in ("is_metric_eligible", "eligible_for_demand", "metric_eligibility"):
+    for forbidden in (
+        "is_metric_eligible",
+        "eligible_for_demand",
+        "metric_eligibility",
+    ):
         assert not hasattr(annotation, forbidden), forbidden
 
 
@@ -704,7 +752,9 @@ def test_disagreeing_alias_sets_id_mapping_mismatch() -> None:
     # ``id_mapping_mismatch`` always implies the agreement flag is ``False``.
     for name, aliases in fx.GQL_ALIAS_MAPS.items():
         comparison = v.compare_graphql_identity_aliases(fx.REQUESTED_IDENTITY, aliases)
-        assert comparison.id_mapping_mismatch is (not comparison.matches_requested_identity), name
+        assert comparison.id_mapping_mismatch is (
+            not comparison.matches_requested_identity
+        ), name
 
 
 @pytest.mark.lreq("LREQ-GQL-070")
@@ -718,7 +768,9 @@ def test_missing_alias_is_mismatch_not_agreement() -> None:
         assert result.id_mapping_mismatch is True, name
         assert result.matches_requested_identity is False, name
         assert result.reason is not None, name
-        assert "missing" in result.reason or "no GraphQL identity alias" in result.reason, name
+        assert (
+            "missing" in result.reason or "no GraphQL identity alias" in result.reason
+        ), name
 
     # An empty alias map is missing rather than vacuously agreeing.
     empty = v.compare_graphql_identity_aliases(fx.REQUESTED_IDENTITY, {})
@@ -774,7 +826,8 @@ def test_unparseable_alias_is_mismatch_with_reason() -> None:
     unparsed_raw = fx.GQL_ALIAS_MAPS["unparseable"]["clickUri"]
     assert unparsed_raw not in result.reason
     assert all(
-        unparsed_raw not in compared_value for _n, compared_value in result.compared_aliases
+        unparsed_raw not in compared_value
+        for _n, compared_value in result.compared_aliases
     )
     # Plan §11's no-leakage rule covers credential-shaped values, not every
     # business-domain field: a canonical-as-supplied alias is compared verbatim, so
@@ -801,7 +854,7 @@ def test_unparseable_alias_is_mismatch_with_reason() -> None:
 
 @pytest.mark.lreq("LREQ-ID-020")
 def test_requested_identity_compatibility_comparison() -> None:
-    """Returned identifiers are compared for compatibility with the requested identity."""
+    """Identifiers are compared for compatibility with the requested identity."""
     # Compatible: the returned aliases canonicalize to the requested identifier.
     compatible = v.compare_graphql_identity_aliases(
         fx.REQUESTED_IDENTITY, {"graphql_id": fx.CANONICAL_ASSET_ID}
@@ -859,7 +912,7 @@ def test_requested_identity_compatibility_comparison() -> None:
 
 @pytest.mark.lreq("LREQ-GQL-010")
 def test_canonical_identity_key_type_is_shared_identity_unit() -> None:
-    """canonical_identity_key is a string (or None), the shared canonical identity unit."""
+    """canonical_identity_key is a string (or None), the shared identity unit."""
     resolved = v.resolve_canonical_identity(fx.AGREEING_IDENTITY_RECORD)
     assert resolved.canonical_identity_key is not None
     assert isinstance(resolved.canonical_identity_key, str)
@@ -882,7 +935,13 @@ def test_resolution_status_supports_population_exclusion() -> None:
     excluded = {
         name: v.resolve_canonical_identity(record)
         for name, record in fx.IDENTITY_RECORDS.items()
-        if name in ("disagreeing_product_ids", "disagreeing_uri", "unparseable_uri", "empty_candidates")
+        if name
+        in (
+            "disagreeing_product_ids",
+            "disagreeing_uri",
+            "unparseable_uri",
+            "empty_candidates",
+        )
     }
 
     # A resolved record is the only one that may enter the canonical population.
@@ -924,7 +983,8 @@ def test_resolution_status_supports_population_exclusion() -> None:
 
 
 @pytest.mark.lreq("LREQ-TST-030")
-def test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_mismatch() -> None:
+def test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_mismatch(  # noqa: E501
+) -> None:
     """The identity suite covers every case LREQ-TST-030 names, including duplicates."""
     # Each required case is exercised here through the fixtures it depends on, so
     # the coverage claim is checked against live behavior rather than asserted.
@@ -938,14 +998,32 @@ def test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_misma
             fx.DISAGREEING_PRODUCT_IDS_RECORD
         ),
     }
-    assert required_cases["valid_canonical_candidates"].status is IdentityResolutionStatus.RESOLVED
-    assert required_cases["malformed_fallback"].status is IdentityResolutionStatus.UNRESOLVED
-    assert required_cases["unresolved_identity"].status is IdentityResolutionStatus.UNRESOLVED
-    assert required_cases["conflicting_candidates"].status is IdentityResolutionStatus.CONFLICT
+    assert (
+        required_cases["valid_canonical_candidates"].status
+        is IdentityResolutionStatus.RESOLVED
+    )
+    assert (
+        required_cases["malformed_fallback"].status
+        is IdentityResolutionStatus.UNRESOLVED
+    )
+    assert (
+        required_cases["unresolved_identity"].status
+        is IdentityResolutionStatus.UNRESOLVED
+    )
+    assert (
+        required_cases["conflicting_candidates"].status
+        is IdentityResolutionStatus.CONFLICT
+    )
 
     # URI parsing: the identifier comes from the last path segment and nowhere else.
-    assert v.canonicalize_identity_candidate(fx.URI_WITH_SLUG_IDENTIFIER) == fx.CANONICAL_ASSET_ID
-    assert _candidate_for({"uri": fx.URI_NO_TRAILING_IDENTIFIER}, "uri").canonical_value is None
+    assert (
+        v.canonicalize_identity_candidate(fx.URI_WITH_SLUG_IDENTIFIER)
+        == fx.CANONICAL_ASSET_ID
+    )
+    assert (
+        _candidate_for({"uri": fx.URI_NO_TRAILING_IDENTIFIER}, "uri").canonical_value
+        is None
+    )
 
     # GraphQL mismatch: a disagreeing alias is reported, never silently accepted.
     mismatch = v.compare_graphql_identity_aliases(
@@ -973,15 +1051,23 @@ def test_identity_suite_covers_valid_malformed_unresolved_conflict_uri_and_misma
     audio_identity = v.resolve_canonical_identity(audio_category_record)
     assert tools_identity.status is IdentityResolutionStatus.RESOLVED
     assert audio_identity.status is IdentityResolutionStatus.RESOLVED
-    assert tools_identity.canonical_identity_key == audio_identity.canonical_identity_key
+    assert (
+        tools_identity.canonical_identity_key == audio_identity.canonical_identity_key
+    )
 
     # The resolution result itself carries no category-derived field: the identity
     # is a property of the asset, not of the category it was discovered under.
     assert not any(
         "categor" in field_name for field_name in type(tools_identity).__slots__
     )
-    assert v.collect_identity_candidates(tools_category_record) == v.collect_identity_candidates(
-        {name: value for name, value in tools_category_record.items() if name != "category"}
+    assert v.collect_identity_candidates(
+        tools_category_record
+    ) == v.collect_identity_candidates(
+        {
+            name: value
+            for name, value in tools_category_record.items()
+            if name != "category"
+        }
     )
 
 

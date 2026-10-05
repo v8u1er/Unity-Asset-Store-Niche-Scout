@@ -1347,14 +1347,10 @@ def test_preflight_selects_validated_position_for_keyless_bodies(tmp_path):
         # The persisted run row and summary carry the same selected mode.
         record = repository.get_run(run.run_id)
         assert record is not None
-        assert (
-            record.graphql_operation_correlation_mode
-            == pf.VALIDATED_POSITION.value
-        )
+        assert record.graphql_operation_correlation_mode == pf.VALIDATED_POSITION.value
         summary = json.loads(record.identity_preflight_summary_json)
         assert (
-            summary["graphql_operation_correlation_mode"]
-            == pf.VALIDATED_POSITION.value
+            summary["graphql_operation_correlation_mode"] == pf.VALIDATED_POSITION.value
         )
     finally:
         repository.close()
@@ -1429,8 +1425,7 @@ def test_preflight_rejects_position_when_ordering_is_wrong(tmp_path):
         outcome = _run_preflight(repository, run, transport=transport)
 
         assert (
-            outcome.summary.graphql_operation_correlation_mode
-            == pf.EXPLICIT_KEY.value
+            outcome.summary.graphql_operation_correlation_mode == pf.EXPLICIT_KEY.value
         )
         assert outcome.status.value == "failed"
         assert outcome.rates.attempted_unique_identities == 2
@@ -1486,8 +1481,7 @@ def test_preflight_selected_mode_is_persisted_and_reused_without_a_second_reques
 
         # The selected mode is public on the outcome and on every observation.
         assert (
-            outcome.summary.graphql_operation_correlation_mode
-            == "validated_position"
+            outcome.summary.graphql_operation_correlation_mode == "validated_position"
         )
         for observation in outcome.observations:
             assert observation.correlation_mode == "validated_position"

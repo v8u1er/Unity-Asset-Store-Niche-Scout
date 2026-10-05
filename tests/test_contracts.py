@@ -351,7 +351,7 @@ def _category_score_record() -> CategoryScoreRecord:
 
 @pytest.mark.lreq("LREQ-ARCH-010")
 def test_models_import() -> None:
-    """The package imports, records are dataclasses, and pure modules expose typed structures."""
+    """The package imports and pure modules expose typed dataclass structures."""
     import niche_scout  # noqa: F401
     import niche_scout.metrics as metrics
     import niche_scout.scoring as scoring
@@ -379,7 +379,7 @@ def test_models_import() -> None:
 
 @pytest.mark.lreq("LREQ-ARCH-020")
 def test_pure_boundary_no_clock() -> None:
-    """AST inspection proves metrics.py and scoring.py import no I/O and read no clock."""
+    """AST inspection proves the pure modules import no I/O and read no clock."""
     for filename in ("metrics.py", "scoring.py"):
         path = PACKAGE / filename
         assert path.is_file(), f"{filename} must exist as a pure module"
@@ -425,7 +425,7 @@ def test_determinism_contract() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-010")
 def test_coveo_endpoint_contract() -> None:
-    """Coveo discovery constants are fixed and the filter contract forbids free-text queries."""
+    """Coveo constants are fixed and the filter contract forbids free-text queries."""
     config = load_config(toml_path=ROOT / "config" / "default.toml")
     assert (
         config.max_discovery_results_per_category
@@ -445,7 +445,7 @@ def test_coveo_endpoint_contract() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-020")
 def test_taxonomy_contract() -> None:
-    """The cached taxonomy fixture carries every required header field and the requested categories."""
+    """The taxonomy fixture carries every required header field and the categories."""
     taxonomy = json.loads(
         (ROOT / "config" / "category_taxonomy.json").read_text(encoding="utf-8")
     )
@@ -472,7 +472,7 @@ def test_taxonomy_contract() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-100")
 def test_coveo_retry_contract() -> None:
-    """Retry/backoff and permanent-failure classification require typed operation statuses."""
+    """Retry/backoff and failure classification require typed operation statuses."""
     assert {item.value for item in OperationStatus} == {"success", "error"}
     assert {item.value for item in models.IdentityPreflightStatus} == {
         "passed",
@@ -607,7 +607,7 @@ def test_sampling_constants_contract() -> None:
 
 @pytest.mark.lreq("LREQ-SMP-040")
 def test_census_model_contract() -> None:
-    """The census flag and sampling basis statuses are typed and preserve a null fraction."""
+    """The census flag and sampling basis statuses are typed and preserve null."""
     assert {item.value for item in SamplingBasis} == {
         "census",
         "deterministic_stratified_sample",
@@ -625,7 +625,7 @@ def test_census_model_contract() -> None:
 
 @pytest.mark.lreq("LREQ-SMP-060")
 def test_selection_digest_contract() -> None:
-    """The selection digest is the SHA-256 of NUL-delimited version, category, and identity."""
+    """The selection digest is the SHA-256 of NUL-delimited version, category, id."""
     sampling_rule_version = models.SAMPLING_RULE_VERSION
     category = "Tools/Level Design/Tilemap"
     asset_identity_key = "package-1234"
@@ -796,7 +796,7 @@ def test_platform_pathlib_contract() -> None:
 
 @pytest.mark.lreq("LREQ-NFR-060")
 def test_quality_workflow_contract() -> None:
-    """Marker registration, lint config, secret handling, and analytical tests are wired up."""
+    """Marker registration, lint config, secret handling, and tests are wired up."""
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "lreq(requirement_id)" in pyproject
     assert "[tool.ruff]" in pyproject
@@ -814,7 +814,7 @@ def test_quality_workflow_contract() -> None:
 
 @pytest.mark.lreq("LREQ-TST-010")
 def test_formula_test_conventions() -> None:
-    """The suite foundation supports normal, zero, missing, invalid, tie, and boundary cases."""
+    """The suite foundation covers normal, zero, missing, invalid, tie, boundary."""
     boundary = models.MIN_USABLE_SAMPLES_PER_STRATUM
     assert boundary == 1
     assert boundary - 1 < boundary <= boundary
@@ -845,7 +845,7 @@ def test_formula_test_conventions() -> None:
 
 @pytest.mark.lreq("LREQ-ARCH-010")
 def test_status_values_and_mandatory_fields_are_typed() -> None:
-    """Every required SRS status value and mandatory row field exists in a typed structure."""
+    """Every required SRS status value and mandatory row field exists in a type."""
     for enum_name, expected in REQUIRED_STATUS_VALUES.items():
         enum_type = getattr(models, enum_name)
         actual = {item.value for item in enum_type}
@@ -931,7 +931,7 @@ def test_discovery_incomplete_warning_is_distinct_from_discovery_truncated() -> 
 def test_repository_protocol_and_schema_specification(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The repository protocol and DDL specification exist; importing database opens no connection and creates no files."""
+    """The repository protocol and DDL exist; importing database opens no connection."""
     protocol_methods = {
         "insert_run",
         "update_run_status",

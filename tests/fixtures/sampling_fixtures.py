@@ -263,10 +263,13 @@ OFFSET_RULE_VERSION = "2.0.0"
 #: repository root; ``chr(0)`` is the NUL delimiter and the digest's first
 #: eight bytes are read big-endian, then reduced mod SAMPLE_STRATA.
 #: The one-line form (copy verbatim):
-#: python -c "import hashlib; v='2.0.0'; c='Textures/Materials'; print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8], 'big') % 4)"
+#: python -c "import hashlib; v='2.0.0'; c='Textures/Materials';
+#: print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8],
+#: 'big') % 4)"
 STRATUM_OFFSET_CAPTURE_COMMAND: str = (
     "python -c \"import hashlib; v='2.0.0'; c='Textures/Materials'; "
-    "print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8], 'big') % 4)\""
+    "print(int.from_bytes(hashlib.sha256((v+chr(0)+c).encode('utf-8')).digest()[:8], "
+    "'big') % 4)\""
 )
 
 #: Frozen A3 offset literals captured by the LEAD with the exact command above

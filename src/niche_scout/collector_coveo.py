@@ -43,7 +43,14 @@ import re
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Container, Iterator, Mapping, MutableMapping, Sequence
+from collections.abc import (
+    Callable,
+    Container,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Sequence,
+)
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -56,7 +63,6 @@ from .database import RepositoryError, SqliteRepository
 from .models import (
     ENDPOINT_CONTRACT_VERSION,
     IDENTITY_MAPPING_RULE_VERSION,
-    MAX_DISCOVERY_RESULTS_PER_CATEGORY,
     MAX_TAXONOMY_AGE_DAYS,
     PAGE_SIZE,
     CategoryFilterValidationStatus,
@@ -73,7 +79,6 @@ from .validation import (
     TaxonomyValidationResult,
     ValidationIssue,
     collect_identity_candidates,
-    discovery_status_for_category_status,
     match_exact_category,
     redact_value,
     resolve_canonical_identity,
@@ -290,7 +295,7 @@ class CoveoOpener(Protocol):
     """
 
     def send(self, url: str, headers: Mapping[str, str], payload: bytes) -> Any:
-        """Send one request and return an object exposing ``status``, ``headers``, and ``read()``."""
+        """Return a response exposing ``status``, ``headers``, and ``read()``."""
 
 
 @runtime_checkable
@@ -302,7 +307,7 @@ class CoveoTransport(Protocol):
     """
 
     def send(self, url: str, headers: Mapping[str, str], payload: bytes) -> Any:
-        """Send one request and return an object exposing ``status``, ``headers``, and ``read()``."""
+        """Return a response exposing ``status``, ``headers``, and ``read()``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,7 +385,7 @@ class CoveoRateLimiter:
 
 @dataclass(frozen=True, slots=True)
 class CoveoPageResponse:
-    """One structurally validated page. ``total_count`` is ``None`` when unverifiable."""
+    """One validated page; ``total_count`` is ``None`` when unverifiable."""
 
     page_index: int
     first_result: int
@@ -397,7 +402,8 @@ class CoveoPageResponse:
     def is_structural_failure(self) -> bool:
         """True when the page's response structure could not be validated."""
         return any(
-            issue.code in {"response_wrong_container_kind", "response_missing_required_member"}
+            issue.code
+            in {"response_wrong_container_kind", "response_missing_required_member"}
             for issue in self.issues
         )
 
@@ -499,7 +505,9 @@ def _canonical_template_body(body: Mapping[str, object]) -> str:
     return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _template_body(payload: Mapping[str, object], *, source: str) -> Mapping[str, object]:
+def _template_body(
+    payload: Mapping[str, object], *, source: str
+) -> Mapping[str, object]:
     body = payload.get("request_body")
     if not isinstance(body, Mapping):
         raise CoveoTaxonomyInvalid(
@@ -556,7 +564,9 @@ def load_coveo_search_template(
             f"the captured Coveo request template at {source} declares no usable "
             "'template_sha256' provenance value"
         )
-    computed = hashlib.sha256(_canonical_template_body(body).encode("utf-8")).hexdigest()
+    computed = hashlib.sha256(
+        _canonical_template_body(body).encode("utf-8")
+    ).hexdigest()
     if computed != declared.strip():
         raise CoveoTaxonomyInvalid(
             f"the captured Coveo request template at {source} does not match its "
@@ -691,7 +701,11 @@ def build_coveo_request_body(
     request), or when the resulting body contains ``q`` or ``query`` at any
     nesting depth (LREQ-EXT-030).
     """
-    if isinstance(page_index, bool) or not isinstance(page_index, int) or page_index < 0:
+    if (
+        isinstance(page_index, bool)
+        or not isinstance(page_index, int)
+        or page_index < 0
+    ):
         raise ValueError("page_index must be a non-negative integer")
 
     facets = template.get("facets")
@@ -730,7 +744,8 @@ def build_coveo_request_body(
     for entry in raw_current_values:
         if not isinstance(entry, Mapping) or not isinstance(entry.get("value"), str):
             raise ValueError(
-                f"the captured '{COVEO_FACET_ID}' facet carries a malformed currentValues entry"
+                f"the captured '{COVEO_FACET_ID}' facet carries a malformed "
+                "currentValues entry"
             )
         value = str(entry["value"])
         if value == category:
@@ -921,7 +936,9 @@ def _issue(code: str, message: str, **context: object) -> ValidationIssue:
     return ValidationIssue(
         code=code,
         message=message,
-        context={str(key): redact_value(value) for key, value in sorted(context.items())},
+        context={
+            str(key): redact_value(value) for key, value in sorted(context.items())
+        },
     )
 
 
@@ -979,15 +996,19 @@ def fetch_category_page(
     page is never silently reported as zero assets. ``total_count`` is ``None``
     whenever the endpoint's ``totalCount`` is unusable.
     """
-    if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+    if (
+        isinstance(max_retries, bool)
+        or not isinstance(max_retries, int)
+        or max_retries < 0
+    ):
         raise ValueError("max_retries must be a non-negative integer")
 
     first_result = int(request_body.get("firstResult", 0))
     page_size = max(1, int(request_body.get("numberOfResults", PAGE_SIZE)))
     page_index = first_result // page_size
-    payload = json.dumps(dict(request_body), sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    payload = json.dumps(
+        dict(request_body), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     metadata = _redacted_request_metadata(
         request_body, page_index=page_index, template=template
     )
@@ -1023,7 +1044,9 @@ def fetch_category_page(
                 status = int(getattr(response, "status", 0) or 0)
                 response_headers = {
                     str(key): str(value)
-                    for key, value in dict(getattr(response, "headers", {}) or {}).items()
+                    for key, value in dict(
+                        getattr(response, "headers", {}) or {}
+                    ).items()
                 }
                 body = bytes(response.read() or b"")
         except urllib.error.HTTPError as exc:
@@ -1185,17 +1208,20 @@ def _read_page(
         structural_issues = tuple(structural.issues) or (
             _issue(
                 "response_missing_required_member",
-                f"response payload does not carry a usable '{_PAGE_RECORDS_MEMBER}' list",
+                f"response payload does not carry a usable "
+                f"'{_PAGE_RECORDS_MEMBER}' list",
                 member=_PAGE_RECORDS_MEMBER,
             ),
         )
         if not any(
-            issue.code == "response_missing_required_member" for issue in structural_issues
+            issue.code == "response_missing_required_member"
+            for issue in structural_issues
         ):
             structural_issues = structural_issues + (
                 _issue(
                     "response_missing_required_member",
-                    f"response payload does not carry a usable '{_PAGE_RECORDS_MEMBER}' list",
+                    f"response payload does not carry a usable "
+                    f"'{_PAGE_RECORDS_MEMBER}' list",
                     member=_PAGE_RECORDS_MEMBER,
                 ),
             )
@@ -1217,7 +1243,8 @@ def _read_page(
             issues.append(
                 _issue(
                     "response_record_not_a_mapping",
-                    f"record {index} is not a JSON object and is not treated as an asset",
+                    f"record {index} is not a JSON object and is "
+                    "not treated as an asset",
                     record_index=index,
                 )
             )
@@ -1237,7 +1264,9 @@ def _read_page(
         # asked for, so its absence is always structural.
         declares_identity = any(member in item for member in _IDENTITY_DECLARED_FIELDS)
         if not declares_identity:
-            structural_missing = [member for member in missing_members if member == "ec_category"]
+            structural_missing = [
+                member for member in missing_members if member == "ec_category"
+            ]
         else:
             structural_missing = [
                 member
@@ -1475,7 +1504,9 @@ class CoveoObservationSink:
         ordinal = ordinal_start
         for record in admitted_records:
             identity = resolve_observation_identity(record)
-            category_match = match_exact_category(record.get("ec_category"), taxonomy_paths)
+            category_match = match_exact_category(
+                record.get("ec_category"), taxonomy_paths
+            )
             identity_resolution.append(identity)
             category_matches.append(category_match)
             observations.append(
@@ -1567,7 +1598,9 @@ class _CategoryCounters:
     pages: int = 0
     total_count: int | None = None
     api_reported_count: int | None = None
-    filter_status: CategoryFilterValidationStatus = CategoryFilterValidationStatus.UNVERIFIED
+    filter_status: CategoryFilterValidationStatus = (
+        CategoryFilterValidationStatus.UNVERIFIED
+    )
     #: Per-record ``CategoryMatchResult`` verdicts, folded into ``filter_status``
     #: once the traversal ends. Only the three nullable verdicts are kept, so the
     #: list never grows with the record count.
@@ -1613,7 +1646,9 @@ def _select_terminal_status(conditions: Sequence[DiscoveryStatus]) -> DiscoveryS
     return min(conditions, key=_condition_precedence_rank)
 
 
-def _ordered_conditions(conditions: Sequence[DiscoveryStatus]) -> tuple[DiscoveryStatus, ...]:
+def _ordered_conditions(
+    conditions: Sequence[DiscoveryStatus],
+) -> tuple[DiscoveryStatus, ...]:
     """Return the condition set in severity order with duplicates collapsed."""
     seen: list[DiscoveryStatus] = []
     for condition in sorted(set(conditions), key=_condition_precedence_rank):
@@ -1638,7 +1673,9 @@ def _observation_id(run_id: str, category: str, ordinal: int) -> str:
     record is a distinct row. The linked table declares ``observation_id`` as its
     primary key and declares no default for it, so the adapter must supply one.
     """
-    digest = hashlib.sha256(f"{run_id}\x1f{category}\x1f{ordinal}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(
+        f"{run_id}\x1f{category}\x1f{ordinal}".encode("utf-8")
+    ).hexdigest()
     return f"raw-{digest}"
 
 
@@ -1739,7 +1776,9 @@ def _identity_candidates_agree(
     return False  # pragma: no cover - an empty explicit set was handled above
 
 
-def resolve_observation_identity(record: Mapping[str, object]) -> IdentityResolutionResult:
+def resolve_observation_identity(
+    record: Mapping[str, object],
+) -> IdentityResolutionResult:
     """Classify one response record's canonical identity.
 
     Always delegates to ``validation.resolve_canonical_identity`` — the frozen
@@ -1851,7 +1890,9 @@ def _build_observation(
         sort_keys=True,
         separators=(",", ":"),
     )
-    error_issues = tuple(page_issues) + tuple(identity.issues) + tuple(category_match.issues)
+    error_issues = (
+        tuple(page_issues) + tuple(identity.issues) + tuple(category_match.issues)
+    )
     return RawDiscoveryObservationRecord(
         observation_id=_observation_id(run_id, category, ordinal),
         run_id=run_id,
@@ -1862,7 +1903,10 @@ def _build_observation(
         identity_resolution_status=identity.status.value,
         identity_resolution_reason=identity.reason,
         category_value_json=json.dumps(
-            record.get("ec_category"), sort_keys=True, separators=(",", ":"), default=str
+            record.get("ec_category"),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
         ),
         category_filter_validation_status=category_match.status.value,
         stratum_index=None,
@@ -1926,8 +1970,9 @@ def discover_category(
     never interpreted as zero assets.
 
     ``clock`` is caller-injected and supplies every ``retrieved_at_utc``;
-    ``sleeper`` is the only waiting primitive, and :data:`COVEO_MIN_REQUEST_INTERVAL_SECONDS`
-    is honored between consecutive requests of the run through the limiter
+    ``sleeper`` is the only waiting primitive, and
+    :data:`COVEO_MIN_REQUEST_INTERVAL_SECONDS` is honored between consecutive
+    requests of the run through the limiter
     (LREQ-EXT-100). ``rate_limiter`` — when supplied — is the caller's run-wide
     limiter, so the minimum interval also holds between one category's last
     request and the next category's first. ``shared_limiter`` is the caller's
@@ -2020,7 +2065,7 @@ def _discover_category_in_transaction(
     #: construction and ``LREQ-NFR-030``'s per-page failure isolation stays
     #: meaningful: a page that fails after a successful one is a *page* failure
     #: for a category that already has rows, not a reason to discard them.
-    outcomes: list[CoveoPageOutcome] = []
+    outcomes: list[CategoryPageOutcome] = []
     #: The last page actually read, kept only so the truncation verdict can be
     #: derived from it; its records are already persisted and are not retained.
     last_page: CoveoPageResponse | None = None
@@ -2068,7 +2113,8 @@ def _discover_category_in_transaction(
                 _issue(
                     "coveo_page_unexpected_failure",
                     "the page could not be read; the failure is isolated to this "
-                    f"category and the page contributes no observations ({exc.__class__.__name__})",
+                    "category and the page contributes no observations "
+                    f"({exc.__class__.__name__})",
                     category=category,
                     page_index=page_index,
                 )
@@ -2294,7 +2340,9 @@ def _filter_status_for_records(
     pages_with_records: int,
     issues: Sequence[ValidationIssue],
     match_statuses: Sequence[CategoryFilterValidationStatus] = (),
-) -> tuple[CategoryFilterValidationStatus, list[ValidationIssue], list[DiscoveryStatus]]:
+) -> tuple[
+    CategoryFilterValidationStatus, list[ValidationIssue], list[DiscoveryStatus]
+]:
     """Decide the category-filter verdict for a category's records.
 
     The verdict is derived from the per-record :class:`CategoryMatchResult`

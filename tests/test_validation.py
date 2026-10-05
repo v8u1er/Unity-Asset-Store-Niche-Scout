@@ -104,8 +104,12 @@ def test_taxonomy_requires_all_header_fields() -> None:
     )
 
     nulled = _taxonomy_payload(source_url=None)
-    assert v.validate_taxonomy_structure(nulled).missing_header_fields == ("source_url",)
-    assert v.validate_taxonomy_structure(fx.TAXONOMY_NOT_A_MAPPING).status == "malformed"
+    assert v.validate_taxonomy_structure(nulled).missing_header_fields == (
+        "source_url",
+    )
+    assert (
+        v.validate_taxonomy_structure(fx.TAXONOMY_NOT_A_MAPPING).status == "malformed"
+    )
 
 
 @pytest.mark.lreq("LREQ-EXT-020")
@@ -123,7 +127,9 @@ def test_taxonomy_requires_canonical_path_inventory() -> None:
     assert absent.status == "malformed"
     assert "taxonomy_missing_path_inventory" in _issues_of(absent)
 
-    empty = v.validate_taxonomy_structure(_taxonomy_payload(canonical_category_paths=[]))
+    empty = v.validate_taxonomy_structure(
+        _taxonomy_payload(canonical_category_paths=[])
+    )
     assert empty.is_valid is False
     assert "taxonomy_empty_path_inventory" in _issues_of(empty)
 
@@ -149,7 +155,9 @@ def test_taxonomy_requires_canonical_path_inventory() -> None:
         ("taxonomy_malformed_path_entry", "Tools")
     ], "a bare parent label is not a selectable canonical category path"
 
-    malformed_path = v.validate_taxonomy_structure(fx.TAXONOMY_WITH_MALFORMED_INVENTORY_PATH)
+    malformed_path = v.validate_taxonomy_structure(
+        fx.TAXONOMY_WITH_MALFORMED_INVENTORY_PATH
+    )
     assert malformed_path.is_valid is False
     assert "taxonomy_malformed_path_entry" in _issues_of(malformed_path)
 
@@ -184,7 +192,9 @@ def test_taxonomy_rejects_naive_captured_at() -> None:
         assert result.is_valid is False
         assert result.status == "invalid_capture_timestamp"
         assert result.is_fresh is None, "undeterminable freshness is None, never False"
-        assert result.age_days_exact is None, "an unusable capture time has no exact age"
+        assert result.age_days_exact is None, (
+            "an unusable capture time has no exact age"
+        )
         assert _issues_of(result) == ["taxonomy_invalid_capture_timestamp"]
 
     absent = v.validate_taxonomy_freshness(
@@ -239,7 +249,9 @@ def test_taxonomy_flags_stale_capture() -> None:
     assert boundary.status == "valid"
     assert boundary.is_fresh is True
     assert boundary.age_days_exact == fx.FRESH_AGE_DAYS_EXACT
-    assert boundary.age_days_exact == TAXONOMY_MAX_AGE_DAYS, "the boundary is inclusive (R-5)"
+    assert boundary.age_days_exact == TAXONOMY_MAX_AGE_DAYS, (
+        "the boundary is inclusive (R-5)"
+    )
 
     beyond = v.validate_taxonomy_freshness(
         fx.STALE_CAPTURE_PAYLOAD,
@@ -330,13 +342,17 @@ def test_taxonomy_flags_future_capture() -> None:
 @pytest.mark.lreq("LREQ-EXT-020")
 def test_taxonomy_reports_missing_requested_categories() -> None:
     """An absent requested category is an explicit failure, never an empty category."""
-    present = v.validate_requested_categories(_taxonomy_payload(), fx.ALL_PRESENT_CATEGORIES)
+    present = v.validate_requested_categories(
+        _taxonomy_payload(), fx.ALL_PRESENT_CATEGORIES
+    )
     assert present.is_valid is True
     assert present.status == "valid"
     assert present.missing_requested_categories == ()
     assert present.issues == ()
 
-    absent = v.validate_requested_categories(_taxonomy_payload(), fx.ONE_ABSENT_CATEGORY)
+    absent = v.validate_requested_categories(
+        _taxonomy_payload(), fx.ONE_ABSENT_CATEGORY
+    )
     assert absent.is_valid is False
     assert absent.status == "missing_categories"
     assert absent.missing_requested_categories == ("audio/music/dnb",)
@@ -349,7 +365,9 @@ def test_taxonomy_reports_missing_requested_categories() -> None:
     assert parent_requested.status == "missing_categories", (
         "a requested parent path does not satisfy an inventory of child paths"
     )
-    assert parent_requested.missing_requested_categories == (fx.PARENT_PATH_OF_INVENTORY_PATH,)
+    assert parent_requested.missing_requested_categories == (
+        fx.PARENT_PATH_OF_INVENTORY_PATH,
+    )
 
     child_requested = v.validate_requested_categories(
         _taxonomy_payload(), (fx.CHILD_PATH_OF_INVENTORY_PATH,)
@@ -379,7 +397,10 @@ def test_validate_taxonomy_combines_structure_freshness_and_presence() -> None:
     assert valid.status == "valid"
     assert valid.is_fresh is True
     assert valid.age_days_exact == pytest.approx(27.5)
-    assert valid.age_days_exact == (TAXONOMY_REFERENCE_UTC - fx.VALID_CAPTURE_UTC).total_seconds() / 86400
+    assert (
+        valid.age_days_exact
+        == (TAXONOMY_REFERENCE_UTC - fx.VALID_CAPTURE_UTC).total_seconds() / 86400
+    )
     assert valid.missing_header_fields == ()
     assert valid.missing_requested_categories == ()
     assert valid.issues == ()
@@ -420,7 +441,9 @@ def test_validate_taxonomy_combines_structure_freshness_and_presence() -> None:
         max_taxonomy_age_days=TAXONOMY_MAX_AGE_DAYS,
     )
     assert categories_missing.status == "missing_categories"
-    assert categories_missing.is_fresh is True, "freshness still holds when presence fails"
+    assert categories_missing.is_fresh is True, (
+        "freshness still holds when presence fails"
+    )
     assert categories_missing.missing_requested_categories == ("audio/music/dnb",)
     assert categories_missing.age_days_exact == pytest.approx(27.5)
 
@@ -500,10 +523,14 @@ def test_parent_path_does_not_match_child_path() -> None:
     top_level = v.match_exact_category("Tools", paths)
     assert top_level.status is CategoryFilterValidationStatus.MISMATCH
 
-    multi_valued_parents = v.match_exact_category(fx.MULTI_VALUED_PARENT_PATH_VALUE, paths)
+    multi_valued_parents = v.match_exact_category(
+        fx.MULTI_VALUED_PARENT_PATH_VALUE, paths
+    )
     assert multi_valued_parents.status is CategoryFilterValidationStatus.MISMATCH
     assert multi_valued_parents.matched_value_count == 0
-    assert multi_valued_parents.unmatched_values == tuple(fx.MULTI_VALUED_PARENT_PATH_VALUE)
+    assert multi_valued_parents.unmatched_values == tuple(
+        fx.MULTI_VALUED_PARENT_PATH_VALUE
+    )
 
     prefix_only = v.match_exact_category("Tools/Utilit", paths)
     assert prefix_only.status is CategoryFilterValidationStatus.MISMATCH
@@ -512,7 +539,9 @@ def test_parent_path_does_not_match_child_path() -> None:
 @pytest.mark.lreq("LREQ-EXT-080")
 def test_child_path_does_not_match_parent_path() -> None:
     """A child path never matches an inventory containing only its parent."""
-    child_only_taxonomy = _taxonomy_payload(canonical_category_paths=["Tools/Utilities"])
+    child_only_taxonomy = _taxonomy_payload(
+        canonical_category_paths=["Tools/Utilities"]
+    )
     paths = v.taxonomy_path_set(child_only_taxonomy)
     assert paths == frozenset({"Tools/Utilities"})
 
@@ -527,7 +556,9 @@ def test_child_path_does_not_match_parent_path() -> None:
     parent_still_matches = v.match_exact_category("Tools/Utilities", paths)
     assert parent_still_matches.status is CategoryFilterValidationStatus.VERIFIED
 
-    multi_valued_children = v.match_exact_category(fx.MULTI_VALUED_CHILD_PATH_VALUE, paths)
+    multi_valued_children = v.match_exact_category(
+        fx.MULTI_VALUED_CHILD_PATH_VALUE, paths
+    )
     assert multi_valued_children.status is CategoryFilterValidationStatus.MISMATCH
     assert multi_valued_children.matched_value_count == 0
 
@@ -538,7 +569,7 @@ def test_child_path_does_not_match_parent_path() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-080")
 def test_scalar_category_shape_handled_explicitly() -> None:
-    """Scalar, null, absent, and wrong-typed category values are classified explicitly."""
+    """Scalar, null, absent, and wrong-typed category values are classified."""
     paths = v.taxonomy_path_set(_taxonomy_payload())
 
     scalar = v.match_exact_category(fx.SCALAR_EXACT_CATEGORY_VALUE, paths)
@@ -584,7 +615,9 @@ def test_multi_valued_category_shape_handled_explicitly() -> None:
     )
     assert two_matches.status is CategoryFilterValidationStatus.VERIFIED
     assert two_matches.matched_path == fx.DEFAULT_CATEGORIES[0]
-    assert two_matches.matched_value_count == 2, "counts are per value, not per distinct path"
+    assert two_matches.matched_value_count == 2, (
+        "counts are per value, not per distinct path"
+    )
     assert two_matches.unmatched_values == ("Missing/Path",)
 
     no_match = v.match_exact_category(fx.MULTI_VALUED_NO_MATCH, paths)
@@ -614,7 +647,7 @@ def test_multi_valued_category_shape_handled_explicitly() -> None:
 
 @pytest.mark.lreq("LREQ-EXT-080")
 def test_unverified_versus_mismatch_classification() -> None:
-    """``unverified`` means "no usable value"; ``mismatch`` means "usable but unmatched"."""
+    """``unverified`` means no usable value; ``mismatch`` means usable but unmatched."""
     paths = v.taxonomy_path_set(_taxonomy_payload())
 
     verified = v.match_exact_category(fx.DEFAULT_CATEGORIES[0], paths)
@@ -633,7 +666,9 @@ def test_unverified_versus_mismatch_classification() -> None:
     ), "the three SRS filter-validation states are all reachable"
 
     assert v.match_exact_category(None, paths).unmatched_values == ()
-    assert v.match_exact_category(fx.MULTI_VALUED_NO_MATCH, paths).unmatched_values != ()
+    assert (
+        v.match_exact_category(fx.MULTI_VALUED_NO_MATCH, paths).unmatched_values != ()
+    )
 
     with pytest.raises(TypeError):
         v.match_exact_category("A/B", "A/B")  # type: ignore[arg-type]
@@ -667,9 +702,10 @@ def test_malformed_shape_is_explicitly_invalid() -> None:
         field_types=fx.PRODUCT_DETAIL_FIELD_TYPES,
     )
     assert missing.is_valid is False
-    assert ("response_missing_required_member", "product_id") in _issue_codes_with_context(
-        missing, "member"
-    )
+    assert (
+        "response_missing_required_member",
+        "product_id",
+    ) in _issue_codes_with_context(missing, "member")
     assert missing.actual_shape == "mapping"
 
     wrong_container = v.validate_response_shape(
@@ -813,16 +849,21 @@ def test_null_required_member_is_distinct_from_wrong_type() -> None:
     assert wrong_typed_codes == ["response_wrong_scalar_type"]
     assert "response_null_required_member" not in wrong_typed_codes
 
-    assert len(
-        {
-            "response_missing_required_member",
-            "response_null_required_member",
-            "response_wrong_scalar_type",
-        }
-    ) == 3, "null, absent, and wrong type must remain distinguishable states"
+    assert (
+        len(
+            {
+                "response_missing_required_member",
+                "response_null_required_member",
+                "response_wrong_scalar_type",
+            }
+        )
+        == 3
+    ), "null, absent, and wrong type must remain distinguishable states"
 
     null_issue = next(
-        issue for issue in result.issues if issue.code == "response_null_required_member"
+        issue
+        for issue in result.issues
+        if issue.code == "response_null_required_member"
     )
     assert "unavailable" in null_issue.message
     assert "default" in null_issue.message or "substituted" in null_issue.message
@@ -830,7 +871,7 @@ def test_null_required_member_is_distinct_from_wrong_type() -> None:
 
 @pytest.mark.lreq("LREQ-MET-010")
 def test_failed_fields_remain_none_not_zero() -> None:
-    """A failed or missing field is never filled with ``0``, ``""``, ``[]``, or ``False``."""
+    """A failed or missing field is never filled with a zero or empty default."""
     result = v.validate_response_shape(
         fx.PRODUCT_DETAIL_NULL_MEMBER,
         expected_shape="mapping",
@@ -860,7 +901,9 @@ def test_failed_fields_remain_none_not_zero() -> None:
     assert "response_missing_identity" in _issues_of(identity_absent_from_payload)
 
     structure_only = v.validate_response_shape(
-        {"review_count": None}, expected_shape="mapping", required_members=("review_count",)
+        {"review_count": None},
+        expected_shape="mapping",
+        required_members=("review_count",),
     )
     assert structure_only.is_valid is False
     assert structure_only.issues[0].code == "response_null_required_member"
@@ -870,7 +913,9 @@ def test_failed_fields_remain_none_not_zero() -> None:
 def test_validation_issues_are_redacted() -> None:
     """No credential, header, token, or cookie survives into an issue or a summary."""
     issues = tuple(
-        v.ValidationIssue(code=f"fixture_{name}", message=value, context={"field": value})
+        v.ValidationIssue(
+            code=f"fixture_{name}", message=value, context={"field": value}
+        )
         for name, value in fx.REDACTION_VECTORS.items()
     )
     summary = v.summarize_validation_issues(issues)
@@ -881,7 +926,8 @@ def test_validation_issues_are_redacted() -> None:
     assert "Cookie" not in summary
     assert "Set-Cookie" not in summary
     assert "Bearer" not in summary
-    # ``"csrf"`` is a substring of the fixture *code name* (``fixture_csrf_token_value``),
+    # ``"csrf"`` is a substring of the fixture *code name*
+    # (``fixture_csrf_token_value``),
     # not of a secret: plan §11 forbids credential values, headers, CSRF tokens, and
     # cookies from appearing — not identifier names. Assert the token values instead.
     assert fx.REDACTION_VECTORS["csrf_token_value"] not in summary
@@ -937,19 +983,21 @@ def test_validation_issues_are_redacted() -> None:
     assert json.loads(v.summarize_validation_issues(()))["issue_count"] == 0
 
     structural = v.ValidationIssue(
-        code="taxonomy_missing_header", message="missing", context={"field": "source_url"}
+        code="taxonomy_missing_header",
+        message="missing",
+        context={"field": "source_url"},
     )
     assert "source_url" in structural.to_json(), (
         "structural identifiers such as a field name remain reportable"
     )
-    assert json.loads(v.summarize_validation_issues((structural,)))["issues"][0]["context"][
-        "field"
-    ].startswith("<value redacted")
+    assert json.loads(v.summarize_validation_issues((structural,)))["issues"][0][
+        "context"
+    ]["field"].startswith("<value redacted")
 
 
 @pytest.mark.lreq("LREQ-MET-010")
 def test_structural_validation_does_not_decide_metric_eligibility() -> None:
-    """Structural validators return no metric-eligibility verdict, and import nothing impure."""
+    """Structural validators return no metric verdict and import nothing impure."""
     published = v.annotate_state_eligibility("published")
     assert published.is_published is True
     assert not hasattr(published, "eligible_for_d")
@@ -1000,30 +1048,34 @@ def test_structural_validation_does_not_decide_metric_eligibility() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom)
     }
-    assert imported & {
-        "collector",
-        "collector_coveo",
-        "collector_graphql",
-        "database",
-        "pipeline",
-        "report",
-        "cli",
-        "config",
-        "sqlite3",
-        "pathlib",
-        "os",
-        "time",
-        "logging",
-        "requests",
-        "urllib",
-        "http",
-        "httpx",
-        "aiohttp",
-        "socket",
-        "subprocess",
-        "metrics",
-        "scoring",
-    } == set()
+    assert (
+        imported
+        & {
+            "collector",
+            "collector_coveo",
+            "collector_graphql",
+            "database",
+            "pipeline",
+            "report",
+            "cli",
+            "config",
+            "sqlite3",
+            "pathlib",
+            "os",
+            "time",
+            "logging",
+            "requests",
+            "urllib",
+            "http",
+            "httpx",
+            "aiohttp",
+            "socket",
+            "subprocess",
+            "metrics",
+            "scoring",
+        }
+        == set()
+    )
     # ``validation.py`` is governed by plan §11: no I/O modules and no clock reads.
     # ``json`` is forbidden only for the modules in ``check_import_boundaries``
     # ``PURE_MODULES`` (metrics.py, scoring.py), and ``validation.py`` legitimately
@@ -1032,7 +1084,9 @@ def test_structural_validation_does_not_decide_metric_eligibility() -> None:
     assert imported & (FORBIDDEN_MODULES - {"json"}) == set(), (
         "json is the only FORBIDDEN_MODULES member validation.py may import"
     )
-    assert check_module(VALIDATION_PATH) == ["validation.py: forbidden import 'json'"], (
+    assert check_module(VALIDATION_PATH) == [
+        "validation.py: forbidden import 'json'"
+    ], (
         "the only check_module violation for validation.py is the json import, which "
         "PURE_MODULES does not apply to it"
     )
@@ -1195,7 +1249,9 @@ def test_category_mismatch_and_unverified_map_to_discovery_status_vocabulary() -
         is DiscoveryStatus.CATEGORY_MISMATCH
     )
     assert (
-        v.discovery_status_for_category_status(CategoryFilterValidationStatus.UNVERIFIED)
+        v.discovery_status_for_category_status(
+            CategoryFilterValidationStatus.UNVERIFIED
+        )
         is DiscoveryStatus.FILTER_UNVERIFIED
     )
     assert (
@@ -1220,11 +1276,20 @@ def test_category_mismatch_and_unverified_map_to_discovery_status_vocabulary() -
     mismatched = v.match_exact_category(fx.PARENT_PATH_OF_INVENTORY_PATH, paths)
     unverified = v.match_exact_category(None, paths)
     verified = v.match_exact_category(fx.DEFAULT_CATEGORIES[0], paths)
-    assert v.discovery_status_for_category_status(mismatched.status) is DiscoveryStatus.CATEGORY_MISMATCH
-    assert v.discovery_status_for_category_status(unverified.status) is DiscoveryStatus.FILTER_UNVERIFIED
+    assert (
+        v.discovery_status_for_category_status(mismatched.status)
+        is DiscoveryStatus.CATEGORY_MISMATCH
+    )
+    assert (
+        v.discovery_status_for_category_status(unverified.status)
+        is DiscoveryStatus.FILTER_UNVERIFIED
+    )
     assert v.discovery_status_for_category_status(verified.status) is None
 
-    assert v.discovery_status_for_category_status(mismatched.status) is not DiscoveryStatus.TRUNCATED
+    assert (
+        v.discovery_status_for_category_status(mismatched.status)
+        is not DiscoveryStatus.TRUNCATED
+    )
     assert mismatched.matched_value_count == 0, (
         "a mismatch never becomes a zero-asset success"
     )
@@ -1445,9 +1510,7 @@ def test_page_view_index_is_independent_of_age_above_threshold() -> None:
     at_threshold = m.age_normalized_page_view_index(
         10, dfx.DATE_30D, **dfx.index_kwargs()
     )
-    well_above = m.age_normalized_page_view_index(
-        10, date_300d, **dfx.index_kwargs()
-    )
+    well_above = m.age_normalized_page_view_index(10, date_300d, **dfx.index_kwargs())
     assert at_threshold.is_available is True
     assert well_above.is_available is True
     assert at_threshold.value == pytest.approx(10.0, abs=1e-9)
@@ -1552,9 +1615,7 @@ def test_page_view_index_age_threshold_boundary() -> None:
     assert at_threshold.value == pytest.approx(10.0, abs=1e-9)
 
     # 2025-01-01T01:00Z is 29.9583333... days old; below the inclusive minimum.
-    below = m.age_normalized_page_view_index(
-        10, dfx.DATE_29D_1H, **dfx.index_kwargs()
-    )
+    below = m.age_normalized_page_view_index(10, dfx.DATE_29D_1H, **dfx.index_kwargs())
     assert below.value is None
     assert below.unavailable_reason == m.METRIC_REASON_AGE_BELOW_MINIMUM
 
@@ -1867,8 +1928,7 @@ def test_quality_rating_range_and_count_thresholds() -> None:
     )
     assert below_minimum.eligible is False
     assert (
-        below_minimum.unavailable_reason
-        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+        below_minimum.unavailable_reason == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
     )
 
     at_minimum = m.quality_observation_eligibility(
@@ -1900,8 +1960,7 @@ def test_quality_observation_eligibility_rating_count_override() -> None:
     )
     assert below_override.eligible is False
     assert (
-        below_override.unavailable_reason
-        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+        below_override.unavailable_reason == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
     )
 
     # The smallest legal override, 1, is also inclusive: 1 >= 1 eligible while
@@ -1922,8 +1981,7 @@ def test_quality_observation_eligibility_rating_count_override() -> None:
     )
     assert default_applies.eligible is False
     assert (
-        default_applies.unavailable_reason
-        == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
+        default_applies.unavailable_reason == m.METRIC_REASON_RATING_COUNT_BELOW_MINIMUM
     )
 
     # Caller/policy breaches raise; a product-level rating count never does.
@@ -2039,9 +2097,7 @@ def test_quality_eligibility_operation_state_and_semantics_gates() -> None:
         (None, m.METRIC_REASON_STATE_UNKNOWN),
         (dfx.STATE_WRONG_TYPE_INT, m.METRIC_REASON_STATE_UNKNOWN),
     ):
-        result = m.quality_observation_eligibility(
-            **dfx.quality_kwargs(state=state)
-        )
+        result = m.quality_observation_eligibility(**dfx.quality_kwargs(state=state))
         assert result.eligible is False, state
         assert result.unavailable_reason == expected_reason, state
 
@@ -2078,9 +2134,7 @@ def test_quality_eligibility_propagates_page_view_index_reason() -> None:
         ),
     )
     for overrides, expected_reason in cases:
-        quality = m.quality_observation_eligibility(
-            **dfx.quality_kwargs(**overrides)
-        )
+        quality = m.quality_observation_eligibility(**dfx.quality_kwargs(**overrides))
         assert quality.eligible is False, overrides
         assert quality.unavailable_reason == expected_reason, overrides
 
@@ -2307,9 +2361,9 @@ def test_metric_primitives_repeat_deterministically() -> None:
     assert m.age_normalized_page_view_index(
         None, dfx.DATE_30D, **dfx.index_kwargs()
     ) == m.age_normalized_page_view_index(None, dfx.DATE_30D, **dfx.index_kwargs())
-    assert m.metric_state_eligibility(
+    assert m.metric_state_eligibility(dfx.STATE_DRAFT) == m.metric_state_eligibility(
         dfx.STATE_DRAFT
-    ) == m.metric_state_eligibility(dfx.STATE_DRAFT)
+    )
     assert m.is_within_recent_window(365.0) == m.is_within_recent_window(365.0)
     assert m.stratum_is_usable(5) == m.stratum_is_usable(5)
     assert m.quality_observation_eligibility(

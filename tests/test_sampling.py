@@ -582,8 +582,7 @@ def test_strata_are_a_disjoint_cover_of_the_ordinal_axis(n):
         assert list(ordinals) == sorted(ordinals)
         assert len(set(ordinals)) == len(ordinals)
         assert all(
-            (i - 1 + offset) % SAMPLE_STRATA == stratum.stratum_index
-            for i in ordinals
+            (i - 1 + offset) % SAMPLE_STRATA == stratum.stratum_index for i in ordinals
         )
         assert (stratum.stratum_offset, stratum.stratum_stride) == (
             offset,
@@ -596,8 +595,7 @@ def test_strata_are_a_disjoint_cover_of_the_ordinal_axis(n):
         union.extend(ordinals)
     assert sorted(union) == list(range(1, n + 1))
     sizes = {
-        len(sampling.stratum_member_ordinals(stratum, n))
-        for stratum in result.strata
+        len(sampling.stratum_member_ordinals(stratum, n)) for stratum in result.strata
     }
     assert sizes == {n // SAMPLE_STRATA, -(-n // SAMPLE_STRATA)}
     assert len(result.members) == SAMPLE_STRATA * SAMPLE_PER_STRATUM == 100
@@ -813,9 +811,7 @@ def test_sampling_systematic_surface_has_docstrings_and_frozen_fields():
         "target_count",
         "is_reduced",
     ]
-    member_fields = [
-        field.name for field in dataclasses.fields(sampling.SampledMember)
-    ]
+    member_fields = [field.name for field in dataclasses.fields(sampling.SampledMember)]
     assert member_fields == [
         "category",
         "asset_identity_key",

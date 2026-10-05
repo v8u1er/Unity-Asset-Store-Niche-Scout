@@ -41,7 +41,6 @@ import json
 from typing import Any, Mapping, Sequence
 
 from fixtures.validation_fixtures import CANONICAL_ASSET_ID
-
 from niche_scout import collector_graphql as gql
 from niche_scout.config import Credentials
 from niche_scout.models import (
@@ -525,7 +524,6 @@ DUPLICATE_SEQUENCE_BODIES: Mapping[str, str] = {
 }
 
 
-
 # ---------------------------------------------------------------------------
 # Page-view scalars (plan sections 5.8, 9 lines 1442–1444)
 # ---------------------------------------------------------------------------
@@ -635,9 +633,7 @@ def scalar_view_body(scalar: object) -> str:
     wire spells it, and the sibling ``ProductDetail`` item is a valid payload, so
     the only failing operation is the page-view one.
     """
-    detail = json.dumps(
-        product_detail_payload(), sort_keys=True, separators=(",", ":")
-    )
+    detail = json.dumps(product_detail_payload(), sort_keys=True, separators=(",", ":"))
     return (
         '[{"data":'
         + detail
@@ -804,7 +800,10 @@ def three_item_body() -> str:
             "operationName": gql.PRODUCT_DETAIL_OPERATION_NAME,
             "data": product_detail_payload(),
         },
-        {"operationName": SERVER_TIME_OPERATION_NAME, "data": {"serverTime": "fixture"}},
+        {
+            "operationName": SERVER_TIME_OPERATION_NAME,
+            "data": {"serverTime": "fixture"},
+        },
         {
             "operationName": gql.PRODUCT_PAGE_VIEWS_OPERATION_NAME,
             "data": {"pageViews": 4321},
@@ -1024,9 +1023,7 @@ def keyless_one_item_body() -> str:
 def keyless_three_item_body() -> str:
     """Return a keyless body carrying three envelopes, not the fixed two."""
     detail, page = keyless_success_items()
-    return body_json_for_items(
-        [detail, {"data": {"pageViews": 1}}, page]
-    )
+    return body_json_for_items([detail, {"data": {"pageViews": 1}}, page])
 
 
 def keyless_product_detail_null_body() -> str:
@@ -1350,7 +1347,9 @@ PER_FAILURE_CLASS_RESPONSES: Mapping[str, Mapping[str, Any]] = {
     "http_200_top_level_error": _transport_response(200, top_level_errors_body()),
     "http_200_operation_error": _transport_response(200, operation_errors_body()),
     "http_200_null_required_data": _transport_response(200, null_product_body()),
-    "http_200_wrong_data_shape": _transport_response(200, product_detail_is_list_body()),
+    "http_200_wrong_data_shape": _transport_response(
+        200, product_detail_is_list_body()
+    ),
     "http_200_wrong_scalar_type": _transport_response(200, scalar_view_body("12")),
     "http_200_invalid_page_views": _transport_response(200, scalar_view_body(-1)),
     "http_200_missing_identity": _transport_response(200, missing_identity_body()),
@@ -1396,7 +1395,9 @@ CORRELATION_MODE_MEMBERS: tuple[GraphQLOperationCorrelationMode, ...] = (
 #: cannot have produced it. A test can therefore assert that an unpersisted mode
 #: fails the result's own mode validation instead of assuming it is caught.
 CORRELATION_MODE_UNVALIDATED_RESULT: Mapping[str, Any] = {
-    "mode_value": f"{GraphQLOperationCorrelationMode.EXPLICIT_KEY.value}_fixture_unvalidated",
+    "mode_value": (
+        f"{GraphQLOperationCorrelationMode.EXPLICIT_KEY.value}_fixture_unvalidated"
+    ),
     "build": "dataclasses.replace(result.correlation, mode=<unknown mode>)",
 }
 
@@ -1457,7 +1458,9 @@ class _RecordingTransportBase:
         #: The status each queued response declared, per call.
         self.statuses_declared: list[int] = []
 
-    def _record(self, request: Any, headers: Mapping[str, str]) -> tuple[Any, Mapping[str, str]]:
+    def _record(
+        self, request: Any, headers: Mapping[str, str]
+    ) -> tuple[Any, Mapping[str, str]]:
         """Record one ``(request, headers)`` call pair, in call order."""
         pair = (request, headers)
         self.calls.append(pair)
@@ -1472,8 +1475,7 @@ class _RecordingTransportBase:
     def requested_identities(self) -> tuple[str, ...]:
         """Return the ``asset_identity_key`` of each call, in call order."""
         return tuple(
-            str(getattr(request, "asset_identity_key", ""))
-            for request, _ in self.calls
+            str(getattr(request, "asset_identity_key", "")) for request, _ in self.calls
         )
 
     @property
@@ -1534,7 +1536,9 @@ class RecordingTransport(_RecordingTransportBase):
     test needs the effective status to differ from the declared one.
     """
 
-    def __call__(self, request: Any, headers: Mapping[str, str]) -> gql.GraphQLBatchResponse:
+    def __call__(
+        self, request: Any, headers: Mapping[str, str]
+    ) -> gql.GraphQLBatchResponse:
         """Return the next queued response, or raise the next queued exception."""
         self._record(request, headers)
         return self._materialize(self._next())
@@ -1549,7 +1553,9 @@ class RecordingTransportStatusOverride(_RecordingTransportBase):
     the status decides at the HTTP-status split.
     """
 
-    def __call__(self, request: Any, headers: Mapping[str, str]) -> gql.GraphQLBatchResponse:
+    def __call__(
+        self, request: Any, headers: Mapping[str, str]
+    ) -> gql.GraphQLBatchResponse:
         """Return the next queued response with the forced effective status."""
         self._record(request, headers)
         return self._materialize(self._next())

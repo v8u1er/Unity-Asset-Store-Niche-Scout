@@ -712,9 +712,9 @@ def test_quality_raw_null_below_required_coverage() -> None:
         mfx.QUALITY_LOW_COVERAGE, min_usable_samples_per_stratum=5
     )
     result = m.quality_raw(low_coverage_input)
-    assert m.quality_stratum_eligibility_coverage(
-        low_coverage_input
-    ) == pytest.approx(0.25, abs=1e-9)
+    assert m.quality_stratum_eligibility_coverage(low_coverage_input) == pytest.approx(
+        0.25, abs=1e-9
+    )
     assert result.value is None
     assert result.unavailable_reason == m.METRIC_REASON_INSUFFICIENT_COVERAGE
     # Plan §4.4 / §7.2: only stratum 0 (N_0 = 25, 5 eligible) is quality-usable,

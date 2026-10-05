@@ -44,7 +44,6 @@ from fixtures.config_fixtures import (
     TAXONOMY_FIXTURE,
     write_toml,
 )
-
 from niche_scout import collector_coveo
 from niche_scout.config import Credentials, get_credentials, load_config
 
@@ -239,8 +238,7 @@ def captured_state_by_category() -> dict[str, str]:
     body = template_body()
     facets = body["facets"]
     return {
-        str(entry["value"]): str(entry["state"])
-        for entry in facets[0]["currentValues"]
+        str(entry["value"]): str(entry["state"]) for entry in facets[0]["currentValues"]
     }
 
 

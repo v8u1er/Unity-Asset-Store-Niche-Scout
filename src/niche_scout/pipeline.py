@@ -1149,9 +1149,7 @@ def run_identity_preflight(
         responses.append(response)
 
     selected = correlation_mode
-    if selection.identities and all(
-        response is not None for response in responses
-    ):
+    if selection.identities and all(response is not None for response in responses):
         selected = select_operation_correlation_mode(
             tuple(response for response in responses if response is not None)
         )
@@ -2889,9 +2887,7 @@ def _distinct_discovered_canonical(
     """Return the run-wide distinct resolved canonical identity count."""
     keys: set[str] = set()
     for category in categories:
-        for observation in repository.iter_raw_discovery_observations(
-            run_id, category
-        ):
+        for observation in repository.iter_raw_discovery_observations(run_id, category):
             key = observation.asset_identity_key
             if key is not None and not observation.is_duplicate:
                 keys.add(key)
@@ -3017,9 +3013,7 @@ def _persist_failure_limitation_rows(
     four-component missing vector, and explicit preflight warnings. Returns the
     number of rows written and the redacted per-category limitation strings.
     """
-    persisted = {
-        row.category: row for row in repository.get_category_scores(run_id)
-    }
+    persisted = {row.category: row for row in repository.get_category_scores(run_id)}
     rows: list[CategoryScoreRecord] = []
     limitations: list[str] = []
     for category in categories:
@@ -3129,9 +3123,7 @@ def _build_scored_rows(
         for metric, score in zip(all_metrics, scores, strict=True)
     }
 
-    persisted = {
-        row.category: row for row in repository.get_category_scores(run_id)
-    }
+    persisted = {row.category: row for row in repository.get_category_scores(run_id)}
     rows: list[CategoryScoreRecord] = []
     limitations: list[str] = list(finalization_mismatches)
     for category in run.categories:
@@ -3203,9 +3195,7 @@ def _build_scored_rows(
                 ),
                 usable_quality_sample_count=metric.usable_quality_sample_count,
                 breadth_source=metric.breadth_source.value,
-                breadth_completeness_status=(
-                    metric.breadth_completeness_status.value
-                ),
+                breadth_completeness_status=(metric.breadth_completeness_status.value),
                 discovery_bounded_by_verified_total=(
                     _breadth_verified_total(discovery) is not None
                 ),
@@ -3235,9 +3225,7 @@ def _build_scored_rows(
                 missing_components_json=_missing_components_json(score),
                 warnings_json=_warnings_json(codes),
                 reference_size=reference.reference_size,
-                reference_usable_counts_json=_reference_usable_counts_json(
-                    reference
-                ),
+                reference_usable_counts_json=_reference_usable_counts_json(reference),
                 top_3_stability=sensitivity.top_3_stability,
                 top_5_stability=sensitivity.top_5_stability,
                 maximum_score_delta=sensitivity.maximum_score_delta,
@@ -3325,9 +3313,7 @@ def run_pipeline(
 
     run_started_at_utc = clock()
     resolved_run_id = (
-        run_id
-        if run_id is not None
-        else f"run-{run_started_at_utc.isoformat()}"
+        run_id if run_id is not None else f"run-{run_started_at_utc.isoformat()}"
     )
     config_snapshot_json = _config_snapshot(config)
     repository.insert_run(
@@ -3433,9 +3419,7 @@ def run_pipeline(
         for key in run.enrichment_identity_keys
         if repository.get_enrichment_observation(resolved_run_id, key) is not None
     }
-    union = compute_enrichment_union(
-        run, already_enriched_keys=already_enriched_keys
-    )
+    union = compute_enrichment_union(run, already_enriched_keys=already_enriched_keys)
     projection = build_enrichment_projection(
         union,
         discovered_canonical_assets=_distinct_discovered_canonical(

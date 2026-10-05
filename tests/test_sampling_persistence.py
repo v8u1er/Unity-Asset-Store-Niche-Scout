@@ -518,7 +518,7 @@ def test_stratum_statistics_json_matches_frozen_schema(tmp_path):
 
 @pytest.mark.lreq("LREQ-SMP-080")
 def test_stratum_statistics_json_round_trips_n_h_and_geometry(tmp_path):
-    """O8: the N=101 per-stratum ``N_h``/``n_h``/(offset, stride) survive the round trip.
+    """O8: N=101 per-stratum ``N_h``/``n_h``/(offset, stride) survive the round trip.
 
     Plan chunk-24 §2.1/§8.1: the interleaved partition gives stratum sizes
     26/25/25/25 at N = 101 (the stratum holding ordinal 1 takes the remainder),

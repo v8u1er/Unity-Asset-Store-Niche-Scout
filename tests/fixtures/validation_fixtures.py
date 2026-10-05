@@ -105,7 +105,8 @@ CLEARLY_STALE_CAPTURE_PAYLOAD: dict[str, Any] = _payload_at(45.0)
 
 #: A payload captured after the reference time (future capture).
 FUTURE_CAPTURE_PAYLOAD: dict[str, Any] = _with_capture_utc(
-    TAXONOMY_FIXTURE, (REFERENCE_UTC + timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    TAXONOMY_FIXTURE,
+    (REFERENCE_UTC + timedelta(days=1)).isoformat().replace("+00:00", "Z"),
 )
 
 #: A payload whose capture timestamp carries no timezone (naive).
@@ -119,7 +120,9 @@ UNPARSABLE_CAPTURE_PAYLOAD: dict[str, Any] = _with_capture_utc(
 )
 
 #: A payload whose capture timestamp is not even a string.
-NON_STRING_CAPTURE_PAYLOAD: dict[str, Any] = _with_capture_utc(TAXONOMY_FIXTURE, 20260105)
+NON_STRING_CAPTURE_PAYLOAD: dict[str, Any] = _with_capture_utc(
+    TAXONOMY_FIXTURE, 20260105
+)
 
 #: A normalized copy of the valid payload — the canonical fixture for equality.
 NORMALIZED_TAXONOMY_FIXTURE: dict[str, Any] = dict(TAXONOMY_FIXTURE)
@@ -127,7 +130,9 @@ NORMALIZED_TAXONOMY_FIXTURE: dict[str, Any] = dict(TAXONOMY_FIXTURE)
 
 def normalized_naive_capture_payload() -> dict[str, Any]:
     """Return a fresh, valid payload with a naive capture timestamp."""
-    return _with_capture_utc(NORMALIZED_TAXONOMY_FIXTURE, NAIVE_CAPTURE_PAYLOAD["captured_at_utc"])
+    return _with_capture_utc(
+        NORMALIZED_TAXONOMY_FIXTURE, NAIVE_CAPTURE_PAYLOAD["captured_at_utc"]
+    )
 
 
 # --------------------------------------------------------------------------
@@ -136,9 +141,7 @@ def normalized_naive_capture_payload() -> dict[str, Any]:
 
 #: One payload per required header field, with that field removed.
 TAXONOMY_PAYLOADS_MISSING_ONE_HEADER: dict[str, dict[str, Any]] = {
-    field: {
-        name: value for name, value in TAXONOMY_FIXTURE.items() if name != field
-    }
+    field: {name: value for name, value in TAXONOMY_FIXTURE.items() if name != field}
     for field in REQUIRED_TAXONOMY_FIELDS
 }
 
@@ -201,7 +204,10 @@ TAXONOMY_WITH_SCALAR_INVENTORY: dict[str, Any] = {
 #: An inventory whose entries are mappings instead of strings.
 TAXONOMY_WITH_MAPPING_PATH_ENTRY: dict[str, Any] = {
     **TAXONOMY_FIXTURE,
-    "canonical_category_paths": [*DEFAULT_CATEGORIES, {"path": "Tools/Utilities/Editor Extensions"}],
+    "canonical_category_paths": [
+        *DEFAULT_CATEGORIES,
+        {"path": "Tools/Utilities/Editor Extensions"},
+    ],
 }
 
 # --------------------------------------------------------------------------
@@ -262,7 +268,12 @@ MULTI_VALUED_CHILD_PATH_VALUE: list[str] = [
 MULTI_VALUED_NO_MATCH: list[str] = ["Nonexistent/Category", "Another/Missing/Path"]
 
 #: Wrong-typed category values that must classify as ``unverified``.
-WRONG_TYPED_CATEGORY_VALUES: tuple[Any, ...] = (7, [7, 8], {"path": DEFAULT_CATEGORIES[0]}, True)
+WRONG_TYPED_CATEGORY_VALUES: tuple[Any, ...] = (
+    7,
+    [7, 8],
+    {"path": DEFAULT_CATEGORIES[0]},
+    True,
+)
 
 # --------------------------------------------------------------------------
 # Identity fixtures (mapping rule 1.0.1, R-2)
@@ -283,7 +294,9 @@ URI_WITH_QUERY_STRING: str = f"{URI_WITH_SLUG_IDENTIFIER}?utm_source=fixture&pag
 URI_WITH_FRAGMENT_AND_QUERY: str = f"{URI_WITH_SLUG_IDENTIFIER}#reviews"
 
 #: A URL whose last path segment has no trailing ``-<numeric>`` identifier.
-URI_NO_TRAILING_IDENTIFIER: str = "https://assetstore.unity.com/packages/tools/level-design/tilemap-pro"
+URI_NO_TRAILING_IDENTIFIER: str = (
+    "https://assetstore.unity.com/packages/tools/level-design/tilemap-pro"
+)
 
 #: A URL where the trailing numeric group is not the final path segment.
 URI_NUMERIC_GROUP_BEFORE_FINAL_SEGMENT: str = (
@@ -510,18 +523,38 @@ PRODUCT_DETAIL_MISSING_IDENTITY: dict[str, Any] = {
 
 #: Named malformed-response vectors, with the shape each one is validated against.
 MALFORMED_RESPONSE_VECTORS: dict[str, dict[str, Any]] = {
-    "not_a_mapping_list": {"payload": [WELL_FORMED_PRODUCT_DETAIL], "expected_shape": "mapping"},
+    "not_a_mapping_list": {
+        "payload": [WELL_FORMED_PRODUCT_DETAIL],
+        "expected_shape": "mapping",
+    },
     "not_a_mapping_scalar": {"payload": "product", "expected_shape": "mapping"},
     "not_a_mapping_none": {"payload": None, "expected_shape": "mapping"},
-    "missing_member": {"payload": PRODUCT_DETAIL_MISSING_MEMBER, "expected_shape": "mapping"},
+    "missing_member": {
+        "payload": PRODUCT_DETAIL_MISSING_MEMBER,
+        "expected_shape": "mapping",
+    },
     "null_member": {"payload": PRODUCT_DETAIL_NULL_MEMBER, "expected_shape": "mapping"},
-    "wrong_scalar_type": {"payload": PRODUCT_DETAIL_WRONG_TYPE, "expected_shape": "mapping"},
-    "wrong_container_kind": {"payload": PRODUCT_DETAIL_WRONG_CONTAINER, "expected_shape": "mapping"},
-    "missing_identity": {"payload": PRODUCT_DETAIL_MISSING_IDENTITY, "expected_shape": "mapping"},
+    "wrong_scalar_type": {
+        "payload": PRODUCT_DETAIL_WRONG_TYPE,
+        "expected_shape": "mapping",
+    },
+    "wrong_container_kind": {
+        "payload": PRODUCT_DETAIL_WRONG_CONTAINER,
+        "expected_shape": "mapping",
+    },
+    "missing_identity": {
+        "payload": PRODUCT_DETAIL_MISSING_IDENTITY,
+        "expected_shape": "mapping",
+    },
 }
 
 #: A ``ProductDetail`` member specification: member name -> required / expected type.
-PRODUCT_DETAIL_MEMBERS: tuple[str, ...] = ("graphql_id", "product_id", "rating_count", "category")
+PRODUCT_DETAIL_MEMBERS: tuple[str, ...] = (
+    "graphql_id",
+    "product_id",
+    "rating_count",
+    "category",
+)
 PRODUCT_DETAIL_OPTIONAL_MEMBERS: tuple[str, ...] = ("graphql_id", "product_id")
 
 PRODUCT_DETAIL_FIELD_TYPES: dict[str, type | tuple[type, ...]] = {

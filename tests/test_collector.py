@@ -19,18 +19,16 @@ import dataclasses
 import json
 import tempfile
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Iterator, Mapping, Sequence
 
 import fixtures.coveo_discovery as fx
+import fixtures.graphql_fixtures as gqlfx
 import pytest
 
-import fixtures.graphql_fixtures as gqlfx
-
-from niche_scout import collector_coveo
-from niche_scout import collector_graphql
+from niche_scout import collector_coveo, collector_graphql
 from niche_scout.config import UNITY_CSRF_TOKEN_ENV, Credentials, get_credentials
 from niche_scout.database import (
     RepositoryError,
@@ -49,11 +47,9 @@ from niche_scout.models import (
     RawDiscoveryObservationRecord,
     RunRecord,
     RunStatus,
-    WarningCode,
 )
 from niche_scout.validation import (
     match_exact_category,
-    resolve_canonical_identity,
     taxonomy_path_set,
 )
 
@@ -214,7 +210,9 @@ def default_config(**overrides: Any):
         from niche_scout.config import load_config
 
         with tempfile.TemporaryDirectory() as directory:
-            toml_path = write_toml(Path(directory), DEFAULT_TOML_BODY, name="suite.toml")
+            toml_path = write_toml(
+                Path(directory), DEFAULT_TOML_BODY, name="suite.toml"
+            )
             config = load_config(toml_path=toml_path)
         _CONFIG_CACHE["config"] = dataclasses.replace(
             config,
@@ -316,7 +314,9 @@ def rows_by_ordinal(repo: SqliteRepository, category: str = CATEGORY) -> dict[in
 
 def statuses_by_category(repo: SqliteRepository) -> dict[str, Any]:
     """Return the persisted discovery status of every category of the run."""
-    return {row.category: row.discovery_status for row in repo.get_category_scores(RUN_ID)}
+    return {
+        row.category: row.discovery_status for row in repo.get_category_scores(RUN_ID)
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +329,10 @@ def test_module_imports_without_side_effects() -> None:
     assert collector_coveo.COVEO_ENDPOINT.startswith("https://")
     assert collector_coveo.COVEO_ORGANIZATION_ID in collector_coveo.coveo_search_url()
     assert collector_coveo.COVEO_VISITOR_ID_PLACEHOLDER == "niche-scout-lean-v1"
-    assert collector_coveo.COVEO_TEMPLATE_PATH == Path("config") / "coveo_search_template.json"
+    assert (
+        collector_coveo.COVEO_TEMPLATE_PATH
+        == Path("config") / "coveo_search_template.json"
+    )
     assert collector_coveo.COVEO_MIN_REQUEST_INTERVAL_SECONDS == 1.0
     assert collector_coveo.COVEO_BACKOFF_BASE_SECONDS == 2.0
     assert collector_coveo.COVEO_MAX_RETRIES == 5
@@ -341,7 +344,9 @@ def test_module_imports_without_side_effects() -> None:
         "ec_category",
         "publisher_name",
     )
-    header_names = [name.casefold() for name, _ in collector_coveo.COVEO_REQUIRED_HEADERS]
+    header_names = [
+        name.casefold() for name, _ in collector_coveo.COVEO_REQUIRED_HEADERS
+    ]
     assert header_names == ["content-type", "accept", "referer"]
     for absent in (
         "origin",
@@ -361,7 +366,12 @@ def test_request_body_builder_signature_is_stable() -> None:
     import inspect
 
     signature = inspect.signature(collector_coveo.build_coveo_request_body)
-    assert list(signature.parameters) == ["template", "category", "page_index", "page_size"]
+    assert list(signature.parameters) == [
+        "template",
+        "category",
+        "page_index",
+        "page_size",
+    ]
     assert signature.parameters["page_index"].kind is inspect.Parameter.KEYWORD_ONLY
     assert signature.parameters["page_size"].default == PAGE_SIZE
     headers_signature = inspect.signature(collector_coveo.build_coveo_headers)
@@ -421,8 +431,14 @@ def test_coveo_endpoint_headers_and_facet_selection_match_captured_template(
     assert [entry["value"] for entry in facet["currentValues"]] == list(
         fx.CAPTURED_STATE_BY_CATEGORY
     )
-    selected = [entry["value"] for entry in facet["currentValues"] if entry["state"] == "selected"]
-    idle = [entry["value"] for entry in facet["currentValues"] if entry["state"] == "idle"]
+    selected = [
+        entry["value"]
+        for entry in facet["currentValues"]
+        if entry["state"] == "selected"
+    ]
+    idle = [
+        entry["value"] for entry in facet["currentValues"] if entry["state"] == "idle"
+    ]
     assert selected == [CATEGORY]
     assert len(idle) == len(fx.CAPTURED_STATE_BY_CATEGORY) - 1
 
@@ -585,12 +601,16 @@ def test_extra_response_fields_are_ignored_and_missing_identity_fields_stay_miss
     """Extra members are ignored; a missing identity field stays missing, not zero."""
     extra = dict(fx.record(0, permanentid=None, ec_product_id=None))
     extra["ec_some_future_field"] = {"nested": [1, 2, 3]}
-    opener = RecordingOpener(lambda index: page_response([extra, fx.record(1)], total_count=2))
+    opener = RecordingOpener(
+        lambda index: page_response([extra, fx.record(1)], total_count=2)
+    )
     result = discover(repository, opener)
 
     rows = rows_by_ordinal(repository)
     assert len(rows) == 2
-    assert rows[0].identity_resolution_status == IdentityResolutionStatus.UNRESOLVED.value
+    assert (
+        rows[0].identity_resolution_status == IdentityResolutionStatus.UNRESOLVED.value
+    )
     assert rows[0].asset_identity_key is None
     assert rows[0].stratum_index is None
     assert json.loads(rows[0].category_value_json) == CATEGORY
@@ -695,7 +715,9 @@ def test_pagination_stops_at_verified_total_count(repository: SqliteRepository) 
 
 
 @pytest.mark.lreq("LREQ-EXT-050")
-def test_pagination_stops_at_natural_terminal_page(repository: SqliteRepository) -> None:
+def test_pagination_stops_at_natural_terminal_page(
+    repository: SqliteRepository,
+) -> None:
     """A short page with no usable ``totalCount`` ends the category naturally."""
     pages = [
         page_response(fx.records(PAGE_SIZE), total_count=None),
@@ -746,7 +768,10 @@ def test_failed_page_never_becomes_zero_assets(repository: SqliteRepository) -> 
     assert result.api_reported_count is None
     assert result.canonical_identity_count == 0
     assert repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == 0
-    assert statuses_by_category(repository)[CATEGORY] == DiscoveryStatus.REQUEST_FAILED.value
+    assert (
+        statuses_by_category(repository)[CATEGORY]
+        == DiscoveryStatus.REQUEST_FAILED.value
+    )
 
     malformed = RecordingOpener(
         lambda index: RecordedResponse(200, fx.wrap_page_json(fx.malformed_page()))
@@ -823,9 +848,9 @@ def test_every_non_empty_identity_candidate_is_retained(
     assert all(item["canonical_value"] is not None for item in candidates)
     assert rows[0].identity_resolution_status == IdentityResolutionStatus.RESOLVED.value
     assert rows[0].asset_identity_key == "1234567"
-    assert json.loads(
-        json.dumps(candidates, sort_keys=True)
-    ) == json.loads(rows[0].identity_candidates_json)
+    assert json.loads(json.dumps(candidates, sort_keys=True)) == json.loads(
+        rows[0].identity_candidates_json
+    )
 
 
 @pytest.mark.lreq("LREQ-EXT-060")
@@ -891,7 +916,7 @@ def test_uri_fallback_and_unparseable_candidates_contribute_nothing(
 
 
 @pytest.mark.lreq("LREQ-EXT-070")
-def test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count(
+def test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonical_count(  # noqa: E501
     repository: SqliteRepository,
 ) -> None:
     """Conflict and unresolved rows persist with no key and no canonical vote."""
@@ -941,7 +966,9 @@ def test_conflict_and_unresolved_records_are_persisted_and_excluded_from_canonic
 
 
 @pytest.mark.lreq("LREQ-EXT-080")
-def test_exact_category_match_scalar_and_multivalued(repository: SqliteRepository) -> None:
+def test_exact_category_match_scalar_and_multivalued(
+    repository: SqliteRepository,
+) -> None:
     """Scalar and multi-valued ``ec_category`` shapes are classified explicitly."""
     page = [
         fx.record(0, category=CATEGORY),
@@ -1013,22 +1040,28 @@ def test_discovery_conditions_are_recorded_and_status_uses_severity_precedence(
     """
     choose = collector_coveo.select_terminal_status
     conditions = collector_coveo.order_conditions
-    assert choose(
-        (DiscoveryStatus.PAGE_FAILED, DiscoveryStatus.REQUEST_FAILED)
-    ) is DiscoveryStatus.REQUEST_FAILED
-    assert choose(
-        (
-            DiscoveryStatus.COMPLETE,
-            DiscoveryStatus.TRUNCATED,
-            DiscoveryStatus.FILTER_UNVERIFIED,
+    assert (
+        choose((DiscoveryStatus.PAGE_FAILED, DiscoveryStatus.REQUEST_FAILED))
+        is DiscoveryStatus.REQUEST_FAILED
+    )
+    assert (
+        choose(
+            (
+                DiscoveryStatus.COMPLETE,
+                DiscoveryStatus.TRUNCATED,
+                DiscoveryStatus.FILTER_UNVERIFIED,
+            )
         )
-    ) is DiscoveryStatus.FILTER_UNVERIFIED
-    assert choose(
-        (DiscoveryStatus.CATEGORY_MISMATCH, DiscoveryStatus.IDENTITY_INCOMPLETE)
-    ) is DiscoveryStatus.CATEGORY_MISMATCH
-    assert choose(
-        (DiscoveryStatus.COMPLETE, DiscoveryStatus.TRUNCATED)
-    ) is DiscoveryStatus.TRUNCATED
+        is DiscoveryStatus.FILTER_UNVERIFIED
+    )
+    assert (
+        choose((DiscoveryStatus.CATEGORY_MISMATCH, DiscoveryStatus.IDENTITY_INCOMPLETE))
+        is DiscoveryStatus.CATEGORY_MISMATCH
+    )
+    assert (
+        choose((DiscoveryStatus.COMPLETE, DiscoveryStatus.TRUNCATED))
+        is DiscoveryStatus.TRUNCATED
+    )
     assert choose(()) is DiscoveryStatus.COMPLETE
     assert conditions(
         (
@@ -1286,9 +1319,7 @@ def test_failed_category_does_not_abort_other_categories_and_stays_visible(
             else RecordedResponse(500, b"server error")
         )
     )
-    second = discover(
-        repository, failing, category=OTHER_CATEGORY, sleeper=Recorder()
-    )
+    second = discover(repository, failing, category=OTHER_CATEGORY, sleeper=Recorder())
 
     assert second.discovery_status is DiscoveryStatus.REQUEST_FAILED
     assert second.observations_emitted == 1
@@ -1865,7 +1896,8 @@ def test_persisted_failure_cause_is_canonical_json_with_null_http_status(
 # was. Chunk 5's own names are prefixed ``GQL_`` (or camel-cased, for the two
 # fakes) so nothing here can shadow a Chunk 3 name.
 #
-# Scope authority: Documents/plans/chunk-05-graphql-protocol-adapter-and-response-correlation.md
+# Scope authority:
+# Documents/plans/chunk-05-graphql-protocol-adapter-and-response-correlation.md
 # section 9. Each node carries exactly the one ``@pytest.mark.lreq`` marker that
 # section's matrix assigns to its base node ID.
 #
@@ -1979,8 +2011,7 @@ def test_batch_request_has_exactly_two_operations_with_one_identity() -> None:
     assert request.endpoint == collector_graphql.GRAPHQL_BATCH_ENDPOINT
     assert request.request_metadata_json if False else True
     assert (
-        request.endpoint_contract_version
-        == collector_graphql.ENDPOINT_CONTRACT_VERSION
+        request.endpoint_contract_version == collector_graphql.ENDPOINT_CONTRACT_VERSION
     )
     body_objects = gql_request_objects(request.body_json)
     assert len(body_objects) == 2
@@ -1991,9 +2022,7 @@ def test_batch_request_has_exactly_two_operations_with_one_identity() -> None:
         assert set(obj) == {"query", "variables", "operationName"}
     assert body_objects[0]["variables"] == {"id": GQL_ASSET_ID}
     assert body_objects[1]["variables"] == {"packageId": GQL_ASSET_ID}
-    identities = {
-        value for obj in body_objects for value in obj["variables"].values()
-    }
+    identities = {value for obj in body_objects for value in obj["variables"].values()}
     assert identities == {GQL_ASSET_ID}
     assert request.operations_header == gqlfx.EXPECTED_OPERATIONS_HEADER
     # Every request header *name* the adapter supplied, and nothing else.
@@ -2055,9 +2084,7 @@ def test_graphql_headers_include_matching_csrf_cookie_and_header() -> None:
     naming ``config.UNITY_CSRF_TOKEN_ENV`` and echoing no part of the value
     (plan §7.1/§9 node 1; SRS §4.3).
     """
-    headers = collector_graphql.build_graphql_headers(
-        credentials=gqlfx.GQL_CREDENTIALS
-    )
+    headers = collector_graphql.build_graphql_headers(credentials=gqlfx.GQL_CREDENTIALS)
     token = gqlfx.GQL_CREDENTIALS.unity_csrf_token
 
     # A read-only mapping, never a mutable dict a caller could poison.
@@ -2490,7 +2517,9 @@ def test_explicit_key_mode_never_falls_back_to_response_position() -> None:
         [{"http_status": 200, "body_text": gqlfx.single_item_body()}]
     )
 
-    by_index = {match.operation_name: match.item_index for match in result.correlation.matches}
+    by_index = {
+        match.operation_name: match.item_index for match in result.correlation.matches
+    }
     assert by_index[GQL_ORDERED_OPERATIONS[0]] == 0
     assert by_index[GQL_ORDERED_OPERATIONS[1]] is None
     assert result.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
@@ -2512,9 +2541,7 @@ def test_validated_position_mode_correlates_by_position_when_requested() -> None
     two-operation ordering is what the identity preflight validates before this
     mode is selected (LREQ-GQL-030, SRS-lean:300-312).
     """
-    headers = collector_graphql.build_graphql_headers(
-        credentials=gqlfx.GQL_CREDENTIALS
-    )
+    headers = collector_graphql.build_graphql_headers(credentials=gqlfx.GQL_CREDENTIALS)
     transport = gqlfx.RecordingTransport(
         [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
     )
@@ -2587,9 +2614,15 @@ def test_http_failure_is_an_operation_error() -> None:
         "http_429": collector_graphql.GraphQLFailureClass.HTTP_TRANSIENT,
         "http_500": collector_graphql.GraphQLFailureClass.HTTP_TRANSIENT,
         "http_503": collector_graphql.GraphQLFailureClass.HTTP_TRANSIENT,
-        "http_400_malformed_request": collector_graphql.GraphQLFailureClass.MALFORMED_REQUEST,
-        "http_401_authentication_failure": collector_graphql.GraphQLFailureClass.AUTHENTICATION_FAILURE,
-        "http_403_authorization_failure": collector_graphql.GraphQLFailureClass.AUTHORIZATION_FAILURE,
+        "http_400_malformed_request": (
+            collector_graphql.GraphQLFailureClass.MALFORMED_REQUEST
+        ),
+        "http_401_authentication_failure": (
+            collector_graphql.GraphQLFailureClass.AUTHENTICATION_FAILURE
+        ),
+        "http_403_authorization_failure": (
+            collector_graphql.GraphQLFailureClass.AUTHORIZATION_FAILURE
+        ),
     }
     for case, failure_class in expected.items():
         responses = [gqlfx.PER_FAILURE_CLASS_RESPONSES[case]]
@@ -2803,7 +2836,10 @@ def test_invalid_state_value_and_missing_identity_are_operation_errors() -> None
     assert invalid_state.product_detail.payload is None
     assert draft_state.product_detail_status == OperationStatus.ERROR.value
 
-    for body_factory in (gqlfx.missing_identity_body, gqlfx.missing_identity_member_body):
+    for body_factory in (
+        gqlfx.missing_identity_body,
+        gqlfx.missing_identity_member_body,
+    ):
         _t, _s, (missing, draft_missing) = gql_exchange(
             [{"http_status": 200, "body_text": body_factory()}]
         )
@@ -2844,7 +2880,8 @@ def test_page_view_scalar_type_and_range_acceptance() -> None:
             # Null, invalid, and unavailable are never a fabricated zero.
             assert draft.product_page_views is None, case["case"]
             assert (
-                result.page_views.failure_class.value == case["expected_class"].casefold()
+                result.page_views.failure_class.value
+                == case["expected_class"].casefold()
             ), case["case"]
         assert result.product_detail.is_success, case["case"]
 
@@ -2855,7 +2892,8 @@ def test_page_view_scalar_type_and_range_acceptance() -> None:
         assert not value.is_valid
         assert value.value is None
         assert (
-            value.failure_class is collector_graphql.GraphQLFailureClass.WRONG_SCALAR_TYPE
+            value.failure_class
+            is collector_graphql.GraphQLFailureClass.WRONG_SCALAR_TYPE
         )
     # ``False`` is not a zero and ``0`` is not a failure.
     assert collector_graphql.validate_page_view_scalar(0).value == 0
@@ -2866,16 +2904,12 @@ def test_page_view_scalar_type_and_range_acceptance() -> None:
 @pytest.mark.lreq("LREQ-GQL-040")
 def test_retry_backoff_on_transient_and_no_indefinite_retry() -> None:
     """Transient failures are retried with deterministic backoff, then bounded."""
-    transport, sleeper, (result, _draft) = gql_exchange(
-        gqlfx.RETRY_SEQUENCE_RESPONSES
-    )
+    transport, sleeper, (result, _draft) = gql_exchange(gqlfx.RETRY_SEQUENCE_RESPONSES)
     assert transport.call_count == 2
     assert result.is_success
     assert result.attempts == 2
     assert sleeper.durations == [
-        collector_graphql.retry_delay_seconds(
-            collector_graphql.GraphQLRetryPolicy(), 1
-        )
+        collector_graphql.retry_delay_seconds(collector_graphql.GraphQLRetryPolicy(), 1)
     ]
     assert sleeper.durations[0] == collector_graphql.DEFAULT_BACKOFF_BASE_SECONDS
 
@@ -3099,7 +3133,9 @@ def test_adapter_declares_no_metric_eligibility_verdict() -> None:
 
     # The draft carries no run-level page-view semantics status at all: Chunk 6A
     # initializes it, Chunk 7B detects ``contradicted``.
-    assert not hasattr(collector_graphql.EnrichmentObservationDraft, "page_view_semantics")
+    assert not hasattr(
+        collector_graphql.EnrichmentObservationDraft, "page_view_semantics"
+    )
     assert not hasattr(collector_graphql.EnrichmentResult, "page_view_semantics")
     assert "page_view_semantics_status" not in {
         field_name.name
@@ -3127,8 +3163,9 @@ def test_adapter_declares_no_metric_eligibility_verdict() -> None:
 @pytest.mark.lreq("LREQ-NFR-030")
 def test_transport_failure_does_not_escape_as_an_exception() -> None:
     """A raised transport is contained, typed, redacted, and bounded."""
-    boom = RuntimeError("fixture transport exploded with token "
-                        f"{gqlfx.GQL_FIXTURE_CSRF_TOKEN}")
+    boom = RuntimeError(
+        f"fixture transport exploded with token {gqlfx.GQL_FIXTURE_CSRF_TOKEN}"
+    )
     transport, sleeper, (result, draft) = gql_exchange([boom] * 8)
 
     assert (
@@ -3189,9 +3226,7 @@ def test_request_metadata_json_carries_required_fields_without_secrets() -> None
     assert result.page_views.operation_name == GQL_ORDERED_OPERATIONS[1]
     assert list(metadata["correlation_keys"]) == list(GQL_ORDERED_OPERATIONS)
     assert list(metadata["additional_correlation_keys"]) == list(GQL_ORDERED_OPERATIONS)
-    assert all(
-        not keys for keys in metadata["additional_correlation_keys"].values()
-    )
+    assert all(not keys for keys in metadata["additional_correlation_keys"].values())
     assert set(metadata["operation_names"]) == set(GQL_ORDERED_OPERATIONS)
 
     for name, value in collector_graphql.GRAPHQL_REQUEST_HEADERS.items():
@@ -3201,7 +3236,9 @@ def test_request_metadata_json_carries_required_fields_without_secrets() -> None
     assert "authorization" not in {key.casefold() for key in metadata}
     assert "token" not in {key.casefold() for key in metadata}
     # The response body itself never reaches metadata.
-    assert gqlfx.product_detail_payload()["publisher"] not in draft.request_metadata_json
+    assert (
+        gqlfx.product_detail_payload()["publisher"] not in draft.request_metadata_json
+    )
 
     # Argument order and keyword use both work; the JSON is byte-stable.
     direct = collector_graphql.build_request_metadata_json(
@@ -3227,7 +3264,9 @@ def test_request_metadata_json_carries_required_fields_without_secrets() -> None
 
 
 @pytest.mark.lreq("LREQ-SEC-020")
-def test_request_metadata_json_carries_real_operation_names_and_correlation_keys() -> None:
+def test_request_metadata_json_carries_real_operation_names_and_correlation_keys() -> (
+    None
+):
     """Metadata carries the real correlation-key member name, never a placeholder."""
     _transport, _sleeper, (_result, draft) = gql_exchange(
         [{"http_status": 200, "body_text": gqlfx.in_order_success_body()}]
@@ -3284,8 +3323,7 @@ def test_error_summaries_and_metadata_are_redacted() -> None:
                 "errors": [
                     {
                         "message": (
-                            "fixture failure echoing "
-                            + gqlfx.GQL_FIXTURE_CSRF_TOKEN
+                            "fixture failure echoing " + gqlfx.GQL_FIXTURE_CSRF_TOKEN
                         ),
                         "extensions": {"code": "csrf"},
                     }
@@ -3333,7 +3371,10 @@ def test_error_summaries_and_metadata_are_redacted() -> None:
     # The request header *names* are metadata-safe; their values are not stored.
     assert gql_headers(_transport)
     for name, value in gql_headers(_transport).items():
-        assert name.casefold() in {n.casefold() for n in draft.request_metadata_json} or True
+        assert (
+            name.casefold() in {n.casefold() for n in draft.request_metadata_json}
+            or True
+        )
         assert value not in draft.request_metadata_json
 
 
@@ -3768,9 +3809,7 @@ def test_normalization_is_deterministic_for_equal_live_records() -> None:
 
 def gql_batch_response(body_text: str) -> collector_graphql.GraphQLBatchResponse:
     """Return a 200 ``GraphQLBatchResponse`` carrying ``body_text``."""
-    return collector_graphql.GraphQLBatchResponse(
-        http_status=200, body_text=body_text
-    )
+    return collector_graphql.GraphQLBatchResponse(http_status=200, body_text=body_text)
 
 
 @pytest.mark.lreq("LREQ-GQL-030")
@@ -3781,9 +3820,7 @@ def test_execute_graphql_batch_honours_caller_correlation_mode() -> None:
     passed mode is what each operation and ``correlation.mode`` report; omitting
     it reproduces the explicit-key behaviour exactly.
     """
-    headers = collector_graphql.build_graphql_headers(
-        credentials=gqlfx.GQL_CREDENTIALS
-    )
+    headers = collector_graphql.build_graphql_headers(credentials=gqlfx.GQL_CREDENTIALS)
     transport = gqlfx.RecordingTransport(
         [{"http_status": 200, "body_text": gqlfx.keyless_success_body()}]
     )
@@ -3798,9 +3835,7 @@ def test_execute_graphql_batch_honours_caller_correlation_mode() -> None:
     )
 
     # The passed mode is the mode each operation and the correlation report.
-    assert (
-        result.correlation.mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION
-    )
+    assert result.correlation.mode is GraphQLOperationCorrelationMode.VALIDATED_POSITION
     assert (
         result.product_detail.correlation_mode
         is GraphQLOperationCorrelationMode.VALIDATED_POSITION
@@ -3825,8 +3860,7 @@ def test_execute_graphql_batch_honours_caller_correlation_mode() -> None:
         sleep=gqlfx.RecordingSleeper(),
     )
     assert (
-        default_result.correlation.mode
-        is GraphQLOperationCorrelationMode.EXPLICIT_KEY
+        default_result.correlation.mode is GraphQLOperationCorrelationMode.EXPLICIT_KEY
     )
     assert (
         default_result.product_detail.correlation_mode
@@ -4247,9 +4281,7 @@ def test_product_detail_rating_average_zero_with_positive_count_is_unavailable()
     ``failure_class is NONE`` and the correlation mode is not flipped.
     """
     validation = collector_graphql.validate_product_detail_payload(
-        gqlfx.product_detail_contradiction_payload(
-            rating_average=0, rating_count=210
-        )
+        gqlfx.product_detail_contradiction_payload(rating_average=0, rating_count=210)
     )
 
     assert validation.is_valid is True
@@ -4453,9 +4485,7 @@ def test_product_detail_rating_positive_average_with_zero_count_is_contradictory
     because the new code is not a structural failure class (plan §3.3).
     """
     validation = collector_graphql.validate_product_detail_payload(
-        gqlfx.product_detail_contradiction_payload(
-            rating_average=4.5, rating_count=0
-        )
+        gqlfx.product_detail_contradiction_payload(rating_average=4.5, rating_count=0)
     )
 
     assert validation.is_valid is True
@@ -4486,9 +4516,7 @@ def test_product_detail_rating_zero_count_and_zero_average_is_no_rating() -> Non
     state, never two distinct zeros (SRS §1.2).
     """
     validation = collector_graphql.validate_product_detail_payload(
-        gqlfx.product_detail_contradiction_payload(
-            rating_average=0, rating_count=0
-        )
+        gqlfx.product_detail_contradiction_payload(rating_average=0, rating_count=0)
     )
 
     assert validation.is_valid is True
@@ -4906,8 +4934,7 @@ def test_short_terminal_page_with_unreconciled_verified_total_is_truncated(
     # No zero-asset reading: both pages' records are persisted.
     assert result.canonical_identity_count == PAGE_SIZE + 4
     assert (
-        repository.count_raw_discovery_observations(RUN_ID, CATEGORY)
-        == PAGE_SIZE + 4
+        repository.count_raw_discovery_observations(RUN_ID, CATEGORY) == PAGE_SIZE + 4
     )
     assert statuses_by_category(repository)[CATEGORY] == (
         DiscoveryStatus.TRUNCATED.value

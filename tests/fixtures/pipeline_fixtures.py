@@ -887,9 +887,7 @@ class LogCapture(logging.Handler):
         for message in self.messages:
             if "enrichment" in message.lower():
                 return
-        raise AssertionError(
-            f"no enrichment projection log was emitted before {label}"
-        )
+        raise AssertionError(f"no enrichment projection log was emitted before {label}")
 
 
 #: The pipeline module logger the projection line is emitted on
@@ -931,7 +929,6 @@ def _on_call_hook(identity: str) -> None:
     capture.assert_projection_logged(
         f"the enrichment request for identity {identity!r}"
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -1015,13 +1012,9 @@ def _scenario_preflight_identities() -> frozenset[str]:
     )
     selection = pipeline_module.select_preflight_identities(
         run,
-        policy=pipeline_module.PreflightPolicy(
-            min_categories=2, assets_per_category=2
-        ),
+        policy=pipeline_module.PreflightPolicy(min_categories=2, assets_per_category=2),
     )
-    return frozenset(
-        identity.asset_identity_key for identity in selection.identities
-    )
+    return frozenset(identity.asset_identity_key for identity in selection.identities)
 
 
 def failed_enrichment_identity() -> str:

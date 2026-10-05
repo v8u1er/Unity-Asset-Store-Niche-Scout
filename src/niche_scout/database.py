@@ -376,9 +376,7 @@ _RAW_IDENTITY_COLUMNS = (
 
 # Index name -> (table, columns), mirroring the originating CREATE INDEX text.
 _INDEX_TARGETS: dict[str, tuple[str, tuple[str, ...]]] = {}
-_INDEX_ON_PATTERN = re.compile(
-    r"ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)"
-)
+_INDEX_ON_PATTERN = re.compile(r"ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)")
 for _index_name, _index_statement in TABLE_INDEXES.items():
     _match = _INDEX_ON_PATTERN.search(_index_statement)
     if _match is None:
@@ -386,9 +384,7 @@ for _index_name, _index_statement in TABLE_INDEXES.items():
     _INDEX_TARGETS[_index_name] = (
         _match.group(1),
         tuple(
-            column.strip()
-            for column in _match.group(2).split(",")
-            if column.strip()
+            column.strip() for column in _match.group(2).split(",") if column.strip()
         ),
     )
 
@@ -428,9 +424,7 @@ _ENUM_COLUMNS: dict[tuple[str, str], tuple[str, ...]] = {
         item.value for item in BreadthCompletenessStatus
     ),
     ("category_scores", "score_state"): tuple(item.value for item in ScoreState),
-    ("category_scores", "evidence_grade"): tuple(
-        item.value for item in EvidenceGrade
-    ),
+    ("category_scores", "evidence_grade"): tuple(item.value for item in EvidenceGrade),
     ("category_scores", "rankability_status"): tuple(
         item.value for item in RankabilityStatus
     ),
@@ -508,7 +502,7 @@ _IMPLICIT_NOT_NULL_DEFAULTS: dict[str, dict[str, object]] = {
         "warnings_json": "[]",
         "reference_size": 0,
         "reference_usable_counts_json": "{}",
-"ranking_sensitivity_json": "{}",
+        "ranking_sensitivity_json": "{}",
     },
 }
 
@@ -535,9 +529,7 @@ def _bindable(table: str) -> tuple[str, ...]:
     )
 
 
-def _record_columns_with_non_none(
-    table: str, record: object
-) -> tuple[str, ...]:
+def _record_columns_with_non_none(table: str, record: object) -> tuple[str, ...]:
     """Columns of ``table`` for which the record supplies a non-``None`` value.
 
     This is the per-record form of :func:`_columns_with_non_none`, used by the
@@ -576,14 +568,15 @@ def _validate_enum(table: str, column: str, value: object) -> None:
         return
     if value not in allowed:
         raise InvalidRecordValueError(
-            f"{table}.{column}: value outside the allowed set "
-            f"({', '.join(allowed)})"
+            f"{table}.{column}: value outside the allowed set ({', '.join(allowed)})"
         )
 
 
 def _columns_with_non_none(record: object) -> tuple[str, ...]:
     return tuple(
-        name for name in TABLE_COLUMNS[_table_of(record)] if getattr(record, name) is not None
+        name
+        for name in TABLE_COLUMNS[_table_of(record)]
+        if getattr(record, name) is not None
     )
 
 
@@ -609,9 +602,7 @@ def _validate_required_columns(record: object) -> None:
             and column not in _BOOLEAN_COLUMNS.get(table, ())
             and not isinstance(value, int)
         ):
-            raise InvalidRecordValueError(
-                f"{table}.{column}: value must be an integer"
-            )
+            raise InvalidRecordValueError(f"{table}.{column}: value must be an integer")
         if column in _REAL_COLUMNS.get(table, ()) and not isinstance(
             value, (int, float)
         ):
@@ -666,9 +657,7 @@ def _encode_column(table: str, column: str, value: object) -> object:
         )
     if column in _DATETIME_COLUMNS[table]:
         if not isinstance(value, datetime):
-            raise InvalidRecordValueError(
-                f"{table}.{column}: value must be a datetime"
-            )
+            raise InvalidRecordValueError(f"{table}.{column}: value must be a datetime")
         try:
             return ensure_utc(value).isoformat()
         except ValueError as exc:
@@ -680,18 +669,12 @@ def _encode_column(table: str, column: str, value: object) -> object:
             return 1 if value else 0
         if isinstance(value, int) and value in (0, 1):
             return value
-        raise InvalidRecordValueError(
-            f"{table}.{column}: value must be a boolean"
-        )
+        raise InvalidRecordValueError(f"{table}.{column}: value must be a boolean")
     if value is True or value is False:
-        raise InvalidRecordValueError(
-            f"{table}.{column}: value must not be a boolean"
-        )
+        raise InvalidRecordValueError(f"{table}.{column}: value must not be a boolean")
     if column in _INTEGER_COLUMNS[table]:
         if not isinstance(value, int):
-            raise InvalidRecordValueError(
-                f"{table}.{column}: value must be an integer"
-            )
+            raise InvalidRecordValueError(f"{table}.{column}: value must be an integer")
         return value
     if column in _REAL_COLUMNS.get(table, ()):
         if not isinstance(value, (int, float)):
@@ -719,7 +702,9 @@ def _decode_column(table: str, column: str, value: object) -> object:
 
 def _encode_row(record: object, columns: Sequence[str]) -> tuple[object, ...]:
     table = _table_of(record)
-    return tuple(_encode_column(table, column, getattr(record, column)) for column in columns)
+    return tuple(
+        _encode_column(table, column, getattr(record, column)) for column in columns
+    )
 
 
 def _project_row(table: str, columns: Sequence[str], values: Mapping[str, object]):
@@ -1106,7 +1091,9 @@ class SqliteRepository:
         # transaction, so ``_settle_own_transaction`` commits exactly that one
         # and the failure path rolls exactly that one back, without adopting or
         # stranding a peer's work and without leaving a write lock behind.
-        opened_transaction = owns_outer_transaction and not self._connection.in_transaction
+        opened_transaction = (
+            owns_outer_transaction and not self._connection.in_transaction
+        )
         if opened_transaction:
             self._connection.execute("BEGIN")
         self._connection.execute(f"SAVEPOINT {name}")
@@ -1159,9 +1146,7 @@ class SqliteRepository:
         values: list[object] = [status]
         if completed_at_utc is not None:
             assignments.append("completed_at_utc = ?")
-            values.append(
-                _encode_column("runs", "completed_at_utc", completed_at_utc)
-            )
+            values.append(_encode_column("runs", "completed_at_utc", completed_at_utc))
         values.append(run_id)
         cursor = self._connection.execute(
             f"UPDATE runs SET {', '.join(assignments)} WHERE run_id = ?",
@@ -1274,8 +1259,7 @@ class SqliteRepository:
         columns = tuple(
             column
             for column in _bindable("category_scores")
-            if column
-            in {"run_id", "category", "discovery_status", "computed_at_utc"}
+            if column in {"run_id", "category", "discovery_status", "computed_at_utc"}
         )
         update_columns = tuple(
             column for column in columns if column not in ("run_id", "category")
@@ -1310,7 +1294,8 @@ class SqliteRepository:
             f"INSERT INTO category_scores ({', '.join(columns + omitted)}) "
             f"VALUES ({', '.join('?' for _ in columns + omitted)}) "
             f"ON CONFLICT (run_id, category) DO UPDATE SET {assignments}",
-            tuple(values) + tuple(_default_for("category_scores", column) for column in omitted),
+            tuple(values)
+            + tuple(_default_for("category_scores", column) for column in omitted),
         )
 
     # -- raw discovery observations ----------------------------------------
@@ -1368,9 +1353,7 @@ class SqliteRepository:
                 self._flush_raw_batch(statement, batch, written)
                 written += len(batch)
         except sqlite3.IntegrityError as exc:
-            raise _integrity_error(
-                "raw_discovery_observations", exc, written
-            ) from None
+            raise _integrity_error("raw_discovery_observations", exc, written) from None
         except sqlite3.Error as exc:
             # The platform silently rolls back *all* pending statements here, so
             # the caller's category transaction has to be the thing that decides
@@ -1440,9 +1423,7 @@ class SqliteRepository:
             try:
                 cursor = self._connection.execute(statement, values)
             except sqlite3.IntegrityError as exc:
-                raise _integrity_error(
-                    "raw_discovery_observations", exc, 0
-                ) from None
+                raise _integrity_error("raw_discovery_observations", exc, 0) from None
             updated += cursor.rowcount
         return updated
 
@@ -1474,9 +1455,7 @@ class SqliteRepository:
         )
         changed = 0
         for asset_identity_key in asset_identity_keys:
-            cursor = self._connection.execute(
-                statement, (run_id, asset_identity_key)
-            )
+            cursor = self._connection.execute(statement, (run_id, asset_identity_key))
             changed += cursor.rowcount
         return changed
 
@@ -1672,7 +1651,9 @@ class SqliteRepository:
             (run_id, category),
         ).fetchall()
         return tuple(
-            _project_row("sample_members", TABLE_COLUMNS["sample_members"], _row_mapping(row))
+            _project_row(
+                "sample_members", TABLE_COLUMNS["sample_members"], _row_mapping(row)
+            )
             for row in rows
         )
 
@@ -1826,11 +1807,7 @@ class SqliteRepository:
         if not records:
             return
         columns = tuple(TABLE_COLUMNS[table])
-        implicit = tuple(
-            column
-            for column in columns
-            if column not in _bindable(table)
-        )
+        implicit = tuple(column for column in columns if column not in _bindable(table))
         statement = (
             f"INSERT INTO {table} ({', '.join(columns)}) "
             f"VALUES ({', '.join('?' for _ in columns)})"
@@ -1848,9 +1825,7 @@ class SqliteRepository:
                 tuple(
                     _encode_column(table, column, getattr(record, column))
                     if column in supplied
-                    else _encode_column(
-                        table, column, _implicit_default(table, column)
-                    )
+                    else _encode_column(table, column, _implicit_default(table, column))
                     for column in columns
                 )
             )
@@ -1860,8 +1835,7 @@ class SqliteRepository:
             raise _integrity_error(table, exc, 0) from None
         except sqlite3.Error as exc:
             raise DatabaseError(
-                f"{table}: failed to insert {len(rows)} row(s) "
-                f"({', '.join(implicit)})"
+                f"{table}: failed to insert {len(rows)} row(s) ({', '.join(implicit)})"
             ) from exc
 
     def _upsert_rows(self, table: str, records: Sequence[object]) -> int:
@@ -1917,7 +1891,9 @@ class SqliteRepository:
         value for a defaulted ``NOT NULL`` column keeps it rather than
         discarding it.
         """
-        bound = tuple(column for column in TABLE_COLUMNS[table] if column in _bindable(table))
+        bound = tuple(
+            column for column in TABLE_COLUMNS[table] if column in _bindable(table)
+        )
         explicit = tuple(
             column for column in TABLE_COLUMNS[table] if column not in bound
         )
@@ -1934,9 +1910,7 @@ def _insert_omitted_columns(table: str) -> tuple[str, ...]:
     ``_record_columns_with_non_none`` instead of being overwritten here.
     """
     bindable = set(_bindable(table))
-    return tuple(
-        column for column in TABLE_COLUMNS[table] if column not in bindable
-    )
+    return tuple(column for column in TABLE_COLUMNS[table] if column not in bindable)
 
 
 def _row_mapping(row: sqlite3.Row | tuple) -> dict[str, object]:
@@ -1980,9 +1954,7 @@ def _synchronous_statement(synchronous: str) -> str:
     """
     name = str(synchronous).strip().upper()
     if name not in _SYNCHRONOUS_LEVELS:
-        raise ValueError(
-            "synchronous must be one of OFF, NORMAL, FULL, EXTRA"
-        )
+        raise ValueError("synchronous must be one of OFF, NORMAL, FULL, EXTRA")
     return name
 
 
@@ -2339,13 +2311,9 @@ def verify_persisted_sampling(
             if stored_member.stratum_index != pure_member.stratum_index:
                 mismatches.append(_mismatch(category, "sample_members.stratum_index"))
             if stored_member.stratum_offset != pure_member.stratum_offset:
-                mismatches.append(
-                    _mismatch(category, "sample_members.stratum_offset")
-                )
+                mismatches.append(_mismatch(category, "sample_members.stratum_offset"))
             if stored_member.stratum_stride != pure_member.stratum_stride:
-                mismatches.append(
-                    _mismatch(category, "sample_members.stratum_stride")
-                )
+                mismatches.append(_mismatch(category, "sample_members.stratum_stride"))
             if (
                 stored_member.sample_rank_within_stratum
                 != pure_member.sample_rank_within_stratum

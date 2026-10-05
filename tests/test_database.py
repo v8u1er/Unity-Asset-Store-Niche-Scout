@@ -32,7 +32,6 @@ import pytest
 from niche_scout import models
 from niche_scout.database import (
     CREATE_TABLE_STATEMENTS,
-    DDL_STATEMENTS,
     SCHEMA_VERSION,
     TABLE_COLUMNS,
     TABLE_PRIMARY_KEYS,
@@ -437,9 +436,7 @@ def test_schema_initialization_is_versioned_and_idempotent(
         for table, columns in TABLE_COLUMNS.items():
             stored_columns = tuple(
                 row[1]
-                for row in repository.connection.execute(
-                    f"PRAGMA table_info({table})"
-                )
+                for row in repository.connection.execute(f"PRAGMA table_info({table})")
             )
             assert stored_columns == columns, f"{table} column list drifted from DDL"
 
@@ -577,7 +574,7 @@ def test_no_alias_columns_and_no_import_time_ddl(
 
     monkeypatch.setattr(sqlite3, "connect", refuse_connection)
     try:
-        reimported = importlib.import_module(module_name)
+        importlib.import_module(module_name)
     finally:
         monkeypatch.undo()
     assert not list(tmp_path.iterdir())
@@ -625,14 +622,20 @@ def test_foreign_key_and_pragma_contracts_are_enforced(
             "sample_members: row references a run_id that does not exist"
         )
         assert "package-x" not in str(orphan.value)
-        assert repository.get_sample_members("run-absent", fixtures.DEFAULT_CATEGORIES[0]) == ()
+        assert (
+            repository.get_sample_members("run-absent", fixtures.DEFAULT_CATEGORIES[0])
+            == ()
+        )
 
         repository.insert_run(run_record)
         with repository.category_transaction(run_record.run_id, category):
             repository.insert_raw_discovery_observations([_raw_observation()])
-        assert repository.count_raw_discovery_observations(
-            run_record.run_id, fixtures.DEFAULT_CATEGORIES[0]
-        ) == 1
+        assert (
+            repository.count_raw_discovery_observations(
+                run_record.run_id, fixtures.DEFAULT_CATEGORIES[0]
+            )
+            == 1
+        )
         assert repository.count_discovery_observations(run_record.run_id) == 1
 
     reopened = SqliteRepository(database)
@@ -689,9 +692,12 @@ def test_insert_versus_upsert_semantics_per_table(
             repository.insert_enrichment_observations([enrichment])
         corrected = _enrichment(product_page_views=0)
         assert repository.upsert_enrichment_observation(corrected) is None
-        assert repository.get_enrichment_observation(
-            run_record.run_id, enrichment.asset_identity_key
-        ) == corrected
+        assert (
+            repository.get_enrichment_observation(
+                run_record.run_id, enrichment.asset_identity_key
+            )
+            == corrected
+        )
         assert repository.count_distinct_enrichment_identities(run_record.run_id) == 1
 
         scores = _full_category_score()
@@ -717,7 +723,10 @@ def test_insert_versus_upsert_semantics_per_table(
         assert repository.count_sample_members(run_record.run_id) == 1
         assert repository.count_discovery_observations(run_record.run_id) == 1
         assert repository.count_distinct_enrichment_observations(run_record.run_id) == 1
-        assert repository.count_raw_discovery_observations(run_record.run_id, category) == 1
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, category)
+            == 1
+        )
         assert set(TABLE_PRIMARY_KEYS) == set(TABLE_COLUMNS)
 
 
@@ -803,9 +812,13 @@ def test_enum_backed_columns_reject_unknown_values(
                 )
 
         # Enrichment: the two independent operation statuses.
-        for status in TABLE_ENUM_COLUMNS[("enrichment_observations", "page_views_status")]:
+        for status in TABLE_ENUM_COLUMNS[
+            ("enrichment_observations", "page_views_status")
+        ]:
             repository.upsert_enrichment_observation(
-                _enrichment(asset_identity_key=f"package-{status}", page_views_status=status)
+                _enrichment(
+                    asset_identity_key=f"package-{status}", page_views_status=status
+                )
             )
         for status in TABLE_ENUM_COLUMNS[
             ("enrichment_observations", "product_detail_status")
@@ -818,14 +831,14 @@ def test_enum_backed_columns_reject_unknown_values(
             )
         with pytest.raises(InvalidRecordValueError):
             repository.upsert_enrichment_observation(
-                _enrichment(asset_identity_key="package-bad", product_detail_status="nope")
+                _enrichment(
+                    asset_identity_key="package-bad", product_detail_status="nope"
+                )
             )
 
         # Sample members carry no enum-backed column.
         assert not [
-            column
-            for column in TABLE_ENUM_COLUMNS
-            if column[0] == "sample_members"
+            column for column in TABLE_ENUM_COLUMNS if column[0] == "sample_members"
         ]
 
         # Category scores: discovery status is validated before the row is written.
@@ -842,11 +855,22 @@ def test_enum_backed_columns_reject_unknown_values(
                 "unknown_status_value",
                 computed_at_utc=_iso(6),
             )
-        stored = {row.category: row for row in repository.get_category_scores(run_record.run_id)}
+        stored = {
+            row.category: row
+            for row in repository.get_category_scores(run_record.run_id)
+        }
         assert stored[category].discovery_status == DiscoveryStatus.COMPLETE.value
         assert repository.count_discovery_observations(run_record.run_id) == (
-            len(TABLE_ENUM_COLUMNS[("raw_discovery_observations", "identity_resolution_status")])
-            + len(TABLE_ENUM_COLUMNS[("raw_discovery_observations", "category_filter_validation_status")])
+            len(
+                TABLE_ENUM_COLUMNS[
+                    ("raw_discovery_observations", "identity_resolution_status")
+                ]
+            )
+            + len(
+                TABLE_ENUM_COLUMNS[
+                    ("raw_discovery_observations", "category_filter_validation_status")
+                ]
+            )
         ), "only the accepted enum values were written"
 
         assert "unknown_status_value" not in database.read_bytes().decode(
@@ -924,7 +948,9 @@ def test_json_and_utc_round_trip_for_all_record_types(
             repository.append_raw_discovery_observations(iter([observation]))
         assert not repository.in_category_transaction()
 
-        empty_category = repository.get_sample_members(run_record.run_id, second_category)
+        empty_category = repository.get_sample_members(
+            run_record.run_id, second_category
+        )
         assert empty_category == ()
 
     reopened = SqliteRepository(database)
@@ -939,7 +965,9 @@ def test_json_and_utc_round_trip_for_all_record_types(
         reopened.close()
 
     # The module contains no AST-level "unavailable becomes zero" pattern.
-    tree = ast.parse(DATABASE_PATH.read_text(encoding="utf-8"), filename=str(DATABASE_PATH))
+    tree = ast.parse(
+        DATABASE_PATH.read_text(encoding="utf-8"), filename=str(DATABASE_PATH)
+    )
     for node in ast.walk(tree):
         if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.Or):
             continue
@@ -1131,9 +1159,14 @@ def test_sample_member_round_trip_preserves_nullable_and_census_fields(
             "an unavailable overlap percentage stays NULL, never 0.0"
         )
 
-        stored_sampled = repository.get_sample_members(run_record.run_id, second_category)
+        stored_sampled = repository.get_sample_members(
+            run_record.run_id, second_category
+        )
         assert stored_sampled == tuple(
-            sorted(sampled, key=lambda row: (row.stratum_index, row.sample_rank_within_stratum))
+            sorted(
+                sampled,
+                key=lambda row: (row.stratum_index, row.sample_rank_within_stratum),
+            )
         ), "members come back ordered by stratum then rank"
         assert {row.stratum_index for row in stored_sampled} == {0, 1, 2, 3}
         assert [row.preflight_selected for row in stored_sampled] == [
@@ -1185,12 +1218,13 @@ def test_at_most_one_enrichment_row_per_run_and_identity(
 
         corrected = _enrichment(asset_identity_key="package-shared", product_id="5678")
         assert repository.upsert_enrichment_observation(corrected) is None
-        assert repository.get_enrichment_observation(
-            run_record.run_id, "package-shared"
-        ) == corrected
-        assert repository.count_distinct_enrichment_identities(run_record.run_id) == 1, (
-            "the upsert overwrites the single existing row"
+        assert (
+            repository.get_enrichment_observation(run_record.run_id, "package-shared")
+            == corrected
         )
+        assert (
+            repository.count_distinct_enrichment_identities(run_record.run_id) == 1
+        ), "the upsert overwrites the single existing row"
 
         # An unknown identity reads back as absent rather than as an empty row.
         assert (
@@ -1231,9 +1265,7 @@ def test_streamed_raw_append_consumes_single_pass_iterable(
         repository.insert_run(run_record)
         with pytest.raises(RepositoryError):
             repository.append_raw_discovery_observations(emit(3))
-        assert consumed == [], (
-            "the precondition fires before the iterable is read"
-        )
+        assert consumed == [], "the precondition fires before the iterable is read"
 
         with pytest.raises(ValueError):
             repository.append_raw_discovery_observations(emit(1), batch_size=0)
@@ -1242,10 +1274,15 @@ def test_streamed_raw_append_consumes_single_pass_iterable(
         assert consumed == [], "batch_size is validated before the iterable is read"
 
         with repository.category_transaction(run_record.run_id, category):
-            written = repository.append_raw_discovery_observations(emit(250), batch_size=50)
+            written = repository.append_raw_discovery_observations(
+                emit(250), batch_size=50
+            )
         assert written == 250
         assert consumed == list(range(1, 251)), "every record was consumed exactly once"
-        assert repository.count_raw_discovery_observations(run_record.run_id, category) == 250
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, category)
+            == 250
+        )
 
         # The sink works on a lazy source with no length and no re-iteration:
         # asking for the same generator twice would already be exhausted.
@@ -1310,9 +1347,7 @@ def test_pre_enrichment_counts_are_readable_without_full_scans(
         repository.insert_sample_members(
             [
                 _sample_member(asset_identity_key="package-1"),
-                _sample_member(
-                    category=second, asset_identity_key="package-11"
-                ),
+                _sample_member(category=second, asset_identity_key="package-11"),
             ]
         )
         repository.insert_enrichment_observations(
@@ -1325,8 +1360,12 @@ def test_pre_enrichment_counts_are_readable_without_full_scans(
         assert repository.count_discovery_observations(run_record.run_id) == 5
         assert repository.count_sample_members(run_record.run_id) == 2
         assert repository.count_distinct_enrichment_identities(run_record.run_id) == 2
-        assert repository.count_raw_discovery_observations(run_record.run_id, first) == 3
-        assert repository.count_raw_discovery_observations(run_record.run_id, second) == 2
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, first) == 3
+        )
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, second) == 2
+        )
         assert repository.count_distinct_enrichment_observations(run_record.run_id) == 2
 
         # Each count is one statement whose result is prepared without
@@ -1436,7 +1475,8 @@ def test_discovery_terminal_states_round_trip_without_zero_substitution(
                 repository.append_raw_discovery_observations([observation])
 
         stored_scores = {
-            row.category: row for row in repository.get_category_scores(run_record.run_id)
+            row.category: row
+            for row in repository.get_category_scores(run_record.run_id)
         }
         for status, category, error, _filter in rows:
             assert stored_scores[category].discovery_status == status
@@ -1462,12 +1502,18 @@ def test_discovery_terminal_states_round_trip_without_zero_substitution(
         # status, never a fabricated zero-asset row.
         empty = fixtures.DEFAULT_CATEGORIES[7]
         repository.set_category_status(
-            run_record.run_id, empty, DiscoveryStatus.COMPLETE.value, computed_at_utc=_iso(6)
+            run_record.run_id,
+            empty,
+            DiscoveryStatus.COMPLETE.value,
+            computed_at_utc=_iso(6),
         )
-        assert tuple(
-            repository.iter_raw_discovery_observations(run_record.run_id, empty)
-        ) == ()
-        assert repository.count_raw_discovery_observations(run_record.run_id, empty) == 0
+        assert (
+            tuple(repository.iter_raw_discovery_observations(run_record.run_id, empty))
+            == ()
+        )
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, empty) == 0
+        )
         stored_empty = {
             row.category: row
             for row in repository.get_category_scores(run_record.run_id)
@@ -1606,7 +1652,9 @@ def test_partial_graphql_operation_success_is_stored_independently(
             product_page_views=None,
             first_published_date_utc=None,
         )
-        repository.insert_enrichment_observations([both_ok, detail_only, views_only, neither])
+        repository.insert_enrichment_observations(
+            [both_ok, detail_only, views_only, neither]
+        )
 
         for record in (both_ok, detail_only, views_only, neither):
             stored = repository.get_enrichment_observation(
@@ -1684,7 +1732,10 @@ def test_preflight_selection_is_persisted_on_sample_members(
         assert [row.preflight_selected for row in stored] == [True, True, False, False]
         assert all(isinstance(row.preflight_selected, bool) for row in stored)
         assert repository.get_sample_members(run_record.run_id, thin) == (lonely,)
-        assert repository.get_sample_members(run_record.run_id, thin)[0].preflight_selected is True
+        assert (
+            repository.get_sample_members(run_record.run_id, thin)[0].preflight_selected
+            is True
+        )
 
         # The re-materialization path updates the flag without adding a row.
         flipped = _sample_member(
@@ -1744,7 +1795,9 @@ def test_preflight_observations_persist_both_operations_and_correlation_metadata
                     asset_identity_key=identity,
                     product_detail_status=detail,
                     page_views_status=views,
-                    product_page_views=100 if views == OperationStatus.SUCCESS.value else None,
+                    product_page_views=100
+                    if views == OperationStatus.SUCCESS.value
+                    else None,
                     request_metadata_json=json.dumps(
                         {
                             "phase": "identity_preflight",
@@ -1777,7 +1830,9 @@ def test_preflight_observations_persist_both_operations_and_correlation_metadata
                 request_metadata_json=json.dumps({"phase": "identity_preflight"}),
             )
         )
-        assert repository.count_distinct_enrichment_identities(run_record.run_id) == before
+        assert (
+            repository.count_distinct_enrichment_identities(run_record.run_id) == before
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1843,7 +1898,10 @@ def test_preflight_status_values_persist_distinctly(
             ),
         )
         updated = repository.get_run(touched_run_id)
-        assert updated.identity_preflight_status == IdentityPreflightStatus.INSUFFICIENT.value
+        assert (
+            updated.identity_preflight_status
+            == IdentityPreflightStatus.INSUFFICIENT.value
+        )
         summary = json.loads(updated.identity_preflight_summary_json)
         assert summary["attempted_identities"] == 0
         assert summary["detail_success_rate"] is None, (
@@ -1871,7 +1929,8 @@ def test_preflight_status_values_persist_distinctly(
             )
         with pytest.raises(KeyError):
             repository.update_run_preflight(
-                "run-absent", identity_preflight_status=IdentityPreflightStatus.PASSED.value
+                "run-absent",
+                identity_preflight_status=IdentityPreflightStatus.PASSED.value,
             )
 
 
@@ -1913,7 +1972,10 @@ def test_reference_size_and_usable_counts_persist_separately(
         # The count columns keep their own values: the reference size is not
         # recomputed from them and no usable count is derived from the peers.
         assert stored.usable_demand_sample_count == score.usable_demand_sample_count
-        assert stored.usable_recent_supply_sample_count == score.usable_recent_supply_sample_count
+        assert (
+            stored.usable_recent_supply_sample_count
+            == score.usable_recent_supply_sample_count
+        )
         assert stored.usable_quality_sample_count == score.usable_quality_sample_count
         assert stored.enriched_sample_count == score.enriched_sample_count
         assert stored.discovered_population_count == score.discovered_population_count
@@ -1971,7 +2033,10 @@ def test_null_sensitivity_diagnostics_round_trip_as_null(
         )
         repository.insert_category_scores([nulls, populated])
 
-        stored = {row.category: row for row in repository.get_category_scores(run_record.run_id)}
+        stored = {
+            row.category: row
+            for row in repository.get_category_scores(run_record.run_id)
+        }
         assert stored[category] == nulls
         assert stored[second] == populated
         for column in (
@@ -2001,7 +2066,9 @@ def test_null_sensitivity_diagnostics_round_trip_as_null(
         assert tuple(raw_populated) == (1.0, 3, 1), (
             "a supplied diagnostic is stored as its own value"
         )
-        assert stored[second].sensitivity_warning is True, "an INTEGER 1 reads back as True"
+        assert stored[second].sensitivity_warning is True, (
+            "an INTEGER 1 reads back as True"
+        )
 
         # Fewer than k rankable categories is representable: the null stays null
         # through an upsert finalization too.
@@ -2010,7 +2077,9 @@ def test_null_sensitivity_diagnostics_round_trip_as_null(
             top_5_stability=None,
         )
         assert repository.upsert_category_scores([finalized]) == 1
-        assert repository.get_category_scores(run_record.run_id)[0].top_3_stability is None
+        assert (
+            repository.get_category_scores(run_record.run_id)[0].top_3_stability is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2123,14 +2192,16 @@ def test_category_scores_primary_key_enforced(
         assert repository.upsert_category_scores([finalized]) == 1
         stored = repository.get_category_scores(run_record.run_id)
         assert stored[0] == finalized
-        assert stored[1].usable_demand_sample_count == score.usable_demand_sample_count, (
-            "upserting one row leaves its sibling untouched"
-        )
+        assert (
+            stored[1].usable_demand_sample_count == score.usable_demand_sample_count
+        ), "upserting one row leaves its sibling untouched"
         assert len(stored) == 2, "an upsert cannot insert a sibling row"
 
         # A score row for an unknown run is a foreign-key violation.
         with pytest.raises(ForeignKeyConstraintViolation):
-            repository.insert_category_scores([_partial_category_score(run_id="run-absent")])
+            repository.insert_category_scores(
+                [_partial_category_score(run_id="run-absent")]
+            )
         assert "category_scores" in str(
             pytest.raises(
                 ForeignKeyConstraintViolation,
@@ -2160,7 +2231,9 @@ def test_category_isolation_preserves_unrelated_observations(
         )
         with repository.category_transaction(run_record.run_id, first):
             repository.append_raw_discovery_observations([committed])
-        assert repository.count_raw_discovery_observations(run_record.run_id, first) == 1
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, first) == 1
+        )
 
         # A failing category writes a batch prefix and then raises. Only that
         # category's group is unwound.
@@ -2179,9 +2252,9 @@ def test_category_isolation_preserves_unrelated_observations(
                     failing_records(second), batch_size=1
                 )
 
-        assert repository.count_raw_discovery_observations(run_record.run_id, second) == 0, (
-            "the failed category's whole group is unwound"
-        )
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, second) == 0
+        ), "the failed category's whole group is unwound"
         assert tuple(
             repository.iter_raw_discovery_observations(run_record.run_id, first)
         ) == (committed,), "the sibling category is untouched"
@@ -2227,7 +2300,9 @@ def test_category_isolation_preserves_unrelated_observations(
                     ],
                     batch_size=2,
                 )
-        assert repository.count_raw_discovery_observations(run_record.run_id, first) == 1
+        assert (
+            repository.count_raw_discovery_observations(run_record.run_id, first) == 1
+        )
         assert repository.count_discovery_observations(run_record.run_id) == 2
 
 

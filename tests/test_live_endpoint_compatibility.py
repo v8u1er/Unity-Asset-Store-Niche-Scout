@@ -270,9 +270,7 @@ def test_request_body_guard_selects_exactly_one_committed_category() -> None:
         assert len(facets) == 1
         entries = facets[0]["currentValues"]
         assert [entry["value"] for entry in entries] == committed
-        selected = [
-            entry["value"] for entry in entries if entry["state"] == "selected"
-        ]
+        selected = [entry["value"] for entry in entries if entry["state"] == "selected"]
         idle = [entry["value"] for entry in entries if entry["state"] == "idle"]
         assert selected == [category]
         assert len(idle) == len(entries) - 1

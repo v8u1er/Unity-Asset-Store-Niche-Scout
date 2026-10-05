@@ -703,8 +703,7 @@ class GraphQLCorrelationResult:
                 match.operation_name: (
                     (
                         self.correlation_members.get(match.operation_name)
-                        if self.correlation_members.get(match.operation_name)
-                        in others
+                        if self.correlation_members.get(match.operation_name) in others
                         else None
                     )
                     if match.correlation_key is not None
@@ -831,9 +830,8 @@ def _correlate_by_validated_position(
     unrelated = [
         index
         for index, item in enumerate(response_items)
-        if extract_operation_correlation_key(item) not in (
-            match.operation_name for match in matches
-        )
+        if extract_operation_correlation_key(item)
+        not in (match.operation_name for match in matches)
         and extract_operation_correlation_key(item) is not None
     ]
     unassociated.extend(unrelated)
@@ -1677,9 +1675,7 @@ def select_operation_correlation_mode(
         items, decode_failure = _decode_operation_items(response)
         if items is None or decode_failure is not None:
             return GraphQLOperationCorrelationMode.EXPLICIT_KEY
-        if any(
-            extract_operation_correlation_key(item) is not None for item in items
-        ):
+        if any(extract_operation_correlation_key(item) is not None for item in items):
             # An explicit key is the primary association; position is only the
             # no-key fallback, so any keyed item selects the explicit-key mode.
             return GraphQLOperationCorrelationMode.EXPLICIT_KEY
@@ -1697,6 +1693,7 @@ def select_operation_correlation_mode(
             return GraphQLOperationCorrelationMode.EXPLICIT_KEY
 
     return GraphQLOperationCorrelationMode.VALIDATED_POSITION
+
 
 # --------------------------------------------------------------------------
 # State and identity annotation (plan section 5.8)
@@ -1789,7 +1786,7 @@ def render_operation_name(name: object) -> str | None:
     :func:`_metadata_text`, which renders the real name.
     """
     if isinstance(name, str) and name in GRAPHQL_OPERATION_NAMES:
-        return name[: _METADATA_MAX_TEXT_CHARS]
+        return name[:_METADATA_MAX_TEXT_CHARS]
     return None
 
 
@@ -2308,9 +2305,7 @@ def _build_result_from_items(
     attempts: int,
 ) -> EnrichmentResult:
     """Build the typed result for one HTTP exchange over already-correlated items."""
-    match_by_operation = {
-        match.operation_name: match for match in correlation.matches
-    }
+    match_by_operation = {match.operation_name: match for match in correlation.matches}
     operation_results: list[GraphQLOperationResult] = []
 
     top_level_classes: dict[str, GraphQLFailureClass] = {}

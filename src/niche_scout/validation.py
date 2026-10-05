@@ -102,7 +102,11 @@ TAXONOMY_INVENTORY_FIELDS: tuple[str, ...] = (
 )
 
 #: Per-entry fields that may carry a canonical path in a ``categories`` sequence.
-TAXONOMY_ENTRY_PATH_FIELDS: tuple[str, ...] = ("path", "canonical_path", "category_path")
+TAXONOMY_ENTRY_PATH_FIELDS: tuple[str, ...] = (
+    "path",
+    "canonical_path",
+    "category_path",
+)
 
 #: Container kinds :func:`validate_response_shape` can name explicitly.
 RESPONSE_CONTAINER_KINDS: tuple[str, ...] = (
@@ -490,7 +494,9 @@ def _inventory_shape_issues(payload: Mapping[str, Any]) -> list[ValidationIssue]
                     "taxonomy payload carries no canonical category-path inventory "
                     f"(expected one of {list(TAXONOMY_INVENTORY_FIELDS)})"
                 ),
-                context=_redacted_context(expected_fields=list(TAXONOMY_INVENTORY_FIELDS)),
+                context=_redacted_context(
+                    expected_fields=list(TAXONOMY_INVENTORY_FIELDS)
+                ),
             )
         )
         return issues
@@ -536,8 +542,12 @@ def _inventory_shape_issues(payload: Mapping[str, Any]) -> list[ValidationIssue]
         issues.append(
             ValidationIssue(
                 code="taxonomy_empty_path_inventory",
-                message="taxonomy canonical category-path inventory is present but empty",
-                context=_redacted_context(field=str(_inventory_field(payload)), entry_count=0),
+                message=(
+                    "taxonomy canonical category-path inventory is present but empty"
+                ),
+                context=_redacted_context(
+                    field=str(_inventory_field(payload)), entry_count=0
+                ),
             )
         )
         return issues
@@ -547,13 +557,16 @@ def _inventory_shape_issues(payload: Mapping[str, Any]) -> list[ValidationIssue]
         if not isinstance(entry, str):
             continue
         path = normalize_category_path(entry)
-        if not _canonical_path_shape_preserved(entry, path) or not _is_canonical_path_shape(path):
+        if not _canonical_path_shape_preserved(
+            entry, path
+        ) or not _is_canonical_path_shape(path):
             issues.append(
                 ValidationIssue(
                     code="taxonomy_malformed_path_entry",
                     message=(
                         "taxonomy inventory entry is not a well-formed category path "
-                        "(expected at least two '/'-separated segments with no empty segment)"
+                        "(expected at least two '/'-separated segments with no empty "
+                        "segment)"
                     ),
                     context=_redacted_context(path=path),
                 )
@@ -574,7 +587,9 @@ def _inventory_shape_issues(payload: Mapping[str, Any]) -> list[ValidationIssue]
     return issues
 
 
-def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -> list[ValidationIssue]:
+def _entry_record_issues(
+    payload: Mapping[str, Any], inventory: Sequence[str]
+) -> list[ValidationIssue]:
     """Return issues for the optional per-entry ``categories`` records.
 
     A per-entry record shape is validated only when the payload supplies it: the
@@ -584,7 +599,9 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
     records = payload.get("categories")
     if records is None:
         return []
-    if isinstance(records, (str, bytes, bytearray)) or not isinstance(records, Sequence):
+    if isinstance(records, (str, bytes, bytearray)) or not isinstance(
+        records, Sequence
+    ):
         return [
             ValidationIssue(
                 code="taxonomy_invalid_categories_shape",
@@ -606,13 +623,19 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
                     code="taxonomy_invalid_entry_shape",
                     message="taxonomy categories entry is not a mapping",
                     context=_redacted_context(
-                        index=index, expected_shape="mapping", actual_shape=_shape_name(record)
+                        index=index,
+                        expected_shape="mapping",
+                        actual_shape=_shape_name(record),
                     ),
                 )
             )
             continue
         raw_path = next(
-            (record[name] for name in TAXONOMY_ENTRY_PATH_FIELDS if record.get(name) is not None),
+            (
+                record[name]
+                for name in TAXONOMY_ENTRY_PATH_FIELDS
+                if record.get(name) is not None
+            ),
             None,
         )
         if raw_path is None:
@@ -620,7 +643,9 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
                 ValidationIssue(
                     code="taxonomy_entry_missing_path",
                     message="taxonomy categories entry carries no category path",
-                    context=_redacted_context(index=index, expected_fields=list(TAXONOMY_ENTRY_PATH_FIELDS)),
+                    context=_redacted_context(
+                        index=index, expected_fields=list(TAXONOMY_ENTRY_PATH_FIELDS)
+                    ),
                 )
             )
             continue
@@ -629,7 +654,11 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
                 ValidationIssue(
                     code="taxonomy_entry_invalid_path_type",
                     message="taxonomy categories entry path is not a string",
-                    context=_redacted_context(index=index, expected_type="str", entry_type=_shape_name(raw_path)),
+                    context=_redacted_context(
+                        index=index,
+                        expected_type="str",
+                        entry_type=_shape_name(raw_path),
+                    ),
                 )
             )
             continue
@@ -638,7 +667,10 @@ def _entry_record_issues(payload: Mapping[str, Any], inventory: Sequence[str]) -
             issues.append(
                 ValidationIssue(
                     code="taxonomy_entry_malformed_path",
-                    message="taxonomy categories entry path is not a well-formed category path",
+                    message=(
+                        "taxonomy categories entry path is not a well-formed "
+                        "category path"
+                    ),
                     context=_redacted_context(index=index, path=path),
                 )
             )
@@ -727,7 +759,9 @@ def validate_taxonomy_structure(payload: object) -> TaxonomyValidationResult:
         issues.append(
             ValidationIssue(
                 code="taxonomy_missing_header",
-                message=f"taxonomy payload is missing the required header field '{name}'",
+                message=(
+                    f"taxonomy payload is missing the required header field '{name}'"
+                ),
                 context=_redacted_context(field=name),
             )
         )
@@ -743,7 +777,9 @@ def validate_taxonomy_structure(payload: object) -> TaxonomyValidationResult:
             status="missing_headers",
             payload=payload,
             missing_header_fields=missing,
-            issues=tuple(issue for issue in issues if issue.code == "taxonomy_missing_header"),
+            issues=tuple(
+                issue for issue in issues if issue.code == "taxonomy_missing_header"
+            ),
         )
 
     return TaxonomyValidationResult(
@@ -789,7 +825,9 @@ def _parse_capture_utc(value: object) -> tuple[datetime | None, str | None]:
         )
 
 
-def _unusable_structure_result(structure: TaxonomyValidationResult) -> TaxonomyValidationResult | None:
+def _unusable_structure_result(
+    structure: TaxonomyValidationResult,
+) -> TaxonomyValidationResult | None:
     """Return the structure failure verbatim when ``structure`` is not usable.
 
     :func:`validate_taxonomy_structure` stops at the **first** failing stage: a
@@ -879,7 +917,9 @@ def validate_taxonomy_freshness(
         return unusable_structure
 
     payload_mapping: Mapping[str, Any] = payload  # type: ignore[assignment]
-    captured_at, failure_reason = _parse_capture_utc(payload_mapping.get("captured_at_utc"))
+    captured_at, failure_reason = _parse_capture_utc(
+        payload_mapping.get("captured_at_utc")
+    )
     if captured_at is None:
         return TaxonomyValidationResult(
             is_valid=False,
@@ -899,7 +939,9 @@ def validate_taxonomy_freshness(
     try:
         reference = ensure_utc(reference_utc)
     except ValueError as exc:
-        raise ValueError("reference_utc must be a timezone-aware UTC timestamp") from exc
+        raise ValueError(
+            "reference_utc must be a timezone-aware UTC timestamp"
+        ) from exc
 
     age_days_exact = (reference - captured_at).total_seconds() / SECONDS_PER_DAY
     # Only a non-negative age at or below the threshold is a known-fresh state; a
@@ -939,7 +981,8 @@ def validate_taxonomy_freshness(
                 code="taxonomy_stale_capture",
                 message=staleness_message,
                 context=_redacted_context(
-                    max_taxonomy_age_days=max_taxonomy_age_days, age_days_exact=age_days_exact
+                    max_taxonomy_age_days=max_taxonomy_age_days,
+                    age_days_exact=age_days_exact,
                 ),
             ),
         ),
@@ -980,7 +1023,9 @@ def validate_requested_categories(
         issues.append(
             ValidationIssue(
                 code="taxonomy_missing_requested_category",
-                message="requested category is absent from the canonical taxonomy inventory",
+                message=(
+                    "requested category is absent from the canonical taxonomy inventory"
+                ),
                 context=_redacted_context(category=raw),
             )
         )
@@ -1020,7 +1065,9 @@ def validate_taxonomy(
         return unusable_structure
 
     freshness = validate_taxonomy_freshness(
-        payload, reference_utc=reference_utc, max_taxonomy_age_days=max_taxonomy_age_days
+        payload,
+        reference_utc=reference_utc,
+        max_taxonomy_age_days=max_taxonomy_age_days,
     )
     if not freshness.is_valid:
         return TaxonomyValidationResult(
@@ -1112,7 +1159,11 @@ def taxonomy_path_set(payload: object) -> frozenset[str]:
         raw: object = entry
         if isinstance(entry, Mapping):
             raw = next(
-                (entry[name] for name in TAXONOMY_ENTRY_PATH_FIELDS if entry.get(name) is not None),
+                (
+                    entry[name]
+                    for name in TAXONOMY_ENTRY_PATH_FIELDS
+                    if entry.get(name) is not None
+                ),
                 None,
             )
         if not isinstance(raw, str):
@@ -1146,13 +1197,14 @@ def match_exact_category(
     canonical form, so the reported path is deterministic.
     """
     if isinstance(taxonomy_paths, (str, bytes, bytearray)):
-        raise TypeError("taxonomy_paths must be a container of canonical category paths")
+        raise TypeError(
+            "taxonomy_paths must be a container of canonical category paths"
+        )
     matching_paths: dict[str, str] = {}
     for item in taxonomy_paths:
         if isinstance(item, str):
             canonical_item = normalize_category_path(item)
             matching_paths.setdefault(canonical_item.casefold(), canonical_item)
-    known = set(matching_paths)
 
     raw_values = tuple(_iter_path_candidates(category_value))
     if not raw_values:
@@ -1169,7 +1221,8 @@ def match_exact_category(
                         "sequence, so membership cannot be verified"
                     ),
                     context=_redacted_context(
-                        expected_shape="str or list[str]", actual_shape=_shape_name(category_value)
+                        expected_shape="str or list[str]",
+                        actual_shape=_shape_name(category_value),
                     ),
                 ),
             ),
@@ -1345,7 +1398,9 @@ def canonicalize_identity_candidate(
     return trimmed
 
 
-def collect_identity_candidates(record: Mapping[str, object]) -> tuple[IdentityCandidate, ...]:
+def collect_identity_candidates(
+    record: Mapping[str, object],
+) -> tuple[IdentityCandidate, ...]:
     """Retain every non-empty identity candidate from one discovery record.
 
     Reads ``ec_product_id``, ``permanentid``, response-level ``clickUri``, and
@@ -1400,7 +1455,7 @@ def resolve_canonical_identity(
     *,
     mapping_rule_version: str = IDENTITY_MAPPING_RULE_VERSION,
 ) -> IdentityResolutionResult:
-    """Classify a discovery record's canonical identity as resolved, conflict, or unresolved.
+    """Classify a record's canonical identity as resolved, conflict, or unresolved.
 
     All successfully-derived canonical candidates agree → ``resolved``, with that
     value as ``canonical_identity_key`` and membership in the canonical
@@ -1442,7 +1497,9 @@ def resolve_canonical_identity(
                 )
             )
 
-    derived = [candidate for candidate in candidates if candidate.canonical_value is not None]
+    derived = [
+        candidate for candidate in candidates if candidate.canonical_value is not None
+    ]
     if not derived:
         return IdentityResolutionResult(
             canonical_identity_key=None,
@@ -1458,7 +1515,9 @@ def resolve_canonical_identity(
             issues=tuple(issues),
         )
 
-    comparison_keys = {_comparable_identity(candidate.canonical_value or "") for candidate in derived}
+    comparison_keys = {
+        _comparable_identity(candidate.canonical_value or "") for candidate in derived
+    }
     if len(comparison_keys) > 1:
         sources = tuple(dict.fromkeys(candidate.source_field for candidate in derived))
         return IdentityResolutionResult(
@@ -1524,7 +1583,9 @@ def compare_graphql_identity_aliases(
             f"unsupported identity mapping rule version: {mapping_rule_version!r}"
         )
 
-    requested_canonical, requested_failure = _canonicalize_comparison_target(requested_identity)
+    requested_canonical, requested_failure = _canonicalize_comparison_target(
+        requested_identity
+    )
     compared: list[tuple[str, str]] = []
     non_agreeing: list[str] = []
     unparsable: list[str] = []
@@ -1535,9 +1596,15 @@ def compare_graphql_identity_aliases(
 
     for alias_name in sorted(aliases):
         raw_value = aliases[alias_name]
-        if raw_value is None or not isinstance(raw_value, str) or raw_value.strip() == "":
+        if (
+            raw_value is None
+            or not isinstance(raw_value, str)
+            or raw_value.strip() == ""
+        ):
             missing.append(alias_name)
-            compared.append((alias_name, "null" if raw_value is None else redact_value(raw_value)))
+            compared.append(
+                (alias_name, "null" if raw_value is None else redact_value(raw_value))
+            )
             continue
         if alias_name in _URI_FIELDS:
             canonical_value, failure_reason = _canonicalize_uri(raw_value)
@@ -1573,7 +1640,9 @@ def compare_graphql_identity_aliases(
         )
         mismatched = True
     elif missing and not compared:
-        reason = "no GraphQL identity alias was returned; a missing alias is not agreement"
+        reason = (
+            "no GraphQL identity alias was returned; a missing alias is not agreement"
+        )
         mismatched = True
     elif missing:
         reason = (
@@ -1583,7 +1652,8 @@ def compare_graphql_identity_aliases(
         mismatched = True
     elif unparsable:
         reason = (
-            "returned GraphQL identity aliases could not be canonicalized under mapping "
+            "returned GraphQL identity aliases could not be canonicalized "
+            "under mapping "
             f"rule {mapping_rule_version}: {sorted(unparsable)}"
         )
         mismatched = True
@@ -1742,7 +1812,9 @@ def validate_response_shape(
             ValidationIssue(
                 code="response_wrong_container_kind",
                 message=f"response payload is not a '{expected_shape}' container",
-                context=_redacted_context(expected_shape=expected_shape, actual_shape=actual_shape),
+                context=_redacted_context(
+                    expected_shape=expected_shape, actual_shape=actual_shape
+                ),
             )
         )
         return StructuralValidationResult(
@@ -1754,7 +1826,10 @@ def validate_response_shape(
 
     if not isinstance(payload, Mapping):
         return StructuralValidationResult(
-            is_valid=True, expected_shape=expected_shape, actual_shape=actual_shape, issues=()
+            is_valid=True,
+            expected_shape=expected_shape,
+            actual_shape=actual_shape,
+            issues=(),
         )
 
     # Member-level checks only exist for container kinds that carry named members.
@@ -1765,7 +1840,10 @@ def validate_response_shape(
     # which case a payload carrying no identity member is a missing identity.
     if not required_members and not field_types and expected_shape != "identity":
         return StructuralValidationResult(
-            is_valid=True, expected_shape=expected_shape, actual_shape=actual_shape, issues=()
+            is_valid=True,
+            expected_shape=expected_shape,
+            actual_shape=actual_shape,
+            issues=(),
         )
 
     # Member-level checks come first so a declared identity member's absence or null
@@ -1776,7 +1854,9 @@ def validate_response_shape(
             issues.append(
                 ValidationIssue(
                     code="response_missing_required_member",
-                    message=f"response payload is missing the required member '{member}'",
+                    message=(
+                        f"response payload is missing the required member '{member}'"
+                    ),
                     context=_redacted_context(member=member, field=member),
                 )
             )
@@ -1785,8 +1865,8 @@ def validate_response_shape(
                 ValidationIssue(
                     code="response_null_required_member",
                     message=(
-                        f"required member '{member}' is present but null; a null value is "
-                        "unavailable and is not substituted with a default"
+                        f"required member '{member}' is present but null; a null "
+                        "value is unavailable and is not substituted with a default"
                     ),
                     context=_redacted_context(member=member, field=member),
                 )
@@ -1831,8 +1911,8 @@ def validate_response_shape(
             ValidationIssue(
                 code="response_missing_identity",
                 message=(
-                    "no populated identity member was returned; a missing identity is an "
-                    "operation error, not an empty identity"
+                    "no populated identity member was returned; a missing "
+                    "identity is an operation error, not an empty identity"
                 ),
                 context=_redacted_context(
                     expected_fields=sorted(identity_members),
@@ -1936,12 +2016,18 @@ def summarize_validation_issues(
     entries: list[dict[str, Any]] = []
     budget = max(int(max_context_chars), 0)
     for issue in issues:
-        entry: dict[str, Any] = {"code": issue.code, "message": redact_value(issue.message)}
+        entry: dict[str, Any] = {
+            "code": issue.code,
+            "message": redact_value(issue.message),
+        }
         rendered_context = {
-            str(key): redact_value(value) for key, value in sorted(issue.context.items())
+            str(key): redact_value(value)
+            for key, value in sorted(issue.context.items())
         }
         if rendered_context and budget > 0:
-            candidate = json.dumps(rendered_context, sort_keys=True, separators=(",", ":"))
+            candidate = json.dumps(
+                rendered_context, sort_keys=True, separators=(",", ":")
+            )
             if len(candidate) <= budget:
                 entry["context"] = rendered_context
                 budget -= len(candidate)

@@ -587,9 +587,7 @@ def select_category_sample(
     population = build_canonical_population(records, category=category)
     discovered_population_count = population.size
     sample_is_census = discovered_population_count <= CENSUS_POPULATION_THRESHOLD
-    strata = build_strata(
-        population, sampling_rule_version=sampling_rule_version
-    )
+    strata = build_strata(population, sampling_rule_version=sampling_rule_version)
 
     members: list[SampledMember] = []
     for stratum in strata:
