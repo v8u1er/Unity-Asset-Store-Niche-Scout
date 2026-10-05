@@ -13,7 +13,7 @@ Operator request (2026-10-01, follow-up to chunk 32), verbatim intent:
 - "heavily use ui-ux-pro-max for designing and improvement of the dashboard."
 - "take influence from design language of this screenshot, and confirm that you received the image."
 - "i want the color palette of this screenshot be applied to my dashboard."
-- Reference image: `c:/Users/<redacted-user>/Downloads/525-bild1-800x.jpg` (800x468 JPEG).
+- Reference image: `525-bild1-800x.jpg` (800x468 JPEG, provided locally by the operator).
 - "the dashboard also needs a minimal navigation system, consult with ui-ux-pro-max skill."
 - "use your sub-agents and inform them about ui-ux-pro-max skill and the screenshot and also Kilo Playwright."
 

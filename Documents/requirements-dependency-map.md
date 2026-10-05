@@ -2,7 +2,7 @@
 
 Source analyzed:
 
-`C:\Users\<redacted-user>\Documents\Python Projects\Unity Asset Store Niche Scout\Documents\SRS-lean.md`
+`Documents/SRS-lean-v2.md`
 
 The SRS contains **89 individually defined `LREQ-*` requirements**. The wildcard rows in Appendix B are traceability groupings, not additional requirements.
 

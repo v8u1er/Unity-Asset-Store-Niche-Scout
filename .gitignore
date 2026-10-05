@@ -14,3 +14,12 @@ __pycache__/
 *.egg-info/
 .scratch/*
 !.scratch/README.md
+*.bak
+.plans/
+.kilo/windows.md
+
+# Archify generated receipts and review folders; keep only the published diagram.
+.archify/*
+!.archify/architecture-*/
+.archify/architecture-*/*
+!.archify/architecture-*/niche-scout.html

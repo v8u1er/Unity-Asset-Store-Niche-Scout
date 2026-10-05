@@ -872,8 +872,7 @@ No other file is in scope. Any other file needing a change is a stop-and-flag. (
   renamed by this chunk. Unit: matched test lines.
 - **"`fixed_columns` is a real prop and conditional styles have no `className` key"
   (§2, §6.1)** — **(read:** the installed package
-  `C:\Users\<redacted-user>\AppData\Local\Programs\Python\Python312\Lib\site-packages\dash\dash_table\
-  DataTable.py`: `fixed_columns` described at `:311–330` (dict with `headers`/`data`);
+  `<python312>\Lib\site-packages\dash\dash_table\DataTable.py`: `fixed_columns` described at `:311–330` (dict with `headers`/`data`);
   `style_cell_conditional` `:949–961`, `style_data_conditional` `:963–983`,
   `style_header_conditional` `:1001–1017` document only the `if` sub-keys plus free-form CSS
   style properties; no `className` key appears). Unit: prop docstring line ranges.
