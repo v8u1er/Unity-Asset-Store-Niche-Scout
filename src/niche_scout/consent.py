@@ -22,21 +22,25 @@ from pathlib import Path
 from typing import TextIO
 
 #: The notice text version. Changing it (with the text) changes the digest.
-NOTICE_VERSION: str = "1"
+NOTICE_VERSION: str = "2"
 
 #: The stable terms notice, versioned by :data:`NOTICE_VERSION`. Not a legal
-#: document; it names the independence, the automated access, Unity's terms, and
-#: the operator's responsibility.
+#: document; it names the independence, the automated access, Unity's terms,
+#: account responsibility and indemnity, and the operator's responsibility.
 NOTICE_TEXT: str = (
     "Independent project; use at your own risk. Niche Scout is not affiliated "
     "with or endorsed by Unity Technologies. It sends automated requests to "
     "Unity Asset Store endpoints using credentials from your own session. "
-    "Unity's Terms of Service restrict automated access to the Asset Store and "
-    "its APIs without a separate agreement, and breaches may lead to account "
-    "suspension or other action. The author provides this software as is, "
-    "without warranty, and does not authorize or encourage any use that "
-    "violates Unity's terms. You are solely responsible for reading those terms "
-    "and deciding whether and how to use this tool."
+    "Unity's Asset Store terms say you agree not to access the Store through "
+    "automated means such as scripts or crawlers unless you have a separate "
+    "agreement with Unity, and Unity's main terms restrict bots and scrapers "
+    "more broadly; breaches may lead to account suspension or other action. "
+    "Unity's terms also make you responsible for automated software acting "
+    "through your account, and you may be required to indemnify Unity for "
+    "breaches. The author provides this software as is, without warranty, and "
+    "does not authorize or encourage any use that violates Unity's terms. You "
+    "are solely responsible for reading those terms and deciding whether and "
+    "how to use this tool."
 )
 
 #: The phrase an interactive operator must type, compared case-insensitively
