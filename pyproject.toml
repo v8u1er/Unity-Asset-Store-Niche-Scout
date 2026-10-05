@@ -7,6 +7,8 @@ name = "niche-scout"
 version = "0.1.0"
 description = "Unity Asset Store Niche Scout"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = ["plotly>=7.1,<8", "dash==4.4.1"]
 
 [project.optional-dependencies]
