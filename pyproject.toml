@@ -6,13 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "niche-scout"
 version = "0.1.0"
 description = "Unity Asset Store Niche Scout"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+    { name = "v8u1er", email = "17022402+v8u1er@users.noreply.github.com" },
+]
 dependencies = ["plotly>=7.1,<8", "dash==4.4.1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6", "build>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/v8u1er/unity-asset-store-niche-scout"
+Repository = "https://github.com/v8u1er/unity-asset-store-niche-scout"
+Issues = "https://github.com/v8u1er/unity-asset-store-niche-scout/issues"
 
 [project.scripts]
 niche-scout = "niche_scout.cli:main"

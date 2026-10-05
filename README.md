@@ -2,6 +2,8 @@
 
 # Unity Asset Store Niche Scout
 
+[![CI](https://github.com/v8u1er/unity-asset-store-niche-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/v8u1er/unity-asset-store-niche-scout/actions/workflows/ci.yml)
+
 **A local research tool for Unity Asset Store publishers: compare a set of asset categories side by side before you decide what to build.**
 
 > **Independent project; use at your own risk.** Niche Scout is not affiliated with or endorsed by Unity Technologies. It sends automated requests to Unity Asset Store endpoints using credentials from your own session. Unity's Asset Store terms say you agree not to access the Store through automated means such as scripts or crawlers unless you have a separate agreement with Unity, and Unity's main terms restrict bots and scrapers more broadly; breaches may lead to account suspension or other action. Unity's terms also make you responsible for automated software acting through your account, and you may be required to indemnify Unity for breaches. The author provides this software as is, without warranty, and does not authorize or encourage any use that violates Unity's terms. You are solely responsible for reading those terms and deciding whether and how to use this tool.
@@ -485,18 +487,18 @@ The [interactive version](.archify/architecture-niche-scout-20261003-091932/nich
 ## For developers
 
 ```powershell
-# Install with test dependencies
-pip install -e ".[test]"
+# Install with development dependencies
+pip install -e ".[dev]"
 
-# Run the full test suite (offline; no live network calls)
-python -m pytest -q
-
-# Verify requirement traceability and quality gates
-python -m niche_scout.tools.validate_traceability
-python -m niche_scout.tools.check_import_boundaries
-python -m niche_scout.tools.check_scope_prohibitions
-python -m niche_scout.tools.check_secrets
+# Run the full maintained gate (offline; no live network calls)
+python -m niche_scout.tools.quality_workflow
 ```
+
+`quality_workflow` runs, in order: `validate_traceability`, `check_import_boundaries`,
+`check_scope_prohibitions`, `check_secrets`, `ruff check`, `ruff format --check`, and
+`pytest -q`, and stops at the first failure. Each step can also be run on its own; for
+example, `python -m pytest -q`. CI runs the same gate on Windows and Linux across Python
+3.11 and 3.12.
 
 Project layout:
 
@@ -524,6 +526,13 @@ runtime/                local database and reports (git-ignored)
 The normative requirements live in `Documents/SRS-lean-v2.md`. Analytical tests carry `@pytest.mark.lreq` markers backed by `tests/traceability.json`.
 
 ---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, the quality gate, the test
+and traceability rules, and the secrets policy. Report security issues privately per
+[SECURITY.md](SECURITY.md); all participation is covered by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Terms notice
 
