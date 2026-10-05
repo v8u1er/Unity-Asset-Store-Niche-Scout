@@ -290,6 +290,12 @@ _FIGURE_BOTTOM_BAND: int = 130
 #: ``[tool.setuptools.package-data]`` (Chunk 32).
 _DASHBOARD_ASSETS_DIRNAME: str = "assets"
 
+#: Brand-lockup filename inside the package assets directory, served by Dash at
+#: ``/<assets_url_path>/<filename>`` (Dash's default ``assets_url_path`` is
+#: ``assets``). The PNG is a downscaled, alpha-preserving copy of the source
+#: ``images/logo.png``; it ships in the built package through the assets glob.
+_DASHBOARD_LOGO_FILENAME: str = "logo.png"
+
 
 def _dashboard_assets_dir() -> Path:
     """Return the absolute package assets directory ``<report.py>/assets`` (no I/O).
@@ -1771,6 +1777,23 @@ def _dashboard_nav() -> "dash_html.Nav":
     )
 
 
+def _brand_logo() -> "dash_html.Img":
+    """Return the dashboard brand lockup as a meaningful ``<img>`` (no I/O).
+
+    The green "Niche Scout" lockup is drawn on a transparent PNG, so it reads on
+    the dark reference surface without a light plate. It is a content image, so
+    it carries a real ``alt`` and no ``aria-hidden`` (skill ``ux-guidelines.csv``
+    "Alt Text": descriptive alternative text for meaningful images). The ``src``
+    is an offline package asset served from ``assets_folder`` at Dash's default
+    ``/assets/logo.png`` path; it references no external URL.
+    """
+    return dash_html.Img(
+        src=f"/{_DASHBOARD_ASSETS_DIRNAME}/{_DASHBOARD_LOGO_FILENAME}",
+        alt="Niche Scout",
+        className="brand-logo",
+    )
+
+
 def _column_guide() -> "dash_html.Details":
     """Return the native "Column guide" disclosure above the primary table.
 
@@ -2710,7 +2733,13 @@ def build_dashboard_layout(view: RunReportView) -> "dash_html.Div":
                 [
                     dash_html.Header(
                         [
-                            dash_html.H1("Niche Scout dashboard"),
+                            dash_html.Div(
+                                [
+                                    dash_html.H1("Niche Scout dashboard"),
+                                    _brand_logo(),
+                                ],
+                                className="brand",
+                            ),
                             _run_header(view),
                             _heuristic_banner(view),
                         ],

@@ -120,11 +120,12 @@ body {
   max-inline-size: none;
   margin-inline: auto;
   padding: var(--space-4);
-  /* Base/mobile: fixed top bar must not obscure content, so inset the content
-   * by the top-bar height (plan §7.3; skill ux-guidelines.csv Sticky
-   * Navigation). The desktop rail swaps this for a leading (inline-start)
-   * inset at >=1024px; only one of the two applies at a time. */
-  padding-block-start: var(--nav-topbar-height);
+  /* Base/mobile: the fixed top bar must not obscure content, and the brand row
+   * needs breathing room below it, so inset by the top-bar height plus a 24px
+   * gap (plan §7.3; skill ux-guidelines.csv Sticky Navigation). The desktop rail
+   * swaps this for a leading (inline-start) inset at >=1024px; only one of the
+   * two applies at a time. */
+  padding-block-start: calc(var(--nav-topbar-height) + var(--space-5));
 }
 
 .dashboard h1,
@@ -165,6 +166,42 @@ body {
 
 .dashboard a {
   color: var(--primary);
+}
+
+/* ------------------------------------------------------------- brand ----- */
+
+/* Brand lockup at the head of the run-header block: the page title holds the
+ * leading edge (so it aligns with the other banner text below) and the logo
+ * sits flush to the trailing content edge, sharing the same 32px/24px content
+ * inset as the KPI cards and chart cards (``justify-content: space-between``).
+ * The logo is a transparent PNG (green artwork), so it reads on the dark
+ * surface with no light plate. It is a content image with a real ``alt`` text,
+ * never a decorative icon (skill ux-guidelines.csv "Alt Text"). Its block-size
+ * is an 8px-rhythm multiple (64px = 8 x ``--space-2``, 72px = 9 x) and
+ * ``inline-size: auto`` preserves the lockup's aspect ratio, with
+ * ``max-inline-size: 100%`` letting it shrink on narrow viewports instead of
+ * overflowing (skill ux-guidelines.csv "Image Scaling"). */
+.brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.brand-logo {
+  display: block;
+  block-size: 64px;
+  inline-size: auto;
+  max-inline-size: 100%;
+  /* Hold the trailing content edge even when the mark wraps to its own line
+   * (``space-between`` alone would left-align a lone wrapped item). */
+  margin-inline-start: auto;
+}
+
+.brand h1 {
+  margin-block: 0;
 }
 
 /* --------------------------------------------------- skip link + nav ----- */
@@ -288,6 +325,10 @@ body {
 .run-header-block {
   padding-block-end: var(--space-4);
   border-block-end: 1px solid var(--border);
+  /* First block in ``main``: its shared top rhythm margin would stack on the
+   * dashboard's own top padding (which already clears the fixed top bar on
+   * mobile), so drop it and let the container inset be the only top gap. */
+  margin-block-start: 0;
 }
 
 /* -------------------------------------------------------------- header --- */
@@ -876,8 +917,9 @@ input:focus-visible,
 @media (min-width: 375px) {
   .dashboard {
     padding: var(--space-4);
-    /* Re-assert the top-bar inset after the shorthand above resets it. */
-    padding-block-start: var(--nav-topbar-height);
+    /* Re-assert the top inset after the shorthand above resets it: bar height
+     * plus the 24px gap below it. */
+    padding-block-start: calc(var(--nav-topbar-height) + var(--space-5));
   }
 }
 
@@ -892,6 +934,11 @@ input:focus-visible,
     grid-column: span 8;
   }
 
+  /* Larger brand mark on tablet/desktop; still an 8px-rhythm multiple. */
+  .brand-logo {
+    block-size: 72px;
+  }
+
   .kpi-tile {
     grid-column: span 4;
   }
@@ -902,8 +949,9 @@ input:focus-visible,
 
   .dashboard {
     padding: var(--space-5);
-    /* Re-assert the top-bar inset after the shorthand above resets it. */
-    padding-block-start: var(--nav-topbar-height);
+    /* Bar height plus the 24px tablet inline padding, so the gap below the bar
+     * matches the side insets at this breakpoint. */
+    padding-block-start: calc(var(--nav-topbar-height) + var(--space-5));
   }
 }
 
@@ -912,8 +960,11 @@ input:focus-visible,
 @media (min-width: 1024px) {
   .dashboard {
     padding: var(--space-6);
-    /* Desktop rail: leading inset only; the padding shorthand above resets the
-     * mobile top-bar block-start inset, so the two never apply together. */
+    /* Desktop swaps the fixed top bar for the left rail, so the 56px bar
+     * clearance is gone; use a tighter 16px top inset above the brand row while
+     * the left/right/bottom insets stay at 32px. */
+    padding-block-start: var(--space-4);
+    /* Desktop rail: leading inset only (the top bar is gone at this width). */
     margin-inline-start: calc(var(--nav-rail-width) + var(--space-6));
   }
 
