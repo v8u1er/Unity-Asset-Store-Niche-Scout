@@ -6,7 +6,7 @@ alwaysApply: true
 Rationale and incident record: `.kilo/project-rules-rationale.md`.
 
 ## Source-of-truth precedence
-1. `Documents/SRS-lean.md` — normative requirement text. Never paraphrase from
+1. `Documents/SRS-lean-v2.md` — normative requirement text. Never paraphrase from
    memory; open the file and quote or derive it.
 2. `Documents/requirements-dependency-map.md` — chunk ownership, gates, edge cases.
 3. `Documents/plans/chunk-*.md` — the frozen scope contract for one chunk.
