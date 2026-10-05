@@ -203,6 +203,7 @@ def _options(**values: Any) -> Any:
         "run_id": None,
         "report_path": None,
         "report_format": "html",
+        "accept_terms": True,
     }
     fields.update(values)
     return CliOptions(**fields)
@@ -216,6 +217,7 @@ def run_options(
     run_id: str | None = None,
     report_path: Path | None = None,
     report_format: str = "html",
+    accept_terms: bool = True,
 ) -> Any:
     """Return ``run``-shaped options pointing at the temp artifacts."""
     return _options(
@@ -225,6 +227,7 @@ def run_options(
         run_id=run_id,
         report_path=report_path,
         report_format=report_format,
+        accept_terms=accept_terms,
     )
 
 

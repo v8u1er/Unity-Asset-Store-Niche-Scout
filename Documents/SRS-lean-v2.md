@@ -7,8 +7,8 @@
 | Document type | Software Requirements Specification (SRS) |
 | Parent specification | `SRS-revision2.md`, effective revision 2.3.0 |
 | Variant | Lean, sample-based, decision-grade MVP |
-| Version | Lean 1.0.4 |
-| Status | Decision-grade lean variant (v2, Lean 1.0.4; supersedes `SRS-lean.md`) |
+| Version | Lean 1.0.5 |
+| Status | Decision-grade lean variant (v2, Lean 1.0.5; supersedes `SRS-lean.md`) |
 | Target release | v0.1.0-lean |
 
 ## Revision history
@@ -20,6 +20,7 @@
 | Lean 1.0.2 | Replaces the four contiguous ordinal strata of `LREQ-SMP-050` with a systematic (interleaved) partition over the same stable discovery ordinal (deterministic per-category offset; `stratum_index(i) = (i - 1 + offset) mod SAMPLE_STRATA`), and changes the persisted stratum geometry from an ordinal interval to `(offset, stride)`. All other Lean 1.0.1 behavior is unchanged. |
 | Lean 1.0.3 | Lowers the default `MIN_USABLE_SAMPLES_PER_STRATUM` from 5 to 1 (§5.1, §14), re-baselining per-stratum usability, the three stratum eligibility coverages, the usable component sample counts, evidence grades, and rankability for runs scored under the default policy. The constant remains Configurable = Yes and no formula, weight, partition rule, or other constant changes. |
 | Lean 1.0.4 | Corrects the page-view semantics (§1.4, §7.2 `LREQ-MET-040`, §6.3, §10 `LREQ-RPT-050`, §16, Appendix A): the field is a validated trailing-7-day (weekly) view count (`age_normalized_page_view_index = product_page_views`), replacing the refuted age-normalized cumulative-rate assumption; adds the `validated_windowed_weekly` run status; `MIN_AGE_DAYS_FOR_RATE` becomes an eligibility floor only. No other formula, weight, partition rule, or constant changes. |
+| Lean 1.0.5 | Adds `LREQ-CLI-050` (§10): the `run` command SHALL obtain a one-time acknowledgement of the terms notice before reading credentials, opening the database, or constructing any transport, through either a locally remembered acknowledgement or the CLI-only `--accept-terms` flag; a refusal is a usage/config error that sends no request. The `dashboard` command is unaffected. No formula, weight, partition rule, constant, sampling rule, or score changes. |
 
 ## Document status and relationship to the parent SRS
 
@@ -39,7 +40,11 @@ semantics (§1.4, §7.2 `LREQ-MET-040`, §6.3, §10 `LREQ-RPT-050`, §16, Append
 the field is a validated trailing-7-day (weekly) view count and
 `age_normalized_page_view_index = product_page_views`; the `validated_windowed_weekly`
 run status is added and `MIN_AGE_DAYS_FOR_RATE` becomes an eligibility floor only.
-No other formula, weight, partition rule, or constant changes.
+No other formula, weight, partition rule, or constant changes. Lean 1.0.5 supersedes
+Lean 1.0.4 and adds one CLI-only requirement (`LREQ-CLI-050`, §10): `niche-scout run`
+SHALL obtain a one-time acknowledgement of the terms notice before it reads
+credentials, opens the database, or constructs any transport. No formula, weight,
+partition rule, constant, sampling rule, or score changes.
 Tooling that reads the SRS by path (`src/niche_scout/tools/`,
 `AGENTS.md`) must be re-pointed to this file when the prior file is retired.
 
@@ -1205,6 +1210,22 @@ override documented in-code defaults.
 **LREQ-CLI-040**: The pipeline SHALL reject a run with fewer than
 `MIN_CATEGORIES_PER_RUN` requested categories before producing a ranking. It SHALL
 retain a completed run's collection timestamp and explicit limitations in the report.
+
+**LREQ-CLI-050**: The `niche-scout run` command SHALL obtain a one-time
+acknowledgement of its terms notice before it reads credentials, opens the database,
+or constructs any transport, so that a refusal creates no run record and sends no
+request. The notice SHALL be a stable text versioned by a digest, and a stored
+acknowledgement SHALL be honored only while that digest is unchanged. The command
+SHALL continue silently when a matching acknowledgement is stored, and SHALL accept
+`--accept-terms` as a CLI-only confirmation for a single non-interactive run that
+persists nothing. In an interactive session it SHALL print the notice, prompt the
+operator for the acknowledgement phrase, compare the phrase case-insensitively after
+stripping surrounding whitespace, persist the acknowledgement on a match, and refuse
+otherwise. With no stored acknowledgement, no `--accept-terms`, and no interactive
+session, it SHALL refuse and send no request. A refusal SHALL return the
+usage/configuration exit code; a failure to persist the acknowledgement SHALL warn
+but not block the run. The `dashboard` command makes no requests and SHALL NOT be
+gated.
 
 ---
 

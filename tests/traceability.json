@@ -433,6 +433,27 @@
   "tests/test_collector.py::test_zero_result_category_requires_verified_filter": [
     "LREQ-EXT-050"
   ],
+  "tests/test_consent.py::test_accept_terms_allows_one_run_and_persists_nothing": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_changed_notice_invalidates_a_stored_acknowledgement": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_interactive_phrase_persists_and_second_run_is_silent": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_interactive_wrong_phrase_refuses": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_non_interactive_without_flag_refuses_with_no_request": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_refusal_precedes_credential_read": [
+    "LREQ-CLI-050"
+  ],
+  "tests/test_consent.py::test_unwritable_marker_warns_but_does_not_block": [
+    "LREQ-CLI-050"
+  ],
   "tests/test_contracts.py::test_age_calculation_contract": [
     "LREQ-MET-020"
   ],

@@ -41,7 +41,7 @@ def test_traceability_required_set_is_every_defined_lreq() -> None:
     """The required set is the whole SRS definition list, not one chunk's subset.
 
     The validator widens the Chunk 0 seven-ID required set to
-    ``defined_ids(srs_text)`` (89 IDs), so every defined requirement must be
+    ``defined_ids(srs_text)`` (90 IDs), so every defined requirement must be
     referenced by at least one mapped test (R6).
     """
     srs_text = vt.SRS_PATH.read_text(encoding="utf-8")
@@ -49,7 +49,7 @@ def test_traceability_required_set_is_every_defined_lreq() -> None:
     required = vt.required_ids(srs_text)
 
     assert required == defined
-    assert len(required) == 89
+    assert len(required) == 90
 
 
 @pytest.mark.lreq("LREQ-TST-010")
@@ -181,11 +181,11 @@ def test_traceability_main_fails_on_unmarked_test_outside_exemption(
 def test_traceability_validator_passes_on_current_tree(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The real tree validates: 89 required/defined IDs and the 3 exemptions."""
+    """The real tree validates: 90 required/defined IDs and the 3 exemptions."""
     code = vt.main([])
     captured = capsys.readouterr()
     assert code == 0
-    assert "89 required/defined LREQ IDs" in captured.out
+    assert "90 required/defined LREQ IDs" in captured.out
     assert "3 exempted non-analytical nodes" in captured.out
 
 

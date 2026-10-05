@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
-from . import config, database, pipeline, report
+from . import config, consent, database, pipeline, report
 
 PROG: str = "niche-scout"
 
@@ -150,6 +150,7 @@ class CliOptions:
     report_path: Path | None
     report_format: str
     config_overrides: Mapping[str, Any] = field(default_factory=dict)
+    accept_terms: bool = False
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
@@ -234,6 +235,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="report format when --report is given (default: html)",
     )
+    run_parser.add_argument(
+        "--accept-terms",
+        dest="accept_terms",
+        action="store_true",
+        default=False,
+        help=(
+            "confirm the terms notice for a single non-interactive run "
+            "(persists nothing)"
+        ),
+    )
 
     dashboard_parser = subparsers.add_parser(
         "dashboard", help="render one persisted run to stdout"
@@ -295,6 +306,7 @@ def _options_from_namespace(namespace: argparse.Namespace) -> CliOptions:
         report_path=None if report_path is None else Path(report_path),
         report_format="html" if report_format is None else str(report_format),
         config_overrides=overrides,
+        accept_terms=bool(getattr(namespace, "accept_terms", False)),
     )
 
 
@@ -383,8 +395,17 @@ def run_command(
     write_report: Callable[..., Path] = report.write_run_report,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
+    stdin: TextIO = sys.stdin,
+    consent_marker_path: Path | None = None,
 ) -> int:
     """Run one pipeline and return the process exit code.
+
+    Before anything else the ``run`` command obtains the one-time terms-notice
+    acknowledgement (``LREQ-CLI-050``): with no stored matching acknowledgement
+    or ``--accept-terms`` and no interactive session, it refuses with
+    ``EXIT_USAGE_ERROR`` and reaches neither the credentials, the repository, nor
+    any transport. ``stdin`` is the interactive probe; ``consent_marker_path``
+    defaults to ``consent.DEFAULT_MARKER_PATH`` and exists as a test seam.
 
     Credentials are read via ``get_credentials(environ)`` before any transport is
     used. When ``coveo_transport`` / ``graphql_transport`` are ``None`` the
@@ -408,6 +429,18 @@ def run_command(
     """
     _ = stdout
     try:
+        marker = (
+            consent.DEFAULT_MARKER_PATH
+            if consent_marker_path is None
+            else Path(consent_marker_path)
+        )
+        if not consent.ensure_consent(
+            accept_terms=options.accept_terms,
+            stdin=stdin,
+            stderr=stderr,
+            marker_path=marker,
+        ):
+            return EXIT_USAGE_ERROR
         resolved = resolve_config(options, environ=environ)
         categories = tuple(config.read_categories(Path(options.categories_path)))
         credentials = config.get_credentials(environ)
