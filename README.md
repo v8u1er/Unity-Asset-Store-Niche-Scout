@@ -1,17 +1,6 @@
-<table>
-<tr>
-<td valign="middle">
-
-# Unity Asset Store Niche Scout
+# <img align="right" width="120" src="images/logo.png" alt="Niche Scout logo"><br>Unity Asset Store Niche Scout
 
 [![CI](https://github.com/v8u1er/unity-asset-store-niche-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/v8u1er/unity-asset-store-niche-scout/actions/workflows/ci.yml)
-
-</td>
-<td valign="middle" align="right">
-<img width="150" src="images/logo.png" alt="Niche Scout logo">
-</td>
-</tr>
-</table>
 
 **A local research tool for Unity Asset Store publishers: compare a set of asset categories side by side before you decide what to build.**
 
